@@ -202,6 +202,7 @@ const purgeCssOptions = {
       'fa-times',
       'fa-bell',
       'fa-graduation-cap',
+      'fa-history',
       'fa-envelope-open-text',
       'fade',
       'fixed-bottom',
@@ -324,15 +325,16 @@ async function img() {
     base: config.assetsBase,
     since: lastRun(img)
   })
-    .pipe(
-      // <https://github.com/sindresorhus/gulp-imagemin/tree/main#custom-plugin-options>
-      // progressive: true,
-      // svgoPlugins: [{ removeViewBox: false }, { cleanupIDs: false }],
-      imagemin()
-    )
+    // .pipe(
+    //   // <https://github.com/sindresorhus/gulp-imagemin/tree/main#custom-plugin-options>
+    //   // progressive: true,
+    //   // svgoPlugins: [{ removeViewBox: false }, { cleanupIDs: false }],
+    //   imagemin()
+    // )
+    // .pipe(dest(config.assetsBase));
     .pipe(dest(config.buildBase));
 
-  if (DEV) stream = stream.pipe(lr(config.livereload));
+  // if (DEV) stream = stream.pipe(lr(config.livereload));
 
   // convert to conventional stream
   stream = stream.pipe(through2.obj((chunk, enc, cb) => cb()));

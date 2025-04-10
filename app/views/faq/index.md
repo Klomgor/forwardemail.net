@@ -107,11 +107,11 @@ We provide email hosting and email forwarding service to 500,000+ domains and th
 
 * [Canonical](/blog/docs/canonical-ubuntu-email-enterprise-case-study)
 * Netflix
-* The Linux Foundation
+* [The Linux Foundation](/blog/docs/linux-foundation-email-enterprise-case-study)
 * The PHP Foundation
 * Fox News Radio
 * Disney Ad Sales
-* jQuery
+* [jQuery](/blog/docs/linux-foundation-email-enterprise-case-study)
 * LineageOS
 * [Ubuntu](/blog/docs/canonical-ubuntu-email-enterprise-case-study)
 * [Kubuntu](/blog/docs/canonical-ubuntu-email-enterprise-case-study)
@@ -126,8 +126,7 @@ We provide email hosting and email forwarding service to 500,000+ domains and th
 * Fly.io
 * RCD Hotels
 * International Correspondence Chess Federation
-* John Graham-Cumming (Cloudflare)
-* Isaac Z. Schlueter (npm)
+* [Isaac Z. Schlueter (npm)](/blog/docs/how-npm-packages-billion-downloads-shaped-javascript-ecosystem)
 * David Heinemeier Hansson (Ruby on Rails)
 
 You can learn more about Forward Email on [our About page](/about).
