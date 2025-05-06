@@ -15,6 +15,8 @@
 * [How do I set up MTA-STS for Forward Email](#how-do-i-set-up-mta-sts-for-forward-email)
 * [Do you support sending email with SMTP](#do-you-support-sending-email-with-smtp)
 * [What are your outbound SMTP limits](#what-are-your-outbound-smtp-limits)
+* [Do I need approval to enable SMTP](#do-i-need-approval-to-enable-smtp)
+* [Do you support newsletters or mailing lists for marketing related email](#do-you-support-newsletters-or-mailing-lists-for-marketing-related-email)
 * [What are your SMTP server configuration settings](#what-are-your-smtp-server-configuration-settings)
 * [What are your IMAP server configuration settings](#what-are-your-imap-server-configuration-settings)
 * [What are your POP3 server configuration settings](#what-are-your-pop3-server-configuration-settings)
@@ -89,6 +91,7 @@
 * [Do you offer unlimited domains for one price](#do-you-offer-unlimited-domains-for-one-price)
 * [Which payment methods do you accept](#which-payment-methods-do-you-accept)
 * [How do you perform DNS lookups on domain names](#how-do-you-perform-dns-lookups-on-domain-names)
+* [Do you support self-hosting](#do-you-support-self-hosting)
 
 
 ## What is Forward Email
@@ -107,11 +110,11 @@ We provide email hosting and email forwarding service to 500,000+ domains and th
 
 * [Canonical](/blog/docs/canonical-ubuntu-email-enterprise-case-study)
 * Netflix
-* The Linux Foundation
+* [The Linux Foundation](/blog/docs/linux-foundation-email-enterprise-case-study)
 * The PHP Foundation
 * Fox News Radio
 * Disney Ad Sales
-* jQuery
+* [jQuery](/blog/docs/linux-foundation-email-enterprise-case-study)
 * LineageOS
 * [Ubuntu](/blog/docs/canonical-ubuntu-email-enterprise-case-study)
 * [Kubuntu](/blog/docs/canonical-ubuntu-email-enterprise-case-study)
@@ -126,8 +129,7 @@ We provide email hosting and email forwarding service to 500,000+ domains and th
 * Fly.io
 * RCD Hotels
 * International Correspondence Chess Federation
-* John Graham-Cumming (Cloudflare)
-* Isaac Z. Schlueter (npm)
+* [Isaac Z. Schlueter (npm)](/blog/docs/how-npm-packages-billion-downloads-shaped-javascript-ecosystem)
 * David Heinemeier Hansson (Ruby on Rails)
 
 You can learn more about Forward Email on [our About page](/about).
@@ -992,7 +994,19 @@ Yes, as of May 2023 we support sending email with SMTP as an add-on for all paid
 
 ## What are your outbound SMTP limits
 
-We rate limit users and domains to 300 outbound SMTP messages per 1 day. This averages 9000+ emails in a calendar month. If you need to exceed this amount or have consistently large emails, then please contact us.
+We rate limit users and domains to 300 outbound SMTP messages per 1 day. This averages 9000+ emails in a calendar month. If you need to exceed this amount or have consistently large emails, then please [contact us](https://forwardemail.net/help).
+
+
+## Do I need approval to enable SMTP
+
+Yes, please note that in order to maintain IP reputation and ensure deliverability, Forward Email has a manual review process on a per-domain basis for outbound SMTP approval. Email <support@forwardemail.net> or open a [help request](https://forwardemail.net/help) for approval. This typically takes less than 24 hours, with most requests being honored within 1-2 hours. In the near future we aim to make this process instant with additional spam controls and alerting. This process ensures that your emails reach the inbox and your messages don't get marked as spam.
+
+
+## Do you support newsletters or mailing lists for marketing related email
+
+Yes, you can read more at <https://forwardemail.net/guides/newsletter-with-listmonk>.
+
+Please note that in order to maintain IP reputation and ensure deliverability, Forward Email has a manual review process on a per-domain basis for **newsletter approval**. Email <support@forwardemail.net> or open a [help request](https://forwardemail.net/help) for approval. This typically takes less than 24 hours, with most requests being honored within 1-2 hours. In the near future we aim to make this process instant with additional spam controls and alerting. This process ensures that your emails reach the inbox and your messages don't get marked as spam.
 
 
 ## What are your SMTP server configuration settings
@@ -1172,7 +1186,7 @@ Yes, we support [OpenPGP](https://en.wikipedia.org/wiki/Pretty_Good_Privacy#Open
    | Thunderbird     | Desktop  | [Configure OpenPGP in Thunderbird](https://support.mozilla.org/en-US/kb/openpgp-thunderbird-howto-and-faq#w_i-have-never-used-openpgp-with-thunderbird-before-how-do-i-setup-openpgp) | Thunderbird has built-in support for OpenPGP.                                                                                                                                                                                                                                                                                                                                                                                            |
    | Gmail           | Browser  | [Mailvelope](https://mailvelope.com/) or [FlowCrypt](https://flowcrypt.com/download) (proprietary license)                                                                            | Gmail does not support OpenPGP, however you can download the open-source plugin [Mailvelope](https://mailvelope.com/) or [FlowCrypt](https://flowcrypt.com/download).                                                                                                                                                                                                                                                                    |
    | Apple Mail      | macOS    | [Free-GPGMail](https://github.com/Free-GPGMail/Free-GPGMail?tab=readme-ov-file#installation)                                                                                          | Apple Mail does not support OpenPGP, however you can download the open-source plugin [Free-GPGMail](https://github.com/Free-GPGMail/Free-GPGMail?tab=readme-ov-file#installation).                                                                                                                                                                                                                                                       |
-   | Apple Mail      | iOS      | [PGPro](https://pgpro.app/) or [FlowCrypt](https://apps.apple.com/us/app/flowcrypt-encrypted-email/id1591754995) (proprietary license)                                                | Apple Mail does not support OpenPGP, however you can download the open-source plugin [PGPro](https://pgpro.app/) or [FlowCrypt](https://flowcrypt.com/download).                                                                                                                                                                                                                                                                         |
+   | Apple Mail      | iOS      | [PGPro](https://github.com/opensourceios/PGPro/) or [FlowCrypt](https://apps.apple.com/us/app/flowcrypt-encrypted-email/id1591754995) (proprietary license)                           | Apple Mail does not support OpenPGP, however you can download the open-source plugin [PGPro](https://github.com/opensourceios/PGPro/) or [FlowCrypt](https://flowcrypt.com/download).                                                                                                                                                                                                                                                    |
    | Outlook         | Windows  | [gpg4win](https://www.gpg4win.de/index.html)                                                                                                                                          | Outlook's desktop mail client does not support OpenPGP, however you can download the open-source plugin [gpg4win](https://www.gpg4win.de/index.html).                                                                                                                                                                                                                                                                                    |
    | Outlook         | Browser  | [Mailvelope](https://mailvelope.com/) or [FlowCrypt](https://flowcrypt.com/download) (proprietary license)                                                                            | Outlook's web-based mail client does not support OpenPGP, however you can download the open-source plugin [Mailvelope](https://mailvelope.com/) or [FlowCrypt](https://flowcrypt.com/download).                                                                                                                                                                                                                                          |
    | Android         | Mobile   | [OpenKeychain](https://www.openkeychain.org/) or [FlowCrypt](https://play.google.com/store/apps/details?id=com.flowcrypt.email)                                                       | [Android mail clients](/blog/open-source/android-email-clients) such as [Thunderbird Mobile](https://www.thunderbird.net/en-US/mobile/) and [FairEmail](https://github.com/M66B/FairEmail) both support the open-source plugin [OpenKeychain](https://www.openkeychain.org/). You could alternatively use the open-source (proprietary licensing) plugin [FlowCrypt](https://play.google.com/store/apps/details?id=com.flowcrypt.email). |
@@ -3901,6 +3915,11 @@ We accept cards, wallets, and bank transfers using [Stripe](https://stripe.com/g
 We created an open-source software project :tangerine: [Tangerine](https://github.com/forwardemail/tangerine) and use it for DNS lookups.  The default DNS servers used are `1.1.1.1` and `1.0.0.1`, and DNS queries are through [DNS over HTTPS](https://en.wikipedia.org/wiki/DNS_over_HTTPS) ("DoH") at the application layer.
 
 :tangerine: [Tangerine](https://github.com/tangerine) uses [CloudFlare's privacy-first consumer DNS service by default][cloudflare-dns].
+
+
+## Do you support self-hosting
+
+Yes, as of March 2025, we support a self-hosted option. Read the blog [here](https://forwardemail.net/blog/docs/self-hosted-solution). Checkout the [self-hosted guide](https://forwardemail.net/self-hosted) to get started.
 
 [gmail-2fa]: https://myaccount.google.com/signinoptions/two-step-verification
 

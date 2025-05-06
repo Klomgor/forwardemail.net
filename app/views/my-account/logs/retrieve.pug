@@ -31,9 +31,9 @@ block body
             th!= t("Date &amp; Time")
             td
               if log.meta && log.meta.session && log.meta.session.arrivalDate
-                span.dayjs(data-time=log.meta.session.arrivalTime)= dayjs(log.meta.session.arrivalDate).tz(user.timezone).format("M/D/YY h:mm A z")
+                span.dayjs(data-time=log.meta.session.arrivalTime)= dayjs(log.meta.session.arrivalDate).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
               else
-                span.dayjs(data-time=log.created_at)= dayjs(log.created_at).tz(user.timezone).format("M/D/YY h:mm A z")
+                span.dayjs(data-time=log.created_at)= dayjs(log.created_at).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
           if log.meta.session.envelope.mailFrom && log.meta.session.envelope.mailFrom.address && isSANB(log.meta.session.envelope.mailFrom.address)
             tr
               th= "MAIL FROM"
@@ -70,6 +70,11 @@ block body
               span.badge.badge-pill(class=badgeClass)= statusCode
           li.list-inline-item.small.d-inline
             small.text-monospace
+              if log.err && log.err.envelope && log.err.envelope.to && typeof log.err.envelope.to === 'string'
+                = '('
+                = log.err.envelope.to
+                = ')'
+                = ' '
               if log.err && log.err.isCodeBug === true
                 = "An unexpected internal server error has occurred"
               else

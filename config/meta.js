@@ -33,7 +33,7 @@ const {
 } = require('#config/utilities');
 
 // eslint-disable-next-line complexity
-module.exports = function (config) {
+module.exports = function (config, isSitemap = false) {
   // in order for snapshots to be consistent we need the same date to be used
   const now =
     config.env === 'test'
@@ -51,7 +51,7 @@ module.exports = function (config) {
     // meta for a specific route it'd be confusing to see Home
     // in the title bar in the user's browser
     '/': [
-      'Free Email Forwarding for Custom Domains | Free Custom Domain Email Forwarding',
+      'Free Email Forwarding - Custom Domain Emails',
       'Setup encrypted email, free email forwarding, custom domains, private business email, and more with support for outbound SMTP, IMAP, and POP3. Set up free email forwarding for your custom domain in minutes.'
     ],
     '/about': [
@@ -62,7 +62,7 @@ module.exports = function (config) {
       'Press & Media Kit',
       'Learn more about Forward Email for journalists and the press, and download Forward Email graphics, branding, and media kit.'
     ],
-    ...useCases,
+    ...(isSitemap ? [] : useCases),
     '/private-business-email': [
       'Private Business Email for Custom Domains',
       'Create your free, private, encrypted, and secure email for professional businesses, enterprises, and custom domains. Send and receive email as <span class="notranslate font-weight-bold text-nowrap">you@yourdomain.com</span>.'
@@ -126,6 +126,10 @@ module.exports = function (config) {
       'Disposable Email Addresses for Custom Domains',
       'Get disposable email forwarding addresses using your custom domain name.'
     ],
+    '/self-hosted': [
+      'Self Hosted',
+      'Check out our complete self hosted setup.'
+    ],
     '/resources': [
       `Free Startup and Developer Email Tools List in <span class="notranslate">${dayjs(
         now
@@ -150,6 +154,12 @@ module.exports = function (config) {
         now
       ).format('YYYY')}</span>`,
       'Set up free email forwarding and email hosting with your custom domain, DNS, SMTP, IMAP, and POP3 configuration setup guide.'
+    ],
+    '/guides/newsletter-with-listmonk': [
+      `Create and Manage Newsletters with Listmonk in <span class="notranslate">${dayjs(
+        now
+      ).format('YYYY')}</span>`,
+      'setting up a newsletter and mailing list system using Listmonk for campaign management and Forward Email as the SMTP provider for secure and reliable email delivery.'
     ],
     '/guides/send-mail-as-gmail-custom-domain': [
       `How to Send Mail As for Gmail Alias <span class="notranslate">${dayjs(
