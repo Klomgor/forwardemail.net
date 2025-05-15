@@ -49,7 +49,10 @@ const options = { length: 10, type: 'numeric' };
 const { fields } = config.passport;
 const omitExtraFields = [
   ..._.without(mongooseOmitCommonFields.underscored.keys, 'email'),
+  'has_passed_kyc',
   'passkeys',
+  config.userFields.domainCount,
+  config.userFields.aliasCount,
   // TODO: change to allowlist
   config.userFields.isRateLimitWhitelisted,
   config.userFields.apiToken,
@@ -126,6 +129,19 @@ Passkey.plugin(mongooseCommonPlugin, {
 });
 
 const Users = new mongoose.Schema({
+  //
+  // has passed kyc (know your customer)
+  // (set to true by default)
+  //
+  // TODO: if user has >= 5 domains already approved then auto-approves
+  // TODO: automatically set `has_passed_kyc` to `true` for all existing with `has_smtp` and >= 5 domains
+  //
+  has_passed_kyc: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+
   // Session Management (rudimentary)
   sessions: [String], // simple Array of session ID's currently signed in
 

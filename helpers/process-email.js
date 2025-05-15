@@ -565,7 +565,7 @@ async function processEmail({ email, port = 25, resolver, client }) {
       signTime: new Date(),
       signatureData: [
         {
-          signingDomain: domain.name,
+          signingDomain: punycode.toASCII(domain.name),
           selector: domain.dkim_key_selector,
           privateKey: decrypt(domain.dkim_private_key),
           algorithm: 'rsa-sha256',
@@ -597,7 +597,7 @@ async function processEmail({ email, port = 25, resolver, client }) {
     // then use that as the return path for SRS rewrite, otherwise use our normal value
     //
     let srsDomain;
-    const returnPath = `${domain.return_path}.${domain.name}`;
+    const returnPath = `${domain.return_path}.${punycode.toASCII(domain.name)}`;
     let returnPathResults;
     try {
       returnPathResults = await resolver.resolveCname(returnPath);
@@ -664,9 +664,12 @@ async function processEmail({ email, port = 25, resolver, client }) {
     // rewrite envelope From with SRS using CNAME
     // (custom Return-Path but we don't add this header since IMAP does)
     const envelope = {
-      from: email.envelope.from.toLowerCase().endsWith(`@${env.WEB_HOST}`)
-        ? email.envelope.from
-        : srs.forward(email.envelope.from, srsDomain),
+      from: punycode
+        .toASCII(email.envelope.from)
+        .toLowerCase()
+        .endsWith(`@${env.WEB_HOST}`)
+        ? punycode.toASCII(email.envelope.from)
+        : srs.forward(punycode.toASCII(email.envelope.from), srsDomain),
       to: [...email.envelope.to]
     };
 
@@ -702,11 +705,16 @@ async function processEmail({ email, port = 25, resolver, client }) {
       dkimAlignedMatch = dkim?.results
         ? dkim.results.find((result) => {
             const isAligned =
-              result.signingDomain === domain.name &&
+              punycode.toASCII(result.signingDomain) ===
+                punycode.toASCII(domain.name) &&
               result.selector === domain.dkim_key_selector &&
               result?.status?.result === 'pass' &&
-              (result?.status?.aligned === domain.name ||
-                result?.status?.aligned === parseRootDomain(domain.name));
+              ((result?.status?.aligned &&
+                punycode.toASCII(result.status.aligned) ===
+                  punycode.toASCII(domain.name)) ||
+                (result?.status?.aligned &&
+                  punycode.toASCII(result.status.aligned) ===
+                    parseRootDomain(punycode.toASCII(domain.name))));
 
             if (!isAligned) return;
 
@@ -728,37 +736,52 @@ async function processEmail({ email, port = 25, resolver, client }) {
       dkim.results.some(
         (r) =>
           r.status?.comment === 'body hash did not verify' &&
-          r.signingDomain === domain.name &&
+          punycode.toASCII(r.signingDomain) === punycode.toASCII(domain.name) &&
           r.selector === domain.dkim_key_selector &&
-          (r.status?.aligned === domain.name ||
-            r.status?.aligned === parseRootDomain(domain.name))
+          ((r.status?.aligned &&
+            punycode.toASCII(r.status.aligned) ===
+              punycode.toASCII(domain.name)) ||
+            (r.status?.aligned &&
+              punycode.toASCII(r.status.aligned) ===
+                parseRootDomain(punycode.toASCII(domain.name))))
       )
     )
       bodyHashIssue = true;
 
     if (!bodyHashIssue && (!dkim || !dkimAlignedMatch)) {
-      throw Boom.badRequest(i18n.translateError('INVALID_DKIM_SIGNATURE'));
+      const err = Boom.badRequest(
+        i18n.translateError('INVALID_DKIM_SIGNATURE')
+      );
+      err.dkim = dkim;
+      throw err;
     }
 
     // verify SPF
     if (
       !spf ||
       !spf.domain ||
-      ![`${domain.return_path}.${domain.name}`, env.WEB_HOST].includes(
-        spf.domain
-      ) ||
+      ![
+        `${domain.return_path}.${punycode.toASCII(domain.name)}`,
+        env.WEB_HOST
+      ].includes(punycode.toASCII(spf.domain)) ||
       spf?.status?.result !== 'pass'
     ) {
       const err = Boom.badRequest(i18n.translateError('INVALID_SPF_RESULT'));
       if (spf) err.spf = spf;
+      err.envelope = envelope;
+      err.srsDomain = srsDomain;
+      err.returnPath = returnPath;
       throw err;
     }
 
     // verify DMARC
     if (
       !dmarc ||
-      (dmarc?.domain !== domain.name &&
-        dmarc?.domain !== parseRootDomain(domain.name)) ||
+      (dmarc?.domain &&
+        punycode.toASCII(dmarc.domain) !== punycode.toASCII(domain.name) &&
+        dmarc?.domain &&
+        punycode.toASCII(dmarc.domain) !==
+          parseRootDomain(punycode.toASCII(domain.name))) ||
       // !isSANB(dmarc?.policy) ||
       // !['none', 'reject', 'quarantine'].includes(dmarc.policy) ||
       // dmarc?.policy !== 'reject' ||

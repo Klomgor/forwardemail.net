@@ -41,18 +41,19 @@ async function onFetch(mailboxId, options, session, fn) {
 
   if (this.wsp) {
     try {
-      const [bool, response, compiledPayloads] = await this.wsp.request({
-        action: 'fetch',
-        session: {
-          id: session.id,
-          user: session.user,
-          remoteAddress: session.remoteAddress,
-          selected: session.selected,
-          acceptUTF8Enabled: session.isUTF8Enabled()
-        },
-        mailboxId,
-        options
-      });
+      const [bool, response, compiledPayloads, entries] =
+        await this.wsp.request({
+          action: 'fetch',
+          session: {
+            id: session.id,
+            user: session.user,
+            remoteAddress: session.remoteAddress,
+            selected: session.selected,
+            acceptUTF8Enabled: session.isUTF8Enabled()
+          },
+          mailboxId,
+          options
+        });
 
       if (Array.isArray(compiledPayloads)) {
         for (const compiled of compiledPayloads) {
@@ -61,6 +62,13 @@ async function onFetch(mailboxId, options, session, fn) {
       }
 
       fn(null, bool, response);
+
+      if (entries.length > 0) {
+        this.server.notifier
+          .addEntries(this, session, mailboxId, entries)
+          .then(() => this.server.notifier.fire(session.user.alias_id))
+          .catch((err) => this.logger.fatal(err, { session }));
+      }
     } catch (err) {
       if (err.imapResponse) return fn(null, err.imapResponse);
       fn(err);
@@ -71,6 +79,12 @@ async function onFetch(mailboxId, options, session, fn) {
 
   try {
     const compiledPayloads = [];
+    const entries = [];
+    const ops = [];
+
+    let rowCount = 0;
+    let totalBytes = 0;
+
     await this.refreshSession(session, 'FETCH');
 
     const mailbox = await Mailboxes.findOne(this, session, {
@@ -114,16 +128,35 @@ async function onFetch(mailboxId, options, session, fn) {
     //       (e.g. `options.messages = [ 50 ]` when `50` doesn't exist, e.g. after COPY in Thunderbird)
     //
 
-    let queryAll;
+    let queryAll = false;
 
-    // `1:*`
-    // <https://github.com/nodemailer/wildduck/pull/559>
+    /*
+    // return early if no messages
+    // (we could also do `_id: -1` as a query)
+    if (options.messages.length === 0) {
+      return fn(
+        null,
+        true,
+        {
+          rowCount,
+          totalBytes
+        },
+        compiledPayloads,
+        entries
+      );
+    }
+    */
+
     if (
-      _.isEqual(_.sortBy(options.messages), _.sortBy(session.selected.uidList))
-    )
+      !options.isUid &&
+      options.messages.length === session.selected.uidList.length
+    ) {
+      // 1:*
       queryAll = true;
-    // NOTE: don't use uid for `1:*`
-    else pageQuery.uid = tools.checkRangeQuery(options.messages, false);
+    } else {
+      // do not use uid selector for 1:*
+      pageQuery.uid = tools.checkRangeQuery(options.messages, false);
+    }
 
     // TODO: take out JSON.parse and JSON.stringify
     // converts objectids -> strings and arrays/json appropriately
@@ -154,7 +187,7 @@ async function onFetch(mailboxId, options, session, fn) {
       if (projection[key] === true) fields.push(key);
     }
 
-    const count = await Messages.countDocuments(this, session, condition);
+    // const count = await Messages.countDocuments(this, session, condition);
 
     const sql = builder.build({
       type: 'select',
@@ -186,15 +219,16 @@ async function onFetch(mailboxId, options, session, fn) {
     // TODO: we may want to use `.all()` instead of `.all()`
     // with the `batchSize` value at a time (for better performance)
     //
-    const entries = [];
-    const ops = [];
-
-    let rowCount = 0;
-    let totalBytes = 0;
 
     // <https://github.com/m4heshd/better-sqlite3-multiple-ciphers/blob/master/docs/api.md#iteratebindparameters---iterator>
     const stmt = session.db.prepare(sql.query);
-    const isBatchMode = count > 1000;
+
+    //
+    // NOTE: we explicitly disable `isBatchMode` for now since there is a bug somewhere
+    //       in the logic for `await this.wss.broadcast(...)` below which code lies in `sqlite-server.js`
+    //       and the loop itself has a `5m` timeout, so basically FETCH calls were taking 5m+ before timing out
+    //
+    const isBatchMode = false; // count > 1000;
 
     for (const result of isBatchMode
       ? stmt.all(sql.values)
@@ -203,11 +237,7 @@ async function onFetch(mailboxId, options, session, fn) {
 
       // don't process messages that are new since query started
       // <https://github.com/nodemailer/wildduck/issues/708>
-      if (
-        queryAll &&
-        session?.selected?.uidList &&
-        !session.selected.uidList.includes(message.uid)
-      ) {
+      if (queryAll && !session.selected.uidList.includes(message.uid)) {
         continue;
       }
 
@@ -355,13 +385,6 @@ async function onFetch(mailboxId, options, session, fn) {
         .immediate(ops);
     }
 
-    if (entries.length > 0) {
-      this.server.notifier
-        .addEntries(this, session, mailbox._id, entries)
-        .then(() => this.server.notifier.fire(session.user.alias_id))
-        .catch((err) => this.logger.fatal(err, { session }));
-    }
-
     fn(
       null,
       true,
@@ -369,7 +392,8 @@ async function onFetch(mailboxId, options, session, fn) {
         rowCount,
         totalBytes
       },
-      compiledPayloads
+      compiledPayloads,
+      entries
     );
   } catch (err) {
     fn(refineAndLogError(err, session, true, this));

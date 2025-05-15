@@ -101,8 +101,8 @@ class SQLite {
     // <https://github.com/nodemailer/wildduck/issues/509>
     //
     server.notifier = new IMAPNotifier({
-      publisher: this.client,
-      subscriber: this.subscriber
+      publisher: this.client
+      // NOTE: we do not supply `subscriber` option since it's not IMAP
     });
 
     // this.wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });

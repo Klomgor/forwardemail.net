@@ -93,6 +93,10 @@ async function onAppend(path, flags, date, raw, session, fn) {
     return;
   }
 
+  // TODO: if !this.wsp then we need an alternative
+  //       anytime `'sync'` or `syncTemporaryMailbox` is called
+  //       (anywhere onAppendPromise is called to, e.g. POP3)
+
   let thread;
   let hasNodeBodies;
   let maildata;
@@ -366,7 +370,7 @@ async function onAppend(path, flags, date, raw, session, fn) {
       // (sometimes senders will make multiple attempts even if one succeeded)
       //
       if (existingMessage) {
-        fn(null, true, {
+        const response = {
           uidValidity: mailbox.uidValidity,
           uid: existingMessage.uid,
           id: existingMessage._id,
@@ -374,7 +378,8 @@ async function onAppend(path, flags, date, raw, session, fn) {
           mailboxPath: mailbox.path,
           size: existingMessage.size,
           status: 'new'
-        });
+        };
+        fn(null, true, response);
         return;
       }
     }
@@ -568,13 +573,6 @@ async function onAppend(path, flags, date, raw, session, fn) {
       session
     });
 
-    // update storage in background
-    updateStorageUsed(session.user.alias_id, this.client)
-      .then()
-      .catch((err) =>
-        this.logger.fatal(err, { message, path, flags, date, session })
-      );
-
     const response = {
       uidValidity: mailbox.uidValidity,
       uid: message.uid,
@@ -585,27 +583,40 @@ async function onAppend(path, flags, date, raw, session, fn) {
       status: 'new'
     };
 
-    this.logger.debug('command response', { response });
+    fn(null, true, response);
+
+    // <https://github.com/zone-eu/wildduck/blob/76f79fd274e62da3dffe8a2aac170ba41aecaa2b/lib/message-handler.js#L607-L618>
+    const entry = {
+      ignore: session.id,
+      // ignore:
+      //   session?.selected?.mailbox &&
+      //   session.selected.mailbox.toString() === message.mailbox.toString(),
+      command: 'EXISTS',
+      uid: message.uid,
+      mailbox: mailbox._id,
+      message: message._id,
+      modseq: message.modseq,
+      unseen: message.unseen,
+      idate: message.idate,
+      thread: message.thread
+    };
 
     this.server.notifier
-      .addEntries(this, session, mailbox._id, {
-        ignore:
-          session?.selected?.mailbox &&
-          session.selected.mailbox.toString() === message.mailbox.toString(),
-        command: 'EXISTS',
-        uid: message.uid,
-        mailbox: mailbox._id,
-        message: message._id
-      })
+      .addEntries(this, session, response.mailbox, entry)
       .then(() => this.server.notifier.fire(session.user.alias_id))
       .catch((err) => this.logger.fatal(err, { session }));
+
+    // update storage in background
+    updateStorageUsed(session.user.alias_id, this.client)
+      .then()
+      .catch((err) =>
+        this.logger.fatal(err, { message, path, flags, date, session })
+      );
 
     // send apple push notification
     sendApn(this.client, session.user.alias_id, path)
       .then()
       .catch((err) => this.logger.fatal(err, { session }));
-
-    fn(null, true, response);
   } catch (err) {
     // delete attachments if we need to cleanup
     const attachmentIds =

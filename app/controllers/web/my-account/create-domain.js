@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 const { boolean } = require('boolean');
 
 const { Domains, Aliases } = require('#models');
+const isExpiredOrNewlyCreated = require('#helpers/is-expired-or-newly-created');
 
 const config = require('#config');
 const logger = require('#helpers/logger');
@@ -24,19 +25,29 @@ async function createDomain(ctx, next) {
     isSANB(ctx.request.body.team_domain) &&
     ctx.request.body.team_domain !== 'none'
   ) {
-    teamDomain = ctx.state.domains.find((d) => {
-      if (d.plan !== 'team') return false; // return if not team plan
-      if (d.group !== 'admin') return false; // if user logged in is not an admin ignore
-      // if the ID matched
-      if (
-        mongoose.isObjectIdOrHexString(ctx.request.body.team_domain) &&
-        d.id === ctx.request.body.team_domain
-      )
-        return true;
-      // if the name matched
-      if (d.name === ctx.request.body.team_domain.toLowerCase()) return true;
-      return false;
-    });
+    const query = mongoose.isObjectIdOrHexString(ctx.request.body.team_domain)
+      ? {
+          id: ctx.request.body.team_domain,
+          plan: 'team',
+          members: {
+            $elemMatch: {
+              user: ctx.state.user._id,
+              group: 'admin'
+            }
+          }
+        }
+      : {
+          name: ctx.request.body.team_domain.toLowerCase(),
+          plan: 'team',
+          members: {
+            $elemMatch: {
+              user: ctx.state.user._id,
+              group: 'admin'
+            }
+          }
+        };
+
+    teamDomain = await Domains.findOne(query).lean().exec();
 
     // throw error if it wasn't valid
     if (!teamDomain)
@@ -89,6 +100,29 @@ async function createDomain(ctx, next) {
   }
 
   try {
+    // wrap with try/catch in case of unknown errors with the whois lookup
+    let obj;
+    try {
+      obj = await isExpiredOrNewlyCreated(ctx.request.body.domain, ctx.client);
+    } catch (err) {
+      err.isCodeBug = true;
+      logger.fatal(err);
+    }
+
+    if (
+      obj?.err &&
+      (ctx?.request?.body?.plan === 'free' || teamDomain?.plan === 'free')
+    ) {
+      if (ctx.api) throw Boom.badRequest(obj.err.message);
+      const redirectTo = ctx.state.l(
+        `/my-account/billing/upgrade?plan=enhanced_protection&domain=${ctx.request.body.domain}`
+      );
+      ctx.flash('warning', obj.err.message);
+      if (ctx.accepts('html')) ctx.redirect(redirectTo);
+      else ctx.body = { redirectTo };
+      return;
+    }
+
     if (teamDomain) {
       ctx.state.domain = await Domains.create({
         is_api: boolean(ctx.api),
