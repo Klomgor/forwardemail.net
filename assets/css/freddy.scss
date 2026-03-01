@@ -28,6 +28,9 @@ $shadows-big: multiple-box-shadow(100);
   overflow-x: clip;
 
   margin-top: -60px;
+  // override .min-vh-100 which subtracts the navbar height;
+  // freddy already accounts for the navbar via negative margin-top
+  min-height: 100vh !important;
 
   height: 100%;
 
