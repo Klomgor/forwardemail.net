@@ -4,9 +4,11 @@
  */
 
 const { randomUUID } = require('node:crypto');
+const { Buffer } = require('node:buffer');
 
 // const getUuid = require('@forwardemail/uuid-by-string');
 const API = require('@ladjs/api');
+const basicAuth = require('basic-auth');
 const Boom = require('@hapi/boom');
 const ICAL = require('ical.js');
 const caldavAdapter = require('caldav-adapter');
@@ -49,6 +51,15 @@ const exdateRegex =
 function isValidExdate(str) {
   return exdateRegex.test(str);
 }
+
+//
+// RFC 8607 Managed Attachments Constants
+// <https://www.rfc-editor.org/rfc/rfc8607.html>
+//
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_ATTACHMENTS_PER_RESOURCE = 10;
+const DAV_HEADER_VALUE =
+  '1, 3, calendar-access, calendar-schedule, calendar-auto-schedule, calendar-managed-attachments, calendar-managed-attachments-no-recurrence';
 
 //
 // Reminders (DEFAULT_TASK_CALENDAR_NAME)
@@ -937,6 +948,8 @@ class CalDAV extends API {
     this.getETag = this.getETag.bind(this);
 
     this.sendEmailWithICS = this.sendEmailWithICS.bind(this);
+    this.handleManagedAttachment = this.handleManagedAttachment.bind(this);
+    this.handleAttachmentGet = this.handleAttachmentGet.bind(this);
 
     //
     // Wrap the caldav-adapter middleware with error handling.
@@ -1002,15 +1015,77 @@ class CalDAV extends API {
       //
       if (ctx.method === 'OPTIONS') {
         ctx.status = 200;
-        ctx.set(
-          'DAV',
-          '1, 3, calendar-access, calendar-schedule, calendar-auto-schedule'
-        );
+        ctx.set('DAV', DAV_HEADER_VALUE);
         ctx.set(
           'Allow',
           'OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, REPORT, MKCALENDAR'
         );
         ctx.body = '';
+        return;
+      }
+
+      //
+      // RFC 8607: Handle POST requests for managed attachment operations
+      // (attachment-add, attachment-update, attachment-remove)
+      // These must be intercepted before the caldav-adapter middleware
+      // because the adapter does not handle POST method.
+      //
+      if (ctx.method === 'POST') {
+        try {
+          await this.handleManagedAttachment(ctx);
+        } catch (err) {
+          err.isCodeBug = isCodeBug(err);
+          ctx.logger.error('Managed attachment error', {
+            err,
+            method: ctx.method,
+            url: ctx.url
+          });
+          const errStatus = err.isBoom
+            ? err.output.statusCode
+            : err.status || 500;
+          ctx.status = errStatus;
+          ctx.set('Content-Type', 'application/xml; charset="utf-8"');
+          ctx.body = [
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<D:error xmlns:D="DAV:">',
+            `  <D:status>HTTP/1.1 ${errStatus} ${sanitizeHtml(
+              err.isCodeBug
+                ? 'Internal Server Error'
+                : err.message || 'Internal Server Error',
+              { allowedTags: [], allowedAttributes: {} }
+            )}</D:status>`,
+            '</D:error>'
+          ].join('\n');
+        }
+
+        return;
+      }
+
+      //
+      // RFC 8607: Handle GET requests for managed attachment retrieval.
+      // When the URL contains a "managed-id" query parameter, extract
+      // the base64-encoded attachment data from the ICS and return it.
+      //
+      if (
+        ctx.method === 'GET' &&
+        ctx.query &&
+        ctx.query['managed-id'] &&
+        ctx.path.startsWith('/dav/')
+      ) {
+        try {
+          await this.handleAttachmentGet(ctx);
+        } catch (err) {
+          err.isCodeBug = isCodeBug(err);
+          ctx.logger.error('Attachment GET error', { err, url: ctx.url });
+          const errStatus = err.isBoom
+            ? err.output.statusCode
+            : err.status || 500;
+          ctx.status = errStatus;
+          ctx.body = err.isCodeBug
+            ? 'Internal Server Error'
+            : err.message || 'Internal Server Error';
+        }
+
         return;
       }
 
@@ -2728,6 +2803,410 @@ class CalDAV extends API {
   //
   async buildICS(ctx, events, calendar, method = false) {
     return buildICSHelper(ctx, events, calendar, method);
+  }
+
+  //
+  // RFC 8607: Managed Attachments
+  // <https://www.rfc-editor.org/rfc/rfc8607.html>
+  //
+  // Handle POST requests for attachment-add, attachment-update, attachment-remove.
+  // Attachment binary data is stored inline in the ICS as base64-encoded
+  // ATTACH properties with MANAGED-ID, FMTTYPE, SIZE, FILENAME parameters.
+  //
+  async handleManagedAttachment(ctx) {
+    //
+    // 1. Authenticate the request using Basic Auth
+    //
+    const credentials = basicAuth(ctx.req);
+    if (!credentials) throw Boom.unauthorized('Authentication required');
+    await setupAuthSession.call(this, ctx, credentials.name, credentials.pass);
+    // Set CalDAV-specific user properties (same as this.authenticate)
+    ctx.state.user.principalId = ctx.state.user.username;
+    ctx.state.user.principalName = ctx.state.user.username;
+    await ensureDefaultCalendars.call(this, ctx);
+
+    //
+    // 2. Parse URL to extract principalId, calendarId, eventId
+    //    URL pattern: /dav/:principalId/:calendarId/:eventId
+    //
+    const urlPath = ctx.path.replace(/^\/dav\//, '');
+    const parts = urlPath.split('/');
+    if (parts.length < 3) {
+      throw Boom.badRequest(
+        'Invalid CalDAV resource URL for managed attachment'
+      );
+    }
+
+    const principalId = decodeURIComponent(parts[0]);
+    const calendarId = decodeURIComponent(parts[1]);
+    const eventId = decodeURIComponent(parts.slice(2).join('/'));
+
+    //
+    // 3. Parse query parameters
+    //
+    const { action } = ctx.query;
+    const managedId = ctx.query['managed-id'];
+
+    if (
+      !action ||
+      !['attachment-add', 'attachment-update', 'attachment-remove'].includes(
+        action
+      )
+    ) {
+      throw Boom.badRequest(
+        `Invalid or missing action parameter: ${action || '(none)'}`
+      );
+    }
+
+    if (
+      (action === 'attachment-update' || action === 'attachment-remove') &&
+      !managedId
+    ) {
+      throw Boom.badRequest(`managed-id parameter is required for ${action}`);
+    }
+
+    //
+    // 4. Find the calendar and event
+    //
+    const calendar = await this.getCalendar(ctx, {
+      calendarId,
+      principalId,
+      user: ctx.state.user
+    });
+
+    if (!calendar) {
+      throw Boom.notFound('Calendar not found');
+    }
+
+    const eventIdVariants = getEventIdVariants(eventId);
+    let event = null;
+    for (const variant of eventIdVariants) {
+      event = await CalendarEvents.findOne(this, ctx.state.session, {
+        eventId: variant,
+        calendar: calendar._id
+      });
+      if (event) break;
+    }
+
+    if (!event) {
+      throw Boom.notFound('Calendar event not found');
+    }
+
+    //
+    // 5. Parse the existing ICS
+    //
+    const parsed = ICAL.parse(event.ical);
+    const comp = new ICAL.Component(parsed);
+    const vevent =
+      comp.getFirstSubcomponent('vevent') || comp.getFirstSubcomponent('vtodo');
+    if (!vevent) {
+      throw Boom.badRequest('No VEVENT or VTODO found in calendar object');
+    }
+
+    let newManagedId;
+
+    switch (action) {
+      case 'attachment-add': {
+        //
+        // RFC 8607 Section 3.1: Adding Attachments
+        //
+        const existingAttachments = vevent
+          .getAllProperties('attach')
+          .filter((p) => p.getParameter('managed-id'));
+        if (existingAttachments.length >= MAX_ATTACHMENTS_PER_RESOURCE) {
+          throw Boom.badRequest(
+            `Maximum number of attachments (${MAX_ATTACHMENTS_PER_RESOURCE}) reached`
+          );
+        }
+
+        // Read the raw binary body
+        const chunks = [];
+        for await (const chunk of ctx.req) {
+          chunks.push(chunk);
+        }
+
+        const bodyBuffer = Buffer.concat(chunks);
+
+        if (bodyBuffer.length === 0) {
+          throw Boom.badRequest('Attachment body is empty');
+        }
+
+        if (bodyBuffer.length > MAX_ATTACHMENT_SIZE) {
+          throw Boom.entityTooLarge(
+            `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
+          );
+        }
+
+        // Generate a unique MANAGED-ID
+        newManagedId = randomUUID();
+
+        // Get content type and filename from headers
+        const contentType =
+          ctx.get('Content-Type') || 'application/octet-stream';
+        const contentDisposition = ctx.get('Content-Disposition') || '';
+        let filename = 'attachment';
+        const filenameMatch = contentDisposition.match(
+          /filename\*?=["']?(?:utf-8'')?([^"';\s]+)/i
+        );
+        if (filenameMatch) {
+          filename = decodeURIComponent(filenameMatch[1]);
+        }
+
+        // Encode attachment data as base64
+        const base64Data = bodyBuffer.toString('base64');
+
+        // Build the ATTACH property with managed-id parameters
+        const attachProp = new ICAL.Property('attach', vevent);
+        attachProp.setParameter('managed-id', newManagedId);
+        attachProp.setParameter('fmttype', contentType);
+        attachProp.setParameter('size', String(bodyBuffer.length));
+        attachProp.setParameter('filename', filename);
+        attachProp.setParameter('encoding', 'BASE64');
+        attachProp.resetType('binary');
+        attachProp.setValue(base64Data);
+        vevent.addProperty(attachProp);
+
+        break;
+      }
+
+      case 'attachment-update': {
+        //
+        // RFC 8607 Section 3.2: Updating Attachments
+        //
+        const attachProps = vevent.getAllProperties('attach');
+        const target = attachProps.find(
+          (p) => p.getParameter('managed-id') === managedId
+        );
+        if (!target) {
+          throw Boom.notFound(
+            `Attachment with managed-id "${managedId}" not found`
+          );
+        }
+
+        // Read the raw binary body
+        const chunks = [];
+        for await (const chunk of ctx.req) {
+          chunks.push(chunk);
+        }
+
+        const bodyBuffer = Buffer.concat(chunks);
+
+        if (bodyBuffer.length === 0) {
+          throw Boom.badRequest('Attachment body is empty');
+        }
+
+        if (bodyBuffer.length > MAX_ATTACHMENT_SIZE) {
+          throw Boom.entityTooLarge(
+            `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
+          );
+        }
+
+        // Generate a new MANAGED-ID for the updated attachment
+        newManagedId = randomUUID();
+
+        const contentType =
+          ctx.get('Content-Type') || 'application/octet-stream';
+        const contentDisposition = ctx.get('Content-Disposition') || '';
+        let filename = target.getParameter('filename') || 'attachment';
+        const filenameMatch = contentDisposition.match(
+          /filename\*?=["']?(?:utf-8'')?([^"';\s]+)/i
+        );
+        if (filenameMatch) {
+          filename = decodeURIComponent(filenameMatch[1]);
+        }
+
+        const base64Data = bodyBuffer.toString('base64');
+
+        // Update the existing ATTACH property in-place
+        target.setParameter('managed-id', newManagedId);
+        target.setParameter('fmttype', contentType);
+        target.setParameter('size', String(bodyBuffer.length));
+        target.setParameter('filename', filename);
+        target.setParameter('encoding', 'BASE64');
+        target.resetType('binary');
+        target.setValue(base64Data);
+
+        break;
+      }
+
+      case 'attachment-remove': {
+        //
+        // RFC 8607 Section 3.3: Removing Attachments
+        //
+        const attachProps = vevent.getAllProperties('attach');
+        const target = attachProps.find(
+          (p) => p.getParameter('managed-id') === managedId
+        );
+        if (!target) {
+          throw Boom.notFound(
+            `Attachment with managed-id "${managedId}" not found`
+          );
+        }
+
+        vevent.removeProperty(target);
+
+        break;
+      }
+      // No default
+    }
+
+    //
+    // 6. Save the updated ICS back to the event
+    //
+    const updatedIcal = comp.toString();
+    event.instance = this;
+    event.session = ctx.state.session;
+    event.isNew = false;
+    event.ical = updatedIcal;
+    event = await event.save();
+
+    // Bump the calendar sync token
+    await Calendars.findByIdAndUpdate(this, ctx.state.session, calendar._id, {
+      $set: {
+        synctoken: bumpSyncToken(calendar.synctoken)
+      }
+    });
+
+    //
+    // 7. Return the appropriate response per RFC 8607
+    //
+    if (action === 'attachment-remove') {
+      // Check Prefer header for return=representation
+      const prefer = ctx.get('Prefer') || '';
+      if (prefer.includes('return=representation')) {
+        ctx.status = 200;
+        ctx.set('Content-Type', 'text/calendar; charset=utf-8');
+        ctx.set('ETag', etag(event.updated_at.toISOString()));
+        ctx.body = updatedIcal;
+      } else {
+        ctx.status = 204;
+        ctx.body = '';
+      }
+    } else {
+      // attachment-add returns 201, attachment-update returns 200
+      ctx.status = action === 'attachment-add' ? 201 : 200;
+      ctx.set('Cal-Managed-ID', newManagedId);
+      ctx.set('ETag', etag(event.updated_at.toISOString()));
+
+      // Return updated ICS if Prefer: return=representation
+      const prefer = ctx.get('Prefer') || '';
+      if (prefer.includes('return=representation')) {
+        ctx.set('Content-Type', 'text/calendar; charset=utf-8');
+        ctx.body = updatedIcal;
+      } else {
+        ctx.body = '';
+      }
+    }
+
+    ctx.set('DAV', DAV_HEADER_VALUE);
+
+    ctx.logger.info('Managed attachment operation completed', {
+      action,
+      managedId: newManagedId || managedId,
+      eventId,
+      calendarId
+    });
+  }
+
+  //
+  // RFC 8607: Retrieve a managed attachment by managed-id.
+  // The client sends GET to the event URL with ?managed-id=XXX.
+  // We extract the base64-encoded attachment from the ICS and return it.
+  //
+  async handleAttachmentGet(ctx) {
+    //
+    // 1. Authenticate
+    //
+    const credentials = basicAuth(ctx.req);
+    if (!credentials) throw Boom.unauthorized('Authentication required');
+    await setupAuthSession.call(this, ctx, credentials.name, credentials.pass);
+    ctx.state.user.principalId = ctx.state.user.username;
+    ctx.state.user.principalName = ctx.state.user.username;
+
+    //
+    // 2. Parse URL
+    //
+    const urlPath = ctx.path.replace(/^\/dav\//, '');
+    const parts = urlPath.split('/');
+    if (parts.length < 3) {
+      throw Boom.badRequest('Invalid CalDAV resource URL');
+    }
+
+    const principalId = decodeURIComponent(parts[0]);
+    const calendarId = decodeURIComponent(parts[1]);
+    const eventId = decodeURIComponent(parts.slice(2).join('/'));
+    const managedId = ctx.query['managed-id'];
+
+    //
+    // 3. Find the calendar and event
+    //
+    const calendar = await this.getCalendar(ctx, {
+      calendarId,
+      principalId,
+      user: ctx.state.user
+    });
+
+    if (!calendar) {
+      throw Boom.notFound('Calendar not found');
+    }
+
+    const eventIdVariants = getEventIdVariants(eventId);
+    let event = null;
+    for (const variant of eventIdVariants) {
+      event = await CalendarEvents.findOne(this, ctx.state.session, {
+        eventId: variant,
+        calendar: calendar._id
+      });
+      if (event) break;
+    }
+
+    if (!event) {
+      throw Boom.notFound('Calendar event not found');
+    }
+
+    //
+    // 4. Parse ICS and find the attachment
+    //
+    const parsed = ICAL.parse(event.ical);
+    const comp = new ICAL.Component(parsed);
+    const vevent =
+      comp.getFirstSubcomponent('vevent') || comp.getFirstSubcomponent('vtodo');
+    if (!vevent) {
+      throw Boom.notFound('No VEVENT or VTODO in calendar object');
+    }
+
+    const attachProps = vevent.getAllProperties('attach');
+    const target = attachProps.find(
+      (p) => p.getParameter('managed-id') === managedId
+    );
+    if (!target) {
+      throw Boom.notFound(
+        `Attachment with managed-id "${managedId}" not found`
+      );
+    }
+
+    //
+    // 5. Decode and return the attachment
+    //
+    const base64Value = target.getFirstValue();
+    // ical.js returns a Binary object for VALUE=BINARY; extract the raw string
+    const base64Str =
+      typeof base64Value === 'object' && base64Value.value
+        ? base64Value.value
+        : String(base64Value);
+    const binaryData = Buffer.from(base64Str, 'base64');
+    const contentType =
+      target.getParameter('fmttype') || 'application/octet-stream';
+    const filename = target.getParameter('filename') || 'attachment';
+
+    ctx.status = 200;
+    ctx.set('Content-Type', contentType);
+    ctx.set(
+      'Content-Disposition',
+      `attachment; filename="${filename.replace(/"/g, '\\"')}"`
+    );
+    ctx.set('Content-Length', String(binaryData.length));
+    ctx.body = binaryData;
   }
 
   // we need to return UUID of a calendar here
