@@ -148,22 +148,40 @@ function createNote(certBundle, service, obj, options) {
   //
   // APNs priority handling:
   //
-  // For MAIL: we intentionally leave priority at the node-apn default (10)
-  // so that the `apns-priority: 10` header is sent.  All known working
-  // XAPPLEPUSHSERVICE implementations (dovecot-xaps-daemon, courier-apns)
-  // use effective priority 10 for Mail pushes.  Despite Apple's docs stating
-  // "always use priority 5 for background", this rule does NOT apply to the
-  // special XAPPLEPUSHSERVICE Mail certificate (com.apple.mail.XServer.*).
-  // Setting priority 5 causes iOS to batch/delay delivery, which is why
-  // users reported only receiving notifications at fetch intervals.
+  // For MAIL: we OMIT the `apns-priority` header entirely by setting
+  // priority to `undefined`.  This matches the dovecot-xaps-daemon
+  // reference implementation, which never sets the Priority field on the
+  // Go apns2.Notification struct.  In Go's sideshow/apns2 library, an
+  // unset Priority (value 0) causes the header to be omitted from the
+  // HTTP/2 request (the library checks `if n.Priority > 0`).
+  //
+  // Apple's documentation states that for `apns-push-type: background`:
+  //   "Always use priority 5. Using priority 10 is an error."
+  //   <https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns>
+  //
+  // However, the XAPPLEPUSHSERVICE Mail certificate is a special
+  // system-level cert (com.apple.mail.XServer.*) that predates the
+  // push-type/priority validation rules.  The working behavior observed
+  // in dovecot-xaps-daemon and confirmed via curl testing is:
+  //   - Set `apns-push-type: background`
+  //   - OMIT `apns-priority` entirely (Apple internally defaults to 10)
+  //
+  // When the header is OMITTED, APNs defaults to priority 10 internally
+  // without triggering the validation rule that rejects explicit
+  // `apns-priority: 10` with background push type.  This gives immediate
+  // delivery without the batching/delay that priority 5 would cause.
+  //
+  // Explicitly sending `apns-priority: 10` (node-apn's default when
+  // priority is left as a number) triggers Apple's validation and causes
+  // iOS to silently ignore the push -- the device never refreshes Mail.
   // <https://github.com/freswa/dovecot-xaps-daemon/blob/main/internal/apns.go#L162-L163>
   //
-  // For CALENDAR/CONTACT: priority 5 is correct -- these are true background
-  // content pushes where batched delivery is acceptable.
+  // For CALENDAR/CONTACT: priority 5 is correct -- these are true
+  // background content pushes where batched delivery is acceptable.
   //
-  if (service.cert !== 'Mail') {
-    note.priority = 5;
-  }
+  // Omit the apns-priority header: Number.isInteger(undefined) === false
+  // so node-apn's headers() method will skip the header entirely.
+  note.priority = service.cert === 'Mail' ? undefined : 5;
 
   //
   // Build the APNs aps payload.  The aps dictionary contents differ by
@@ -392,7 +410,7 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         device_token: obj.device_token,
         key: obj.key,
         subtopic: obj.subtopic,
-        priority: note.priority,
+        priority: note.priority === undefined ? '(omitted)' : note.priority,
         push_type: note.pushType
       });
 

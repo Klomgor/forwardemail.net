@@ -397,6 +397,16 @@ async function listDmarcReports(ctx) {
       align: 'center',
       verticalAlign: 'middle'
     },
+    //
+    // NOTE: the `totalLabel` field is a pre-computed string that the
+    //       client-side code uses to build the donut center formatter.
+    //       We cannot use `plotOptions.pie.donut.labels.total.formatter`
+    //       directly because functions are stripped by JSON.stringify
+    //       when the response is serialized via ctx.body.
+    //
+    totalLabel: hasAlignmentData
+      ? numeral(stats.total_messages).format('0,0')
+      : '0',
     plotOptions: {
       pie: {
         donut: {
@@ -404,11 +414,7 @@ async function listDmarcReports(ctx) {
             show: true,
             total: {
               show: true,
-              label: 'Total Messages',
-              formatter: () =>
-                hasAlignmentData
-                  ? numeral(stats.total_messages).format('0,0')
-                  : '0'
+              label: 'Total Messages'
             }
           }
         }

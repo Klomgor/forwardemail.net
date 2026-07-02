@@ -200,6 +200,18 @@ async function loadCharts(reset = false) {
         };
       }
 
+      // Build the donut center label formatter from the server-provided
+      // `totalLabel` string (functions cannot survive JSON serialization).
+      if (
+        typeof chart.options.totalLabel === 'string' &&
+        chart.options.plotOptions?.pie?.donut?.labels?.total
+      ) {
+        const label = chart.options.totalLabel;
+        chart.options.plotOptions.pie.donut.labels.total.formatter = () =>
+          label;
+        delete chart.options.totalLabel;
+      }
+
       const apex = new Apex($element.get(0), chart.options);
       $element.empty();
       apex.render();
