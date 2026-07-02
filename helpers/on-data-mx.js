@@ -1793,6 +1793,57 @@ function updateMXHeaders(headers, session) {
 
 async function onDataMX(session, headers, body) {
   //
+  // RFC 8601 Section 5: Strip forged Authentication-Results and
+  // ARC-Authentication-Results headers carrying our own authserv-id.
+  // A border MTA MUST delete any discovered instance of these headers
+  // that bears its own authserv-id before adding its own, to prevent
+  // an unauthenticated sender from injecting a spoofed verdict.
+  //
+  {
+    const dominated = `.${env.WEB_HOST}`; // e.g. ".forwardemail.net"
+    for (const name of [
+      'authentication-results',
+      'arc-authentication-results'
+    ]) {
+      const existing = headers.getDecoded(name);
+      if (existing.length === 0) continue;
+      // Collect values that do NOT belong to us (to re-add after removal)
+      const keep = [];
+      for (const hdr of existing) {
+        // ARC-Authentication-Results: "i=N; authserv-id; ..."
+        // Authentication-Results: "authserv-id; ..."
+        const value = hdr.value.trim();
+        // Extract the authserv-id token (after optional "i=N;" prefix)
+        const m = value.match(/^(?:i\s*=\s*\d+\s*;\s*)?([^;\s]+)/i);
+        if (!m) {
+          keep.push(hdr);
+          continue;
+        }
+
+        const authservId = m[1].toLowerCase();
+        // Match exact HOSTNAME or any subdomain of WEB_HOST
+        if (
+          authservId === HOSTNAME.toLowerCase() ||
+          authservId.endsWith(dominated)
+        ) {
+          // Forged header — strip it
+          continue;
+        }
+
+        keep.push(hdr);
+      }
+
+      // Only mutate if we actually stripped something
+      if (keep.length < existing.length) {
+        headers.remove(name);
+        for (const hdr of keep) {
+          headers.add(hdr.key, hdr.value);
+        }
+      }
+    }
+  }
+
+  //
   // RFC 8689 Section 5: Parse TLS-Required header
   //
   const raw = Buffer.concat([headers.build(), body]);

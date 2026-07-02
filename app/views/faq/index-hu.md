@@ -49,6 +49,7 @@
   * [Hogyan állítsam be a DKIM-et a Forward Emailhez](#how-do-i-set-up-dkim-for-forward-email)
   * [Hogyan állítsam be a DMARC-ot a Forward Emailhez](#how-do-i-set-up-dmarc-for-forward-email)
   * [Hogyan tekinthetem meg a DMARC jelentéseket](#how-do-i-view-dmarc-reports)
+  * [Miért mutatnak a DMARC jelentéseim ismeretlen IP-címekről származó hibákat?](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Hogyan csatlakoztassam és állítsam be a kapcsolataimat](#how-do-i-connect-and-configure-my-contacts)
   * [Hogyan csatlakoztassam és állítsam be a naptáraimat](#how-do-i-connect-and-configure-my-calendars)
   * [Hogyan adjak hozzá több naptárt és kezeljem a meglévőket](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ A fizetős csomagok felhasználói automatikusan heti DMARC jelentés összefogl
 * Közvetlen linkek a DMARC Jelentések irányítópultjához
 
 A heti jelentések automatikusan érkeznek, és nem kapcsolhatók ki külön az egyéb e-mail értesítésektől.
+
+### Miért mutatnak a DMARC jelentéseim ismeretlen IP-címekről származó hibákat? {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Ha a DMARC jelentései ismeretlen IP-címeket tartalmaznak, amelyeknél az SPF és a DKIM sikertelen, **kérjük, ne aggódjon** – ez normális, és valójában azt jelenti, hogy a beállítása megfelelően működik.
+
+A DMARC jelentések felsorolnak **minden** olyan szervert, amely megpróbált levelet küldeni az Ön domainjének nevében, beleértve a jogosulatlanokat is. Szinte minden esetben ezek az ismeretlen IP-címek egyszerűen spammerek vagy botok, akik megpróbálják kiadni magukat az Ön domainjének. Íme, mi történik, amikor megpróbálják:
+
+* **Az SPF sikertelen**, mert a küldő IP-cím nem szerepel az Ön SPF rekordjában.
+* **A DKIM sikertelen**, mert nem tudnak érvényes aláírást létrehozni az Ön domainjéhez.
+* A `p=reject` DMARC házirenddel az üzenet **azonnal elutasításra kerül**, és soha nem éri el senki postafiókját.
+
+Más szóval, ezek a hibák bizonyítják, hogy a DMARC teszi a dolgát – blokkolja a megszemélyesítési kísérleteket, mielőtt kárt okoznának. Önnek semmilyen teendője nincs.
+
+**Hogyan lehet megkülönböztetni a legitim küldőket a megszemélyesítőktől**
+
+* A Forward Email (vagy bármely más engedélyezett szolgáltatás) használatával küldött levelek esetén az SPF és/vagy a DKIM **sikeres és igazított** lesz.
+* Azok az ismeretlen források, amelyeknél **mind** az SPF, **mind** a DKIM sikertelen, megszemélyesítők, és nyugodtan figyelmen kívül hagyhatók.
+* Az IP-címeket összevetheti a <https://forwardemail.net/ips> címmel, hogy megerősítse, mely források a mieink.
+
+Ha más szolgáltatásokat is használ arra, hogy levelet küldjön a domainje nevében (marketingeszközök, CRM-ek stb.), győződjön meg arról, hogy ezek a szolgáltatások érvényes DKIM aláírással rendelkeznek – különben az ő üzeneteik is hibaként fognak megjelenni a jelentéseiben.
+
+> \[!IMPORTANT]
+> Győződjön meg arról, hogy a domainje `p=reject` DMARC házirendet tesz közzé, így a megszemélyesítési kísérletek elutasításra kerülnek a kézbesítés helyett. Lásd: [How do I set up DMARC for Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Hogyan csatlakoztassam és konfiguráljam a kapcsolataimat {#how-do-i-connect-and-configure-my-contacts}
 

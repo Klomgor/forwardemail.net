@@ -49,6 +49,7 @@
   * [Hvordan setter jeg opp DKIM for Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Hvordan setter jeg opp DMARC for Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Hvordan ser jeg DMARC-rapporter](#how-do-i-view-dmarc-reports)
+  * [Hvorfor viser DMARC-rapportene mine feil fra ukjente IP-adresser](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Hvordan kobler og konfigurerer jeg kontaktene mine](#how-do-i-connect-and-configure-my-contacts)
   * [Hvordan kobler og konfigurerer jeg kalenderne mine](#how-do-i-connect-and-configure-my-calendars)
   * [Hvordan legger jeg til flere kalendere og administrerer eksisterende kalendere](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2138,6 +2139,29 @@ Brukere med betalt plan mottar automatisk ukentlige DMARC-rapportoppsummeringer 
 * Direkte lenker til ditt DMARC-rapporteringsdashbord
 
 Ukentlige rapporter sendes automatisk og kan ikke deaktiveres separat fra andre e-postvarsler.
+
+### Hvorfor viser DMARC-rapportene mine feil fra ukjente IP-adresser {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Hvis DMARC-rapportene dine inneholder ukjente IP-adresser som feiler SPF og DKIM, **vennligst ikke bekymre deg** – dette er normalt og betyr faktisk at oppsettet ditt fungerer riktig.
+
+DMARC-rapporter lister opp **hver** server som forsøkte å sende e-post som utga seg for å være fra domenet ditt, inkludert uautoriserte. I nesten alle tilfeller er disse ukjente IP-ene rett og slett spammere eller roboter som prøver å etterligne domenet ditt. Her er hva som skjer når de prøver:
+
+* **SPF feiler** fordi den sendende IP-en ikke er oppført i SPF-posten din.
+* **DKIM feiler** fordi de ikke kan produsere en gyldig signatur for domenet ditt.
+* Med en DMARC-policy på `p=reject`, blir meldingen **avvist direkte** og når aldri noens innboks.
+
+Med andre ord er disse feilene bevis på at DMARC gjør jobben sin – blokkerer etterligningsforsøk før de forårsaker skade. Ingen handling kreves fra din side.
+
+**Hvordan skille legitime avsendere fra etterlignere**
+
+* E-post du sender gjennom Forward Email (eller en hvilken som helst annen autorisert tjeneste) vil vise SPF og/eller DKIM som **bestått og samsvarende**.
+* Ukjente kilder som feiler **både** SPF og DKIM er etterlignere og kan trygt ignoreres.
+* Du kan kryssjekke IP-adresser mot <https://forwardemail.net/ips> for å bekrefte hvilke kilder som er våre.
+
+Hvis du også bruker andre tjenester til å sende e-post på vegne av domenet ditt (markedsføringsverktøy, CRM-er, osv.), sørg for at disse tjenestene har en gyldig DKIM-signatur konfigurert – ellers vil meldingene deres også vises som feil i rapportene dine.
+
+> \[!IMPORTANT]
+> Sørg for at domenet ditt publiserer en DMARC-policy på `p=reject` slik at etterligningsforsøk blir avvist i stedet for levert. Se [Hvordan setter jeg opp DMARC for Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Hvordan kobler jeg til og konfigurerer kontaktene mine {#how-do-i-connect-and-configure-my-contacts}
 

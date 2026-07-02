@@ -49,6 +49,7 @@
   * [Hoe stel ik DKIM in voor Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Hoe stel ik DMARC in voor Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Hoe bekijk ik DMARC-rapporten](#how-do-i-view-dmarc-reports)
+  * [Waarom tonen mijn DMARC-rapporten mislukkingen van onbekende IP-adressen](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Hoe verbind en configureer ik mijn contacten](#how-do-i-connect-and-configure-my-contacts)
   * [Hoe verbind en configureer ik mijn agenda's](#how-do-i-connect-and-configure-my-calendars)
   * [Hoe voeg ik meer agenda's toe en beheer ik bestaande agenda's](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ Gebruikers met een betaald abonnement ontvangen automatisch wekelijkse samenvatt
 * Directe links naar je DMARC-rapportagedashboard
 
 Wekelijkse rapporten worden automatisch verzonden en kunnen niet afzonderlijk worden uitgeschakeld van andere e-mailmeldingen.
+
+### Waarom tonen mijn DMARC-rapporten mislukkingen van onbekende IP-adressen {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Als uw DMARC-rapporten onbekende IP-adressen bevatten die falen voor SPF en DKIM, **maakt u zich dan geen zorgen** – dit is normaal en betekent eigenlijk dat uw instellingen correct werken.
+
+DMARC-rapporten vermelden **elke** server die heeft geprobeerd e-mail te verzenden die beweert afkomstig te zijn van uw domein, inclusief ongeautoriseerde servers. In bijna alle gevallen zijn deze onbekende IP's simpelweg spammers of bots die proberen uw domein te imiteren. Dit is wat er gebeurt wanneer ze dat proberen:
+
+* **SPF faalt** omdat het verzendende IP niet in uw SPF-record staat vermeld.
+* **DKIM faalt** omdat ze geen geldige handtekening voor uw domein kunnen produceren.
+* Met een DMARC-beleid van `p=reject` wordt het bericht **direct geweigerd** en bereikt het nooit iemands inbox.
+
+Met andere woorden, deze mislukkingen zijn het bewijs dat DMARC zijn werk doet – het blokkeren van imitatiepogingen voordat ze schade aanrichten. Er is geen actie van uw kant vereist.
+
+**Hoe legitieme afzenders van imitators te onderscheiden**
+
+* E-mail die u verzendt via Forward Email (of een andere geautoriseerde service) zal SPF en/of DKIM tonen als **geslaagd en uitgelijnd**.
+* Onbekende bronnen die falen voor **zowel** SPF als DKIM zijn imitators en kunnen veilig worden genegeerd.
+* U kunt IP-adressen vergelijken met <https://forwardemail.net/ips> om te bevestigen welke bronnen van ons zijn.
+
+Als u ook andere services gebruikt om e-mail namens uw domein te verzenden (marketingtools, CRM's, enz.), zorg er dan voor dat die services een geldige DKIM-handtekening hebben geconfigureerd – anders zullen hun berichten ook als mislukkingen in uw rapporten verschijnen.
+
+> \[!IMPORTANT]
+> Zorg ervoor dat uw domein een DMARC-beleid van `p=reject` publiceert, zodat imitatiepogingen worden geweigerd in plaats van afgeleverd. Zie [Hoe stel ik DMARC in voor Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Hoe verbind en configureer ik mijn contacten {#how-do-i-connect-and-configure-my-contacts}
 

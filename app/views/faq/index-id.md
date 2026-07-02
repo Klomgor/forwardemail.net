@@ -49,6 +49,7 @@
   * [Bagaimana cara mengatur DKIM untuk Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Bagaimana cara mengatur DMARC untuk Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Bagaimana cara melihat Laporan DMARC](#how-do-i-view-dmarc-reports)
+  * [Mengapa laporan DMARC saya menunjukkan kegagalan dari alamat IP yang tidak dikenal](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Bagaimana cara menghubungkan dan mengonfigurasi kontak saya](#how-do-i-connect-and-configure-my-contacts)
   * [Bagaimana cara menghubungkan dan mengonfigurasi kalender saya](#how-do-i-connect-and-configure-my-calendars)
   * [Bagaimana cara menambahkan lebih banyak kalender dan mengelola kalender yang ada](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ Pengguna paket berbayar secara otomatis menerima ringkasan laporan DMARC minggua
 * Tautan langsung ke dasbor Laporan DMARC Anda
 
 Laporan mingguan dikirim secara otomatis dan tidak dapat dinonaktifkan secara terpisah dari notifikasi email lainnya.
+
+### Mengapa laporan DMARC saya menunjukkan kegagalan dari alamat IP yang tidak dikenal {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Jika laporan DMARC Anda berisi alamat IP yang tidak dikenal yang gagal SPF dan DKIM, **jangan khawatir** – ini normal dan sebenarnya berarti pengaturan Anda berfungsi dengan benar.
+
+Laporan DMARC mencantumkan **setiap** server yang mencoba mengirim email yang mengklaim berasal dari domain Anda, termasuk yang tidak sah. Dalam hampir semua kasus, IP yang tidak dikenal ini hanyalah spammer atau bot yang mencoba meniru domain Anda. Inilah yang terjadi ketika mereka mencoba:
+
+* **SPF gagal** karena IP pengirim tidak tercantum dalam catatan SPF Anda.
+* **DKIM gagal** karena mereka tidak dapat menghasilkan tanda tangan yang valid untuk domain Anda.
+* Dengan kebijakan DMARC `p=reject`, pesan tersebut **langsung ditolak** dan tidak pernah mencapai kotak masuk siapa pun.
+
+Dengan kata lain, kegagalan ini adalah bukti bahwa DMARC melakukan tugasnya – memblokir upaya peniruan sebelum menyebabkan kerugian. Tidak ada tindakan yang diperlukan dari pihak Anda.
+
+**Cara membedakan pengirim yang sah dari peniru**
+
+* Email yang Anda kirim melalui Forward Email (atau layanan resmi lainnya) akan menunjukkan SPF dan/atau DKIM sebagai **lulus dan selaras**.
+* Sumber tidak dikenal yang gagal **keduanya** SPF dan DKIM adalah peniru dan dapat diabaikan dengan aman.
+* Anda dapat merujuk silang alamat IP dengan <https://forwardemail.net/ips> untuk mengonfirmasi sumber mana yang merupakan milik kami.
+
+Jika Anda juga menggunakan layanan lain untuk mengirim email atas nama domain Anda (alat pemasaran, CRM, dll.), pastikan layanan tersebut memiliki tanda tangan DKIM yang valid yang dikonfigurasi – jika tidak, pesan mereka juga akan muncul sebagai kegagalan dalam laporan Anda.
+
+> \[!IMPORTANT]
+> Pastikan domain Anda menerbitkan kebijakan DMARC `p=reject` sehingga upaya peniruan ditolak alih-alih dikirimkan. Lihat [Bagaimana cara mengatur DMARC untuk Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Bagaimana cara menghubungkan dan mengonfigurasi kontak saya {#how-do-i-connect-and-configure-my-contacts}
 

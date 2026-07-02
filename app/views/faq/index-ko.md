@@ -49,6 +49,7 @@
   * [Forward Email용 DKIM 설정 방법](#how-do-i-set-up-dkim-for-forward-email)
   * [Forward Email용 DMARC 설정 방법](#how-do-i-set-up-dmarc-for-forward-email)
   * [DMARC 보고서 보는 방법](#how-do-i-view-dmarc-reports)
+  * [내 DMARC 보고서에 알 수 없는 IP 주소의 실패가 표시되는 이유는 무엇인가요?](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [연락처 연결 및 구성 방법](#how-do-i-connect-and-configure-my-contacts)
   * [캘린더 연결 및 구성 방법](#how-do-i-connect-and-configure-my-calendars)
   * [캘린더 추가 및 기존 캘린더 관리 방법](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ DMARC 보고서 대시보드는 다음을 제공합니다:
 * DMARC 보고서 대시보드로 직접 연결되는 링크
 
 주간 보고서는 자동으로 발송되며 다른 이메일 알림과 별도로 비활성화할 수 없습니다.
+
+### 내 DMARC 보고서에 알 수 없는 IP 주소의 실패가 표시되는 이유는 무엇인가요? {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+DMARC 보고서에 SPF 및 DKIM에 실패한 익숙하지 않은 IP 주소가 포함되어 있더라도 **걱정하지 마세요**. 이는 정상적인 현상이며 실제로는 설정이 올바르게 작동하고 있음을 의미합니다.
+
+DMARC 보고서에는 승인되지 않은 서버를 포함하여 귀하의 도메인에서 보낸 것처럼 가장하여 메일을 보내려고 시도한 **모든** 서버가 나열됩니다. 거의 모든 경우에 이러한 알 수 없는 IP는 귀하의 도메인을 사칭하려는 스패머나 봇일 뿐입니다. 이들이 시도할 때 발생하는 일은 다음과 같습니다.
+
+* 발송 IP가 SPF 레코드에 나열되어 있지 않기 때문에 **SPF가 실패합니다**.
+* 귀하의 도메인에 대한 유효한 서명을 생성할 수 없기 때문에 **DKIM이 실패합니다**.
+* DMARC 정책이 `p=reject`인 경우, 메시지는 **즉시 거부**되며 누구의 받은 편지함에도 도달하지 않습니다.
+
+즉, 이러한 실패는 DMARC가 제 역할을 다하고 있다는 증거입니다. 피해를 입히기 전에 사칭 시도를 차단하는 것입니다. 귀하가 취해야 할 조치는 없습니다.
+
+**합법적인 발신자와 사칭자를 구별하는 방법**
+
+* Forward Email(또는 기타 승인된 서비스)을 통해 보내는 메일은 SPF 및/또는 DKIM이 **통과 및 정렬됨**으로 표시됩니다.
+* SPF와 DKIM **모두** 실패하는 알 수 없는 출처는 사칭자이므로 안전하게 무시할 수 있습니다.
+* IP 주소를 <https://forwardemail.net/ips>와 교차 참조하여 어떤 출처가 당사의 것인지 확인할 수 있습니다.
+
+도메인을 대신하여 메일을 보내기 위해 다른 서비스(마케팅 도구, CRM 등)도 사용하는 경우 해당 서비스에 유효한 DKIM 서명이 구성되어 있는지 확인하세요. 그렇지 않으면 해당 메시지도 보고서에 실패로 표시됩니다.
+
+> \[!IMPORTANT]
+> 사칭 시도가 전송되지 않고 거부되도록 도메인에 `p=reject`의 DMARC 정책이 게시되어 있는지 확인하세요. [Forward Email에 대한 DMARC를 어떻게 설정하나요?](#how-do-i-set-up-dmarc-for-forward-email)를 참조하세요.
 
 ### 연락처 연결 및 구성 방법 {#how-do-i-connect-and-configure-my-contacts}
 

@@ -49,6 +49,7 @@
   * [Jak nastavit DKIM pro Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Jak nastavit DMARC pro Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Jak zobrazit DMARC zprávy](#how-do-i-view-dmarc-reports)
+  * [Proč mé DMARC reporty ukazují selhání z neznámých IP adres](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Jak připojit a nakonfigurovat kontakty](#how-do-i-connect-and-configure-my-contacts)
   * [Jak připojit a nakonfigurovat kalendáře](#how-do-i-connect-and-configure-my-calendars)
   * [Jak přidat více kalendářů a spravovat stávající kalendáře](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ Uživatelé placených plánů automaticky dostávají týdenní souhrnné DMARC
 * Přímé odkazy na váš DMARC Reports dashboard
 
 Týdenní reporty jsou odesílány automaticky a nelze je vypnout samostatně od ostatních e-mailových oznámení.
+
+### Proč mé DMARC reporty ukazují selhání z neznámých IP adres {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Pokud vaše DMARC reporty obsahují neznámé IP adresy, u kterých selhává SPF a DKIM, **prosím, nedělejte si starosti** – je to normální a ve skutečnosti to znamená, že vaše nastavení funguje správně.
+
+DMARC reporty uvádějí **každý** server, který se pokusil odeslat e-mail s tvrzením, že pochází z vaší domény, včetně těch neautorizovaných. Téměř ve všech případech jsou tyto neznámé IP adresy jednoduše spameři nebo boti, kteří se snaží vydávat za vaši doménu. Zde je to, co se stane, když se o to pokusí:
+
+* **SPF selže**, protože odesílající IP adresa není uvedena ve vašem SPF záznamu.
+* **DKIM selže**, protože nemohou vytvořit platný podpis pro vaši doménu.
+* S DMARC politikou `p=reject` je zpráva **okamžitě odmítnuta** a nikdy se nedostane do ničí doručené pošty.
+
+Jinými slovy, tato selhání jsou důkazem, že DMARC dělá svou práci – blokuje pokusy o zfalšování identity dříve, než způsobí škodu. Z vaší strany není nutná žádná akce.
+
+**Jak rozeznat legitimní odesílatele od podvodníků**
+
+* E-maily, které odešlete přes Forward Email (nebo jakoukoli jinou autorizovanou službu), budou mít SPF a/nebo DKIM jako **úspěšné a zarovnané**.
+* Neznámé zdroje, u kterých selže **jak** SPF, **tak** DKIM, jsou podvodníci a můžete je bezpečně ignorovat.
+* IP adresy můžete křížově zkontrolovat s <https://forwardemail.net/ips>, abyste potvrdili, které zdroje jsou naše.
+
+Pokud k odesílání e-mailů jménem vaší domény používáte i jiné služby (marketingové nástroje, CRM atd.), ujistěte se, že tyto služby mají nakonfigurovaný platný DKIM podpis – jinak se jejich zprávy ve vašich reportech také objeví jako selhání.
+
+> [!IMPORTANT]
+> Ujistěte se, že vaše doména publikuje DMARC politiku `p=reject`, aby byly pokusy o zfalšování identity odmítnuty a nikoli doručeny. Viz [Jak nastavím DMARC pro Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Jak připojit a nakonfigurovat své kontakty {#how-do-i-connect-and-configure-my-contacts}
 

@@ -49,6 +49,7 @@
   * [Forward EmailのDKIM設定方法](#how-do-i-set-up-dkim-for-forward-email)
   * [Forward EmailのDMARC設定方法](#how-do-i-set-up-dmarc-for-forward-email)
   * [DMARCレポートの閲覧方法](#how-do-i-view-dmarc-reports)
+  * [DMARCレポートに不明なIPアドレスからの失敗が表示されるのはなぜですか](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [連絡先の接続と設定方法](#how-do-i-connect-and-configure-my-contacts)
   * [カレンダーの接続と設定方法](#how-do-i-connect-and-configure-my-calendars)
   * [カレンダーの追加と既存カレンダーの管理方法](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ DMARC レポートダッシュボードには以下が含まれます：
 * DMARCレポートダッシュボードへの直接リンク
 
 週次レポートは自動的に送信され、他のメール通知とは別に無効にすることはできません。
+
+### DMARCレポートに不明なIPアドレスからの失敗が表示されるのはなぜですか {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+DMARCレポートにSPFおよびDKIMに失敗した見慣れないIPアドレスが含まれていても、**心配しないでください**。これは正常であり、実際には設定が正しく機能していることを意味します。
+
+DMARCレポートには、許可されていないサーバーを含め、あなたのドメインになりすましてメールを送信しようとした**すべて**のサーバーがリストされます。ほとんどの場合、これらの不明なIPは、あなたのドメインになりすまそうとするスパマーやボットにすぎません。彼らが試みたときに起こることは次のとおりです：
+
+* **SPFが失敗する**のは、送信元IPがSPFレコードにリストされていないためです。
+* **DKIMが失敗する**のは、あなたのドメインの有効な署名を生成できないためです。
+* DMARCポリシーが`p=reject`の場合、メッセージは**完全に拒否され**、誰の受信トレイにも届きません。
+
+言い換えれば、これらの失敗はDMARCがその役割を果たしている証拠であり、害を及ぼす前になりすましの試みをブロックしています。あなた側で必要なアクションはありません。
+
+**正当な送信者となりすましを見分ける方法**
+
+* Forward Email（またはその他の許可されたサービス）を通じて送信するメールは、SPFおよび/またはDKIMが**合格およびアライメント**として表示されます。
+* SPFとDKIMの**両方**に失敗する不明な送信元はなりすましであり、安全に無視できます。
+* IPアドレスを<https://forwardemail.net/ips>と照らし合わせて、どの送信元が私たちのものかを確認できます。
+
+ドメインの代わりにメールを送信するために他のサービス（マーケティングツール、CRMなど）も使用している場合は、それらのサービスに有効なDKIM署名が設定されていることを確認してください。そうしないと、それらのメッセージもレポートで失敗として表示されます。
+
+> \[!IMPORTANT]
+> なりすましの試みが配信されるのではなく拒否されるように、ドメインが`p=reject`のDMARCポリシーを公開していることを確認してください。[Forward EmailでDMARCを設定するにはどうすればよいですか](#how-do-i-set-up-dmarc-for-forward-email)を参照してください。
 
 ### 連絡先の接続と設定方法 {#how-do-i-connect-and-configure-my-contacts}
 

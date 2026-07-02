@@ -49,6 +49,7 @@
   * [Come configurare DKIM per Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Come configurare DMARC per Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Come visualizzare i report DMARC](#how-do-i-view-dmarc-reports)
+  * [Perché i miei report DMARC mostrano fallimenti da indirizzi IP sconosciuti](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Come connettere e configurare i miei contatti](#how-do-i-connect-and-configure-my-contacts)
   * [Come connettere e configurare i miei calendari](#how-do-i-connect-and-configure-my-calendars)
   * [Come aggiungere più calendari e gestire quelli esistenti](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2138,6 +2139,29 @@ Gli utenti dei piani a pagamento ricevono automaticamente riepiloghi settimanali
 * Link diretti alla dashboard dei tuoi report DMARC
 
 I report settimanali vengono inviati automaticamente e non possono essere disabilitati separatamente dalle altre notifiche email.
+
+### Perché i miei report DMARC mostrano fallimenti da indirizzi IP sconosciuti {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Se i tuoi report DMARC contengono indirizzi IP non familiari che falliscono SPF e DKIM, **per favore non preoccuparti** – questo è normale e in realtà significa che la tua configurazione sta funzionando correttamente.
+
+I report DMARC elencano **ogni** server che ha tentato di inviare posta sostenendo di provenire dal tuo dominio, inclusi quelli non autorizzati. In quasi tutti i casi questi IP sconosciuti sono semplicemente spammer o bot che cercano di impersonare il tuo dominio. Ecco cosa succede quando ci provano:
+
+* **SPF fallisce** perché l'IP mittente non è elencato nel tuo record SPF.
+* **DKIM fallisce** perché non possono produrre una firma valida per il tuo dominio.
+* Con una policy DMARC di `p=reject`, il messaggio viene **rifiutato categoricamente** e non raggiunge mai la casella di posta di nessuno.
+
+In altre parole, questi fallimenti sono la prova che DMARC sta facendo il suo lavoro – bloccando i tentativi di impersonificazione prima che causino danni. Non è richiesta alcuna azione da parte tua.
+
+**Come distinguere i mittenti legittimi dagli impersonatori**
+
+* La posta che invii tramite Forward Email (o qualsiasi altro servizio autorizzato) mostrerà SPF e/o DKIM come **superati e allineati**.
+* Le fonti sconosciute che falliscono **sia** SPF che DKIM sono impersonatori e possono essere tranquillamente ignorate.
+* Puoi incrociare gli indirizzi IP con <https://forwardemail.net/ips> per confermare quali fonti sono nostre.
+
+Se utilizzi anche altri servizi per inviare posta per conto del tuo dominio (strumenti di marketing, CRM, ecc.), assicurati che tali servizi abbiano una firma DKIM valida configurata – altrimenti anche i loro messaggi appariranno come fallimenti nei tuoi report.
+
+> \[!IMPORTANT]
+> Assicurati che il tuo dominio pubblichi una policy DMARC di `p=reject` in modo che i tentativi di impersonificazione vengano rifiutati anziché consegnati. Vedi [Come configuro DMARC per Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Come connettere e configurare i miei contatti {#how-do-i-connect-and-configure-my-contacts}
 

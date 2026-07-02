@@ -49,6 +49,7 @@
   * [Comment configurer DKIM pour Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Comment configurer DMARC pour Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Comment consulter les rapports DMARC](#how-do-i-view-dmarc-reports)
+  * [Pourquoi mes rapports DMARC affichent-ils des échecs provenant d'adresses IP inconnues](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Comment connecter et configurer mes contacts](#how-do-i-connect-and-configure-my-contacts)
   * [Comment connecter et configurer mes calendriers](#how-do-i-connect-and-configure-my-calendars)
   * [Comment ajouter plus de calendriers et gérer les calendriers existants](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2138,6 +2139,29 @@ Les utilisateurs des plans payants reçoivent automatiquement des résumés hebd
 * Liens directs vers votre tableau de bord des rapports DMARC
 
 Les rapports hebdomadaires sont envoyés automatiquement et ne peuvent pas être désactivés séparément des autres notifications par e-mail.
+
+### Pourquoi mes rapports DMARC affichent-ils des échecs provenant d'adresses IP inconnues {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Si vos rapports DMARC contiennent des adresses IP inconnues qui échouent à SPF et DKIM, **ne vous inquiétez pas** – c'est normal et cela signifie en fait que votre configuration fonctionne correctement.
+
+Les rapports DMARC listent **chaque** serveur qui a tenté d'envoyer des e-mails en prétendant provenir de votre domaine, y compris ceux qui ne sont pas autorisés. Dans presque tous les cas, ces adresses IP inconnues sont simplement des spammeurs ou des bots essayant d'usurper l'identité de votre domaine. Voici ce qui se passe lorsqu'ils essaient :
+
+* **SPF échoue** car l'adresse IP d'envoi n'est pas répertoriée dans votre enregistrement SPF.
+* **DKIM échoue** car ils ne peuvent pas produire de signature valide pour votre domaine.
+* Avec une politique DMARC de `p=reject`, le message est **rejeté d'emblée** et n'atteint jamais la boîte de réception de quiconque.
+
+En d'autres termes, ces échecs sont la preuve que DMARC fait son travail – bloquer les tentatives d'usurpation d'identité avant qu'elles ne causent des dommages. Aucune action n'est requise de votre part.
+
+**Comment distinguer les expéditeurs légitimes des usurpateurs**
+
+* Les e-mails que vous envoyez via Forward Email (ou tout autre service autorisé) afficheront SPF et/ou DKIM comme **réussis et alignés**.
+* Les sources inconnues qui échouent **à la fois** à SPF et DKIM sont des usurpateurs et peuvent être ignorées en toute sécurité.
+* Vous pouvez croiser les adresses IP avec <https://forwardemail.net/ips> pour confirmer quelles sources sont les nôtres.
+
+Si vous utilisez également d'autres services pour envoyer des e-mails au nom de votre domaine (outils marketing, CRM, etc.), assurez-vous que ces services ont une signature DKIM valide configurée – sinon leurs messages apparaîtront également comme des échecs dans vos rapports.
+
+> \[!IMPORTANT]
+> Assurez-vous que votre domaine publie une politique DMARC de `p=reject` afin que les tentatives d'usurpation d'identité soient rejetées plutôt que livrées. Voir [Comment configurer DMARC pour Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Comment connecter et configurer mes contacts {#how-do-i-connect-and-configure-my-contacts}
 

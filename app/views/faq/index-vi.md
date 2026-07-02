@@ -49,6 +49,7 @@
   * [Làm thế nào để thiết lập DKIM cho Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Làm thế nào để thiết lập DMARC cho Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Làm thế nào để xem Báo Cáo DMARC](#how-do-i-view-dmarc-reports)
+  * [Tại sao báo cáo DMARC của tôi hiển thị lỗi từ các địa chỉ IP không xác định](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Làm thế nào để kết nối và cấu hình danh bạ của tôi](#how-do-i-connect-and-configure-my-contacts)
   * [Làm thế nào để kết nối và cấu hình lịch của tôi](#how-do-i-connect-and-configure-my-calendars)
   * [Làm thế nào để thêm nhiều lịch hơn và quản lý các lịch hiện có](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2136,6 +2137,29 @@ Người dùng gói trả phí tự động nhận được tóm tắt báo cáo
 * Liên kết trực tiếp đến bảng điều khiển Báo cáo DMARC của bạn
 
 Báo cáo hàng tuần được gửi tự động và không thể tắt riêng biệt so với các thông báo email khác.
+
+### Tại sao báo cáo DMARC của tôi hiển thị lỗi từ các địa chỉ IP không xác định {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Nếu báo cáo DMARC của bạn chứa các địa chỉ IP lạ không vượt qua được SPF và DKIM, **xin đừng lo lắng** – điều này là bình thường và thực sự có nghĩa là thiết lập của bạn đang hoạt động chính xác.
+
+Báo cáo DMARC liệt kê **mọi** máy chủ đã cố gắng gửi thư mạo danh miền của bạn, bao gồm cả những máy chủ không được ủy quyền. Trong hầu hết các trường hợp, những IP không xác định này chỉ đơn giản là những kẻ gửi thư rác hoặc bot đang cố gắng mạo danh miền của bạn. Đây là những gì xảy ra khi chúng cố gắng:
+
+* **SPF thất bại** vì IP gửi không được liệt kê trong bản ghi SPF của bạn.
+* **DKIM thất bại** vì chúng không thể tạo ra chữ ký hợp lệ cho miền của bạn.
+* Với chính sách DMARC là `p=reject`, tin nhắn bị **từ chối hoàn toàn** và không bao giờ đến được hộp thư đến của bất kỳ ai.
+
+Nói cách khác, những thất bại này là bằng chứng cho thấy DMARC đang làm đúng công việc của mình – ngăn chặn các nỗ lực mạo danh trước khi chúng gây hại. Bạn không cần phải thực hiện bất kỳ hành động nào.
+
+**Cách phân biệt người gửi hợp pháp với kẻ mạo danh**
+
+* Thư bạn gửi thông qua Forward Email (hoặc bất kỳ dịch vụ được ủy quyền nào khác) sẽ hiển thị SPF và/hoặc DKIM là **đạt và khớp**.
+* Các nguồn không xác định thất bại **cả** SPF và DKIM là những kẻ mạo danh và có thể được bỏ qua một cách an toàn.
+* Bạn có thể đối chiếu các địa chỉ IP với <https://forwardemail.net/ips> để xác nhận nguồn nào là của chúng tôi.
+
+Nếu bạn cũng sử dụng các dịch vụ khác để gửi thư thay mặt cho miền của mình (công cụ tiếp thị, CRM, v.v.), hãy đảm bảo các dịch vụ đó đã được cấu hình chữ ký DKIM hợp lệ – nếu không, tin nhắn của chúng cũng sẽ xuất hiện dưới dạng lỗi trong báo cáo của bạn.
+
+> \[!IMPORTANT]
+> Đảm bảo miền của bạn công bố chính sách DMARC là `p=reject` để các nỗ lực mạo danh bị từ chối thay vì được gửi đi. Xem [Làm cách nào để thiết lập DMARC cho Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Làm thế nào để kết nối và cấu hình danh bạ của tôi {#how-do-i-connect-and-configure-my-contacts}
 

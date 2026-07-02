@@ -49,6 +49,7 @@
   * [Jak ustawić DKIM dla Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Jak ustawić DMARC dla Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Jak przeglądać raporty DMARC](#how-do-i-view-dmarc-reports)
+  * [Dlaczego moje raporty DMARC wykazują błędy z nieznanych adresów IP](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Jak połączyć i skonfigurować kontakty](#how-do-i-connect-and-configure-my-contacts)
   * [Jak połączyć i skonfigurować kalendarze](#how-do-i-connect-and-configure-my-calendars)
   * [Jak dodać więcej kalendarzy i zarządzać istniejącymi](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2136,6 +2137,29 @@ Użytkownicy planów płatnych automatycznie otrzymują cotygodniowe podsumowani
 * Bezpośrednie linki do panelu raportów DMARC
 
 Cotygodniowe raporty są wysyłane automatycznie i nie można ich wyłączyć oddzielnie od innych powiadomień e-mail.
+
+### Dlaczego moje raporty DMARC wykazują błędy z nieznanych adresów IP {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Jeśli Twoje raporty DMARC zawierają nieznane adresy IP, które nie przechodzą weryfikacji SPF i DKIM, **proszę się nie martwić** – jest to normalne i w rzeczywistości oznacza, że Twoja konfiguracja działa poprawnie.
+
+Raporty DMARC wymieniają **każdy** serwer, który próbował wysłać pocztę, podając się za Twoją domenę, w tym te nieautoryzowane. W prawie wszystkich przypadkach te nieznane adresy IP to po prostu spamerzy lub boty próbujące podszyć się pod Twoją domenę. Oto co się dzieje, gdy próbują:
+
+* **SPF kończy się niepowodzeniem**, ponieważ wysyłający adres IP nie znajduje się w Twoim rekordzie SPF.
+* **DKIM kończy się niepowodzeniem**, ponieważ nie mogą wygenerować prawidłowego podpisu dla Twojej domeny.
+* Przy polityce DMARC ustawionej na `p=reject`, wiadomość jest **całkowicie odrzucana** i nigdy nie trafia do niczyjej skrzynki odbiorczej.
+
+Innymi słowy, te błędy są dowodem na to, że DMARC wykonuje swoje zadanie – blokuje próby podszywania się, zanim wyrządzą szkody. Z Twojej strony nie są wymagane żadne działania.
+
+**Jak odróżnić legalnych nadawców od oszustów**
+
+* Poczta wysyłana przez Forward Email (lub inną autoryzowaną usługę) pokaże SPF i/lub DKIM jako **zaliczone i zgodne**.
+* Nieznane źródła, w przypadku których **zarówno** SPF, jak i DKIM kończą się niepowodzeniem, to oszuści i można ich bezpiecznie zignorować.
+* Możesz porównać adresy IP z <https://forwardemail.net/ips>, aby potwierdzić, które źródła są nasze.
+
+Jeśli używasz również innych usług do wysyłania poczty w imieniu swojej domeny (narzędzia marketingowe, CRM itp.), upewnij się, że te usługi mają skonfigurowany prawidłowy podpis DKIM – w przeciwnym razie ich wiadomości również pojawią się jako błędy w Twoich raportach.
+
+> [!IMPORTANT]
+> Upewnij się, że Twoja domena publikuje politykę DMARC `p=reject`, aby próby podszywania się były odrzucane, a nie dostarczane. Zobacz [Jak skonfigurować DMARC dla Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Jak połączyć i skonfigurować kontakty {#how-do-i-connect-and-configure-my-contacts}
 

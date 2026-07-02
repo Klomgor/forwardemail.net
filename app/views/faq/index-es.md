@@ -49,6 +49,7 @@
   * [Cómo configuro DKIM para Forward Email](#how-do-i-set-up-dkim-for-forward-email)
   * [Cómo configuro DMARC para Forward Email](#how-do-i-set-up-dmarc-for-forward-email)
   * [Cómo veo los Reportes DMARC](#how-do-i-view-dmarc-reports)
+  * [¿Por qué mis informes DMARC muestran fallos de direcciones IP desconocidas?](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Cómo conecto y configuro mis contactos](#how-do-i-connect-and-configure-my-contacts)
   * [Cómo conecto y configuro mis calendarios](#how-do-i-connect-and-configure-my-calendars)
   * [Cómo agrego más calendarios y gestiono calendarios existentes](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2138,6 +2139,29 @@ Los usuarios de planes pagos reciben automáticamente resúmenes semanales de in
 * Enlaces directos a tu panel de informes DMARC
 
 Los informes semanales se envían automáticamente y no pueden desactivarse por separado de otras notificaciones por correo electrónico.
+
+### ¿Por qué mis informes DMARC muestran fallos de direcciones IP desconocidas? {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Si sus informes DMARC contienen direcciones IP desconocidas que fallan en SPF y DKIM, **por favor no se preocupe** – esto es normal y en realidad significa que su configuración está funcionando correctamente.
+
+Los informes DMARC enumeran **todos** los servidores que intentaron enviar correo afirmando ser de su dominio, incluidos los no autorizados. En casi todos los casos, estas IP desconocidas son simplemente spammers o bots que intentan suplantar su dominio. Esto es lo que sucede cuando lo intentan:
+
+* **SPF falla** porque la IP de envío no está listada en su registro SPF.
+* **DKIM falla** porque no pueden producir una firma válida para su dominio.
+* Con una política DMARC de `p=reject`, el mensaje es **rechazado de plano** y nunca llega a la bandeja de entrada de nadie.
+
+En otras palabras, estos fallos son la prueba de que DMARC está haciendo su trabajo – bloqueando los intentos de suplantación antes de que causen daño. No se requiere ninguna acción por su parte.
+
+**Cómo distinguir a los remitentes legítimos de los suplantadores**
+
+* El correo que envíe a través de Forward Email (o cualquier otro servicio autorizado) mostrará SPF y/o DKIM como **aprobados y alineados**.
+* Las fuentes desconocidas que fallan **tanto** en SPF como en DKIM son suplantadores y pueden ser ignoradas de forma segura.
+* Puede contrastar las direcciones IP con <https://forwardemail.net/ips> para confirmar qué fuentes son nuestras.
+
+Si también utiliza otros servicios para enviar correo en nombre de su dominio (herramientas de marketing, CRMs, etc.), asegúrese de que esos servicios tengan configurada una firma DKIM válida – de lo contrario, sus mensajes también aparecerán como fallos en sus informes.
+
+> \[!IMPORTANT]
+> Asegúrese de que su dominio publique una política DMARC de `p=reject` para que los intentos de suplantación sean rechazados en lugar de entregados. Consulte [Cómo configuro DMARC para Forward Email](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Cómo conecto y configuro mis contactos {#how-do-i-connect-and-configure-my-contacts}
 

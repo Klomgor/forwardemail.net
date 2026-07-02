@@ -49,6 +49,7 @@
   * [Forward Email için DKIM nasıl ayarlanır](#how-do-i-set-up-dkim-for-forward-email)
   * [Forward Email için DMARC nasıl ayarlanır](#how-do-i-set-up-dmarc-for-forward-email)
   * [DMARC Raporları nasıl görüntülenir](#how-do-i-view-dmarc-reports)
+  * [DMARC raporlarım neden bilinmeyen IP adreslerinden gelen hataları gösteriyor?](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Kişilerimi nasıl bağlar ve yapılandırırım](#how-do-i-connect-and-configure-my-contacts)
   * [Takvimlerimi nasıl bağlar ve yapılandırırım](#how-do-i-connect-and-configure-my-calendars)
   * [Daha fazla takvim nasıl eklenir ve mevcut takvimler nasıl yönetilir](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ Ayrı DMARC izleme araçları gerektiren diğer hizmetlerin aksine, Forward Emai
 * DMARC Raporları kontrol panelinize doğrudan bağlantılar
 
 Haftalık raporlar otomatik olarak gönderilir ve diğer e-posta bildirimlerinden ayrı olarak devre dışı bırakılamaz.
+
+### DMARC raporlarım neden bilinmeyen IP adreslerinden gelen hataları gösteriyor? {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Eğer DMARC raporlarınız SPF ve DKIM'de başarısız olan tanıdık olmayan IP adresleri içeriyorsa, **lütfen endişelenmeyin** – bu normaldir ve aslında kurulumunuzun doğru çalıştığı anlamına gelir.
+
+DMARC raporları, yetkisiz olanlar da dahil olmak üzere, alan adınızdan geliyormuş gibi e-posta göndermeye çalışan **her** sunucuyu listeler. Neredeyse tüm durumlarda bu bilinmeyen IP'ler, alan adınızı taklit etmeye çalışan spam göndericiler veya botlardır. Denediklerinde şu olur:
+
+* Gönderen IP, SPF kaydınızda listelenmediği için **SPF başarısız olur**.
+* Alan adınız için geçerli bir imza üretemedikleri için **DKIM başarısız olur**.
+* `p=reject` DMARC politikası ile mesaj **doğrudan reddedilir** ve asla kimsenin gelen kutusuna ulaşmaz.
+
+Başka bir deyişle, bu hatalar DMARC'ın işini yaptığının – taklit girişimlerini zarar vermeden önce engellediğinin – kanıtıdır. Sizin tarafınızdan herhangi bir işlem yapılmasına gerek yoktur.
+
+**Meşru göndericileri taklitçilerden nasıl ayırt edebilirsiniz**
+
+* Forward Email (veya başka bir yetkili hizmet) aracılığıyla gönderdiğiniz e-postalar, SPF ve/veya DKIM'i **başarılı ve hizalanmış** olarak gösterecektir.
+* **Hem** SPF hem de DKIM'de başarısız olan bilinmeyen kaynaklar taklitçilerdir ve güvenle göz ardı edilebilir.
+* Hangi kaynakların bize ait olduğunu doğrulamak için IP adreslerini <https://forwardemail.net/ips> adresiyle çapraz kontrol edebilirsiniz.
+
+Alan adınız adına e-posta göndermek için başka hizmetler (pazarlama araçları, CRM'ler vb.) de kullanıyorsanız, bu hizmetlerin geçerli bir DKIM imzası yapılandırdığından emin olun – aksi takdirde onların mesajları da raporlarınızda hata olarak görünecektir.
+
+> \[!IMPORTANT]
+> Taklit girişimlerinin teslim edilmek yerine reddedilmesi için alan adınızın bir `p=reject` DMARC politikası yayınladığından emin olun. Bkz. [Forward Email için DMARC'ı nasıl kurarım](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Kişilerimi nasıl bağlar ve yapılandırırım {#how-do-i-connect-and-configure-my-contacts}
 

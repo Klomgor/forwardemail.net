@@ -49,6 +49,7 @@
   * [Kuinka määrittää DKIM Forward Emailille](#how-do-i-set-up-dkim-for-forward-email)
   * [Kuinka määrittää DMARC Forward Emailille](#how-do-i-set-up-dmarc-for-forward-email)
   * [Kuinka tarkastella DMARC-raportteja](#how-do-i-view-dmarc-reports)
+  * [Miksi DMARC-raporttini näyttävät epäonnistumisia tuntemattomista IP-osoitteista](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Kuinka yhdistää ja määrittää yhteystiedot](#how-do-i-connect-and-configure-my-contacts)
   * [Kuinka yhdistää ja määrittää kalenterit](#how-do-i-connect-and-configure-my-calendars)
   * [Kuinka lisätä lisää kalentereita ja hallita olemassa olevia kalentereita](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2136,6 +2137,29 @@ Maksullisen suunnitelman käyttäjät saavat automaattisesti viikoittaiset DMARC
 * Suorat linkit DMARC-raporttien hallintapaneeliin
 
 Viikkoraportit lähetetään automaattisesti, eikä niitä voi poistaa käytöstä erikseen muista sähköposti-ilmoituksista.
+
+### Miksi DMARC-raporttini näyttävät epäonnistumisia tuntemattomista IP-osoitteista {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Jos DMARC-raporttisi sisältävät vieraita IP-osoitteita, jotka epäonnistuvat SPF- ja DKIM-tarkistuksissa, **älä huoli** – tämä on normaalia ja tarkoittaa itse asiassa, että asetuksesi toimivat oikein.
+
+DMARC-raportit luettelevat **jokaisen** palvelimen, joka yritti lähettää sähköpostia väittäen sen olevan peräisin verkkotunnuksestasi, mukaan lukien luvattomat. Lähes kaikissa tapauksissa nämä tuntemattomat IP-osoitteet ovat yksinkertaisesti roskapostittajia tai botteja, jotka yrittävät esiintyä verkkotunnuksenasi. Näin tapahtuu, kun he yrittävät:
+
+* **SPF epäonnistuu**, koska lähettävää IP-osoitetta ei ole lueteltu SPF-tietueessasi.
+* **DKIM epäonnistuu**, koska he eivät pysty tuottamaan kelvollista allekirjoitusta verkkotunnuksellesi.
+* Kun DMARC-käytäntö on `p=reject`, viesti **hylätään suoraan** eikä se koskaan saavu kenenkään saapuneet-kansioon.
+
+Toisin sanoen nämä epäonnistumiset ovat todiste siitä, että DMARC tekee tehtävänsä – estää esiintymisyritykset ennen kuin ne aiheuttavat vahinkoa. Sinun ei tarvitse tehdä mitään.
+
+**Kuinka erottaa lailliset lähettäjät esiintyjistä**
+
+* Forward Emailin (tai minkä tahansa muun valtuutetun palvelun) kautta lähettämäsi sähköposti näyttää SPF:n ja/tai DKIM:n tilana **hyväksytty ja kohdistettu**.
+* Tuntemattomat lähteet, jotka epäonnistuvat **sekä** SPF- että DKIM-tarkistuksissa, ovat esiintyjiä ja ne voidaan turvallisesti jättää huomiotta.
+* Voit verrata IP-osoitteita osoitteeseen <https://forwardemail.net/ips> vahvistaaksesi, mitkä lähteet ovat meidän.
+
+Jos käytät myös muita palveluita sähköpostin lähettämiseen verkkotunnuksesi puolesta (markkinointityökalut, CRM:t jne.), varmista, että näille palveluille on määritetty kelvollinen DKIM-allekirjoitus – muuten myös niiden viestit näkyvät epäonnistumisina raporteissasi.
+
+> \[!IMPORTANT]
+> Varmista, että verkkotunnuksesi julkaisee DMARC-käytännön `p=reject`, jotta esiintymisyritykset hylätään sen sijaan, että ne toimitettaisiin. Katso [Kuinka määritän DMARC:n Forward Emailille](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Kuinka yhdistän ja konfiguroin yhteystietoni {#how-do-i-connect-and-configure-my-contacts}
 

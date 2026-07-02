@@ -49,6 +49,7 @@
   * [如何为 Forward Email 设置 DKIM](#how-do-i-set-up-dkim-for-forward-email)
   * [如何为 Forward Email 设置 DMARC](#how-do-i-set-up-dmarc-for-forward-email)
   * [如何查看 DMARC 报告](#how-do-i-view-dmarc-reports)
+  * [为什么我的 DMARC 报告显示来自未知 IP 地址的失败](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [如何连接和配置联系人](#how-do-i-connect-and-configure-my-contacts)
   * [如何连接和配置日历](#how-do-i-connect-and-configure-my-calendars)
   * [如何添加更多日历和管理现有日历](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2134,6 +2135,29 @@ DMARC 报告仪表盘提供：
 * 直接链接到您的 DMARC 报告仪表板
 
 每周报告会自动发送，无法单独关闭，必须与其他邮件通知一起管理。
+
+### 为什么我的 DMARC 报告显示来自未知 IP 地址的失败 {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+如果您的 DMARC 报告包含未能通过 SPF 和 DKIM 的陌生 IP 地址，**请不要担心** —— 这是正常现象，实际上意味着您的设置工作正常。
+
+DMARC 报告列出了**所有**试图发送声称来自您域名的邮件的服务器，包括未经授权的服务器。在几乎所有情况下，这些未知的 IP 只是试图冒充您域名的垃圾邮件发送者或机器人。当他们尝试时，会发生以下情况：
+
+* **SPF 失败**，因为发送 IP 未列在您的 SPF 记录中。
+* **DKIM 失败**，因为他们无法为您的域名生成有效的签名。
+* 在 DMARC 策略为 `p=reject` 的情况下，该消息被**直接拒绝**，永远不会到达任何人的收件箱。
+
+换句话说，这些失败证明 DMARC 正在发挥作用 —— 在冒充尝试造成危害之前将其拦截。您无需采取任何行动。
+
+**如何区分合法发件人和冒充者**
+
+* 您通过 Forward Email（或任何其他授权服务）发送的邮件将显示 SPF 和/或 DKIM 为**通过且对齐**。
+* **同时**未能通过 SPF 和 DKIM 的未知来源是冒充者，可以安全地忽略。
+* 您可以将 IP 地址与 <https://forwardemail.net/ips> 进行交叉引用，以确认哪些来源是我们的。
+
+如果您还使用其他服务代表您的域名发送邮件（营销工具、CRM 等），请确保这些服务配置了有效的 DKIM 签名 —— 否则它们的消息也会在您的报告中显示为失败。
+
+> \[!IMPORTANT]
+> 请确保您的域名发布了 `p=reject` 的 DMARC 策略，以便冒充尝试被拒绝而不是被送达。请参阅 [如何为 Forward Email 设置 DMARC](#how-do-i-set-up-dmarc-for-forward-email)。
 
 ### 如何连接和配置我的联系人 {#how-do-i-connect-and-configure-my-contacts}
 

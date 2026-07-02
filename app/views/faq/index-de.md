@@ -49,6 +49,7 @@
   * [Wie richte ich DKIM für Forward Email ein](#how-do-i-set-up-dkim-for-forward-email)
   * [Wie richte ich DMARC für Forward Email ein](#how-do-i-set-up-dmarc-for-forward-email)
   * [Wie sehe ich DMARC-Berichte ein](#how-do-i-view-dmarc-reports)
+  * [Warum zeigen meine DMARC-Berichte Fehler von unbekannten IP-Adressen](#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses)
   * [Wie verbinde und konfiguriere ich meine Kontakte](#how-do-i-connect-and-configure-my-contacts)
   * [Wie verbinde und konfiguriere ich meine Kalender](#how-do-i-connect-and-configure-my-calendars)
   * [Wie füge ich weitere Kalender hinzu und verwalte bestehende Kalender](#how-do-i-add-more-calendars-and-manage-existing-calendars)
@@ -2137,6 +2138,29 @@ Benutzer mit kostenpflichtigem Plan erhalten automatisch wöchentliche Zusammenf
 * Direkte Links zu Ihrem DMARC-Berichte-Dashboard
 
 Wöchentliche Berichte werden automatisch gesendet und können nicht separat von anderen E-Mail-Benachrichtigungen deaktiviert werden.
+
+### Warum zeigen meine DMARC-Berichte Fehler von unbekannten IP-Adressen {#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses}
+
+Wenn Ihre DMARC-Berichte unbekannte IP-Adressen enthalten, bei denen SPF und DKIM fehlschlagen, **machen Sie sich bitte keine Sorgen** – dies ist normal und bedeutet eigentlich, dass Ihre Einrichtung korrekt funktioniert.
+
+DMARC-Berichte listen **jeden** Server auf, der versucht hat, E-Mails zu senden und dabei vorgab, von Ihrer Domain zu stammen, einschließlich unautorisierter Server. In fast allen Fällen sind diese unbekannten IPs einfach Spammer oder Bots, die versuchen, Ihre Domain zu imitieren. Folgendes passiert, wenn sie es versuchen:
+
+* **SPF schlägt fehl**, weil die sendende IP nicht in Ihrem SPF-Eintrag aufgeführt ist.
+* **DKIM schlägt fehl**, weil sie keine gültige Signatur für Ihre Domain erstellen können.
+* Mit einer DMARC-Richtlinie von `p=reject` wird die Nachricht **sofort abgelehnt** und erreicht niemals den Posteingang von jemandem.
+
+Mit anderen Worten, diese Fehler sind der Beweis dafür, dass DMARC seine Aufgabe erfüllt – das Blockieren von Imitationsversuchen, bevor sie Schaden anrichten. Es ist keine Aktion Ihrerseits erforderlich.
+
+**Wie man legitime Absender von Imitatoren unterscheidet**
+
+* E-Mails, die Sie über Forward Email (oder einen anderen autorisierten Dienst) senden, zeigen SPF und/oder DKIM als **bestanden und übereinstimmend** an.
+* Unbekannte Quellen, bei denen **sowohl** SPF als auch DKIM fehlschlagen, sind Imitatoren und können sicher ignoriert werden.
+* Sie können IP-Adressen mit <https://forwardemail.net/ips> abgleichen, um zu bestätigen, welche Quellen unsere sind.
+
+Wenn Sie auch andere Dienste nutzen, um E-Mails im Namen Ihrer Domain zu senden (Marketing-Tools, CRMs usw.), stellen Sie sicher, dass für diese Dienste eine gültige DKIM-Signatur konfiguriert ist – andernfalls werden deren Nachrichten ebenfalls als Fehler in Ihren Berichten erscheinen.
+
+> \[!IMPORTANT]
+> Stellen Sie sicher, dass Ihre Domain eine DMARC-Richtlinie von `p=reject` veröffentlicht, damit Imitationsversuche abgelehnt und nicht zugestellt werden. Siehe [Wie richte ich DMARC für Forward Email ein](#how-do-i-set-up-dmarc-for-forward-email).
 
 ### Wie verbinde und konfiguriere ich meine Kontakte {#how-do-i-connect-and-configure-my-contacts}
 
