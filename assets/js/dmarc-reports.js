@@ -204,7 +204,11 @@ async function loadCharts(reset = false) {
       // `totalLabel` string (functions cannot survive JSON serialization).
       if (
         typeof chart.options.totalLabel === 'string' &&
-        chart.options.plotOptions?.pie?.donut?.labels?.total
+        chart.options.plotOptions &&
+        chart.options.plotOptions.pie &&
+        chart.options.plotOptions.pie.donut &&
+        chart.options.plotOptions.pie.donut.labels &&
+        chart.options.plotOptions.pie.donut.labels.total
       ) {
         const label = chart.options.totalLabel;
         chart.options.plotOptions.pie.donut.labels.total.formatter = () =>
