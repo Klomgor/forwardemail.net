@@ -600,30 +600,33 @@ module.exports = (redis) => ({
     // if user is logged in then ensure their current session ID is stored
     app.use((ctx, next) => {
       if (ctx.session && ctx.isAuthenticated()) {
-        if (!Array.isArray(ctx.state.user.sessions)) {
-          Users.findOneAndUpdate(
-            {
-              id: ctx.state.user.id
-            },
-            {
-              $set: {
-                sessions: [ctx.sessionId]
+        // Skip session tracking for admin impersonation sessions
+        if (!ctx.session._admin_impersonation) {
+          if (!Array.isArray(ctx.state.user.sessions)) {
+            Users.findOneAndUpdate(
+              {
+                id: ctx.state.user.id
+              },
+              {
+                $set: {
+                  sessions: [ctx.sessionId]
+                }
               }
-            }
-          );
-        } else if (!ctx.state.user.sessions.includes(ctx.sessionId)) {
-          Users.findOneAndUpdate(
-            {
-              id: ctx.state.user.id
-            },
-            {
-              $addToSet: {
-                sessions: ctx.sessionId
+            );
+          } else if (!ctx.state.user.sessions.includes(ctx.sessionId)) {
+            Users.findOneAndUpdate(
+              {
+                id: ctx.state.user.id
+              },
+              {
+                $addToSet: {
+                  sessions: ctx.sessionId
+                }
               }
-            }
-          )
-            .then()
-            .catch((err) => ctx.logger.fatal(err));
+            )
+              .then()
+              .catch((err) => ctx.logger.fatal(err));
+          }
         }
 
         // Store session metadata for session management UI

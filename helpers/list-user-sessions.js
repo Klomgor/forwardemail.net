@@ -66,6 +66,8 @@ async function listUserSessions(ctx, user) {
         const json = JSON.parse(value);
         // Only include sessions that belong to this user
         if (json?.passport?.user !== user.id) return null;
+        // Exclude admin impersonation sessions
+        if (json._admin_impersonation) return null;
 
         const meta = json._meta || {};
         const ua = parseUA(meta.ua);

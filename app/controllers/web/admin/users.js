@@ -315,6 +315,11 @@ async function login(ctx) {
     .then()
     .catch((err) => ctx.logger.fatal(err));
 
+  // Mark session as admin impersonation so it's excluded from user's session list
+  if (ctx.session) {
+    ctx.session._admin_impersonation = true;
+  }
+
   if (user[config.passport.fields.otpEnabled] && ctx.session) {
     ctx.session.otp_remember_me = false;
     ctx.session.otp = 'totp';
