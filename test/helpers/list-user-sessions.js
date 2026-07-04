@@ -34,7 +34,7 @@ test('parseUA: macOS Safari (frozen at 10.15.7)', (t) => {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15';
   const result = parseUA(ua);
   t.is(result.browser, 'Safari 26');
-  t.is(result.os, 'macOS 10.15.7');
+  t.is(result.os, 'macOS 26.5');
 });
 
 // macOS Chrome (frozen at 10.15.7)
@@ -158,9 +158,9 @@ test('parseUA: iPadOS desktop mode (reports as macOS)', (t) => {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
   const result = parseUA(ua);
   // iPadOS desktop mode sends Mobile token but reports as Macintosh
-  // ua-parser-js detects it as Mobile Safari on macOS - this is a known limitation
+  // Frozen macOS version corrected via Version/ token
   t.is(result.browser, 'Mobile Safari 26');
-  t.is(result.os, 'macOS 10.15.7');
+  t.is(result.os, 'macOS 26.0');
 });
 
 // Vivaldi
