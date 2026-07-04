@@ -4,71 +4,40 @@
  */
 
 const pMap = require('p-map');
+const UAParser = require('ua-parser-js');
+const { Emails } = require('ua-parser-js/extensions');
 
 /**
  * Parse a user-agent string into a human-readable short description.
- * Intentionally simple — no external dependency required.
+ * Uses ua-parser-js for detection (handles frozen iOS UA automatically).
+ *
+ * @param {string} ua - Raw user-agent string
+ * @returns {{ browser: string, os: string, short: string }}
  */
 function parseUA(ua) {
   if (!ua) return { browser: 'Unknown', os: 'Unknown', short: 'Unknown' };
 
+  const result = new UAParser(ua, { browser: Emails.browser }).getResult();
+
   let browser = 'Unknown';
   let os = 'Unknown';
 
-  // Detect OS (order matters — check mobile before desktop since iOS UAs
-  // contain "like Mac OS X" which would otherwise match the macOS branch)
-  if (/iPhone|iPad|iPod/.test(ua)) {
-    // Apple froze the OS version in the UA string starting with iOS 26
-    // (reports "iPhone OS 18_6" even on iOS 26+). The real version can be
-    // inferred from the Safari Version/ token (Safari major = iOS major).
-    const m = ua.match(/OS ([\d_]+)/);
-    const osVer = m ? m[1].replace(/_/g, '.') : '';
-    const versionMatch = ua.match(/Version\/(\d+\.\d+)/);
-    if (versionMatch && osVer) {
-      const safariMajor = Number.parseInt(versionMatch[1], 10);
-      const osMajor = Number.parseInt(osVer, 10);
-      // If Safari major exceeds the reported OS major, the OS field is frozen
-      os = safariMajor > osMajor ? `iOS ${versionMatch[1]}` : `iOS ${osVer}`;
-    } else {
-      os = osVer ? `iOS ${osVer}` : 'iOS';
-    }
-  } else if (/Android ([\d.]+)/.test(ua)) {
-    os = `Android ${RegExp.$1}`;
-  } else if (/Windows NT 10/.test(ua)) os = 'Windows 10+';
-  else if (/Windows NT/.test(ua)) os = 'Windows';
-  else if (/Mac OS X/.test(ua) && /Mobile/.test(ua)) {
-    // iPadOS/iPhone in desktop-site mode sends a macOS UA but keeps "Mobile"
-    const m = ua.match(/Mac OS X ([\d_]+)/);
-    const osVer = m ? m[1].replace(/_/g, '.') : '';
-    const versionMatch = ua.match(/Version\/(\d+\.\d+)/);
-    if (versionMatch && osVer) {
-      const safariMajor = Number.parseInt(versionMatch[1], 10);
-      const osMajor = Number.parseInt(osVer, 10);
-      os = safariMajor > osMajor ? `iOS ${versionMatch[1]}` : `iOS ${osVer}`;
-    } else {
-      os = osVer ? `iOS ${osVer}` : 'iOS';
-    }
-  } else if (/Mac OS X/.test(ua)) {
-    const m = ua.match(/Mac OS X ([\d_]+)/);
-    os = m ? `macOS ${m[1].replace(/_/g, '.')}` : 'macOS';
-  } else if (/CrOS/.test(ua)) os = 'ChromeOS';
-  else if (/Linux/.test(ua)) os = 'Linux';
+  if (result.browser.name && result.browser.version) {
+    browser = `${result.browser.name} ${result.browser.major}`;
+  } else if (result.browser.name) {
+    browser = result.browser.name;
+  }
 
-  // Detect browser (order matters — check specific before generic)
-  if (/Edg(?:e|A|iOS)?\/([\d.]+)/.test(ua)) browser = `Edge ${RegExp.$1}`;
-  else if (/OPR\/([\d.]+)/.test(ua)) browser = `Opera ${RegExp.$1}`;
-  else if (/Vivaldi\/([\d.]+)/.test(ua)) browser = `Vivaldi ${RegExp.$1}`;
-  else if (/Brave/.test(ua)) browser = 'Brave';
-  else if (/FxiOS\/([\d.]+)/.test(ua)) browser = `Firefox ${RegExp.$1}`;
-  else if (/Firefox\/([\d.]+)/.test(ua)) browser = `Firefox ${RegExp.$1}`;
-  else if (/CriOS\/([\d.]+)/.test(ua)) browser = `Chrome ${RegExp.$1}`;
-  else if (/Chrome\/([\d.]+)/.test(ua)) browser = `Chrome ${RegExp.$1}`;
-  else if (/Safari\/([\d.]+)/.test(ua) && /Version\/([\d.]+)/.test(ua))
-    browser = `Safari ${RegExp.$1}`;
-  else if (/Thunderbird\/([\d.]+)/.test(ua))
-    browser = `Thunderbird ${RegExp.$1}`;
+  if (result.os.name && result.os.version) {
+    os = `${result.os.name} ${result.os.version}`;
+  } else if (result.os.name) {
+    os = result.os.name;
+  }
 
-  const short = `${browser} on ${os}`;
+  const short =
+    browser === 'Unknown' && os === 'Unknown'
+      ? 'Unknown'
+      : `${browser} on ${os}`;
   return { browser, os, short };
 }
 
@@ -128,4 +97,6 @@ async function listUserSessions(ctx, user) {
   });
 }
 
+// Export parseUA for testing
+listUserSessions.parseUA = parseUA;
 module.exports = listUserSessions;
