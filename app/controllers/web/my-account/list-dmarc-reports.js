@@ -379,16 +379,15 @@ async function listDmarcReports(ctx) {
   };
 
   // Alignment pie chart
-  // Handle empty data by showing placeholder values to avoid rendering issues
   const hasAlignmentData = stats.spf_aligned > 0 || stats.dkim_aligned > 0;
   const alignmentChart = {
-    series: hasAlignmentData ? [stats.spf_aligned, stats.dkim_aligned] : [1, 1],
+    series: hasAlignmentData ? [stats.spf_aligned, stats.dkim_aligned] : [],
     chart: {
       type: 'donut',
       height: 250
     },
-    labels: ['SPF Aligned', 'DKIM Aligned'],
-    colors: hasAlignmentData ? [green, blue] : ['#6c757d', '#6c757d'],
+    labels: hasAlignmentData ? ['SPF Aligned', 'DKIM Aligned'] : [],
+    colors: [green, blue],
     legend: {
       position: 'bottom'
     },
@@ -407,9 +406,9 @@ async function listDmarcReports(ctx) {
       pie: {
         donut: {
           labels: {
-            show: true,
+            show: hasAlignmentData,
             total: {
-              show: true,
+              show: hasAlignmentData,
               label: 'Total Messages'
             }
           }
