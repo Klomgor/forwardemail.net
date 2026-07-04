@@ -34,6 +34,19 @@ function parseUA(ua) {
     os = result.os.name;
   }
 
+  // macOS version is frozen at 10.15.7 in the UA string since Big Sur (2020).
+  // Use the Safari Version/ token to infer the real macOS version when frozen.
+  if (result.os.name === 'macOS' && result.os.version === '10.15.7') {
+    const versionMatch = ua.match(/Version\/(\d+\.\d+)/);
+    if (versionMatch) {
+      const safariMajor = Number.parseInt(versionMatch[1], 10);
+      // Safari major matches macOS major starting with macOS 11+
+      if (safariMajor > 10) {
+        os = `macOS ${versionMatch[1]}`;
+      }
+    }
+  }
+
   const short =
     browser === 'Unknown' && os === 'Unknown'
       ? 'Unknown'
