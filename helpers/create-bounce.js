@@ -176,22 +176,22 @@ async function createBounce(email, error, message) {
     const ipPart = remoteMtaIp ? ` [${remoteMtaIp}]` : '';
     const portPart = error.port ? `:${error.port}` : ':25';
     humanLines.push(
-      `<${error.recipient}> (host '${remoteMtaHostname}'${ipPart}${portPart}: ${diagnosticCode})`
+      `${error.recipient} (host '${remoteMtaHostname}'${ipPart}${portPart}: ${diagnosticCode})`
     );
   } else if (isSANB(error.response)) {
     // We have a response but no MX hostname
     humanLines.push(
-      `<${error.recipient}> (remote server responded: ${diagnosticCode})`
+      `${error.recipient} (remote server responded: ${diagnosticCode})`
     );
   } else if (remoteMtaHostname) {
     // We have a hostname but the error is not an SMTP response (e.g. connection error)
     const ipPart = remoteMtaIp ? ` [${remoteMtaIp}]` : '';
     humanLines.push(
-      `<${error.recipient}> (connection to '${remoteMtaHostname}'${ipPart} failed: ${responseText})`
+      `${error.recipient} (connection to '${remoteMtaHostname}'${ipPart} failed: ${responseText})`
     );
   } else {
     // Minimal fallback
-    humanLines.push(`<${error.recipient}> (${responseText})`);
+    humanLines.push(`${error.recipient} (${responseText})`);
   }
 
   // Add retry information for delayed messages
