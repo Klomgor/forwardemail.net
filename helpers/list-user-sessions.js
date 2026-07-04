@@ -23,7 +23,7 @@ function parseUA(ua) {
   let os = 'Unknown';
 
   if (result.browser.name && result.browser.version) {
-    browser = `${result.browser.name} ${result.browser.major}`;
+    browser = `${result.browser.name} ${result.browser.version}`;
   } else if (result.browser.name) {
     browser = result.browser.name;
   }
@@ -37,7 +37,7 @@ function parseUA(ua) {
   // macOS version is frozen at 10.15.7 in the UA string since Big Sur (2020).
   // Use the Safari Version/ token to infer the real macOS version when frozen.
   if (result.os.name === 'macOS' && result.os.version === '10.15.7') {
-    const versionMatch = ua.match(/Version\/(\d+\.\d+)/);
+    const versionMatch = ua.match(/Version\/(\d+(?:\.\d+)+)/);
     if (versionMatch) {
       const safariMajor = Number.parseInt(versionMatch[1], 10);
       // Safari major matches macOS major starting with macOS 11+

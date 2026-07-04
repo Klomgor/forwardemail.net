@@ -14,9 +14,9 @@ test('parseUA: iOS 26 Safari (frozen UA)', (t) => {
   const ua =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
   const result = parseUA(ua);
-  t.is(result.browser, 'Mobile Safari 26');
+  t.is(result.browser, 'Mobile Safari 26.0');
   t.is(result.os, 'iOS 26.0');
-  t.is(result.short, 'Mobile Safari 26 on iOS 26.0');
+  t.is(result.short, 'Mobile Safari 26.0 on iOS 26.0');
 });
 
 // iOS 26.5 Safari
@@ -24,7 +24,7 @@ test('parseUA: iOS 26.5 Safari', (t) => {
   const ua =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1';
   const result = parseUA(ua);
-  t.is(result.browser, 'Mobile Safari 26');
+  t.is(result.browser, 'Mobile Safari 26.5');
   t.is(result.os, 'iOS 26.5');
 });
 
@@ -33,7 +33,7 @@ test('parseUA: macOS Safari (frozen at 10.15.7)', (t) => {
   const ua =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15';
   const result = parseUA(ua);
-  t.is(result.browser, 'Safari 26');
+  t.is(result.browser, 'Safari 26.5');
   t.is(result.os, 'macOS 26.5');
 });
 
@@ -42,7 +42,7 @@ test('parseUA: macOS Chrome (frozen at 10.15.7)', (t) => {
   const ua =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
   const result = parseUA(ua);
-  t.is(result.browser, 'Chrome 136');
+  t.is(result.browser, 'Chrome 136.0.0.0');
   t.is(result.os, 'macOS 10.15.7');
 });
 
@@ -51,7 +51,7 @@ test('parseUA: Chrome on iOS (CriOS)', (t) => {
   const ua =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/136.0.7103.56 Mobile/15E148 Safari/604.1';
   const result = parseUA(ua);
-  t.is(result.browser, 'Mobile Chrome 136');
+  t.is(result.browser, 'Mobile Chrome 136.0.7103.56');
   t.is(result.os, 'iOS 18.6');
 });
 
@@ -60,7 +60,7 @@ test('parseUA: Firefox on iOS (FxiOS)', (t) => {
   const ua =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/136.0 Mobile/15E148 Safari/604.1';
   const result = parseUA(ua);
-  t.is(result.browser, 'Mobile Firefox 136');
+  t.is(result.browser, 'Mobile Firefox 136.0');
   t.is(result.os, 'iOS 18.6');
 });
 
@@ -69,7 +69,7 @@ test('parseUA: Windows Chrome', (t) => {
   const ua =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
   const result = parseUA(ua);
-  t.is(result.browser, 'Chrome 136');
+  t.is(result.browser, 'Chrome 136.0.0.0');
   t.is(result.os, 'Windows 10');
 });
 
@@ -78,7 +78,7 @@ test('parseUA: Windows Firefox', (t) => {
   const ua =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
   const result = parseUA(ua);
-  t.is(result.browser, 'Firefox 128');
+  t.is(result.browser, 'Firefox 128.0');
   t.is(result.os, 'Windows 10');
 });
 
@@ -87,7 +87,7 @@ test('parseUA: Linux Firefox', (t) => {
   const ua =
     'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0';
   const result = parseUA(ua);
-  t.is(result.browser, 'Firefox 128');
+  t.is(result.browser, 'Firefox 128.0');
   t.is(result.os, 'Linux');
 });
 
@@ -96,7 +96,7 @@ test('parseUA: Android Chrome', (t) => {
   const ua =
     'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36';
   const result = parseUA(ua);
-  t.is(result.browser, 'Mobile Chrome 136');
+  t.is(result.browser, 'Mobile Chrome 136.0.0.0');
   t.is(result.os, 'Android 14');
 });
 
@@ -105,7 +105,7 @@ test('parseUA: Edge on Windows', (t) => {
   const ua =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0';
   const result = parseUA(ua);
-  t.is(result.browser, 'Edge 136');
+  t.is(result.browser, 'Edge 136.0.0.0');
   t.is(result.os, 'Windows 10');
 });
 
@@ -114,7 +114,7 @@ test('parseUA: Thunderbird on Linux', (t) => {
   const ua =
     'Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Thunderbird/102.15.1';
   const result = parseUA(ua);
-  t.is(result.browser, 'Thunderbird 102');
+  t.is(result.browser, 'Thunderbird 102.15.1');
   t.is(result.os, 'Linux');
 });
 
@@ -123,7 +123,7 @@ test('parseUA: Samsung Internet on Android', (t) => {
   const ua =
     'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0.0.0 Mobile Safari/537.36';
   const result = parseUA(ua);
-  t.is(result.browser, 'Samsung Internet 23');
+  t.is(result.browser, 'Samsung Internet 23.0');
   t.is(result.os, 'Android 13');
 });
 
@@ -132,7 +132,7 @@ test('parseUA: Opera on Windows', (t) => {
   const ua =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 OPR/100.0.0.0';
   const result = parseUA(ua);
-  t.is(result.browser, 'Opera 100');
+  t.is(result.browser, 'Opera 100.0.0.0');
   t.is(result.os, 'Windows 10');
 });
 
@@ -159,7 +159,7 @@ test('parseUA: iPadOS desktop mode (reports as macOS)', (t) => {
   const result = parseUA(ua);
   // iPadOS desktop mode sends Mobile token but reports as Macintosh
   // Frozen macOS version corrected via Version/ token
-  t.is(result.browser, 'Mobile Safari 26');
+  t.is(result.browser, 'Mobile Safari 26.0');
   t.is(result.os, 'macOS 26.0');
 });
 
@@ -168,6 +168,15 @@ test('parseUA: Vivaldi on Linux', (t) => {
   const ua =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Vivaldi/7.0';
   const result = parseUA(ua);
-  t.is(result.browser, 'Vivaldi 7');
+  t.is(result.browser, 'Vivaldi 7.0');
   t.is(result.os, 'Linux');
+});
+
+// Safari with full version (26.5.2)
+test('parseUA: Safari 26.5.2 on macOS', (t) => {
+  const ua =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5.2 Safari/605.1.15';
+  const result = parseUA(ua);
+  t.is(result.browser, 'Safari 26.5.2');
+  t.is(result.os, 'macOS 26.5.2');
 });
