@@ -27,6 +27,7 @@ const setupMongoose = require('#helpers/setup-mongoose');
 const email = require('#helpers/email');
 const Domains = require('#models/domains');
 const createTangerine = require('#helpers/create-tangerine');
+const isTimeoutError = require('#helpers/is-timeout-error');
 
 const breeSharedConfig = sharedConfig('BREE');
 const client = new Redis(breeSharedConfig.redis, logger);
@@ -127,7 +128,10 @@ async function mapper(id) {
     //
     const hasDNSError =
       Array.isArray(errors) &&
-      errors.some((err) => err.code && DNS_RETRY_CODES.has(err.code));
+      errors.some(
+        (err) =>
+          (err.code && DNS_RETRY_CODES.has(err.code)) || isTimeoutError(err)
+      );
 
     if (!hasDNSError) {
       // reset missing txt so we alert users if they are missing a TXT in future again

@@ -104,6 +104,9 @@ module.exports = {
   ABUSE_PREVENTION_DELETE_ACCOUNT:
     'You cannot perform this deletion until 5 days after your first payment was made. This is an abuse prevention measure to mitigate fraud and spam, and it is noted in our privacy policy.',
   LOGGED_OUT_OTHER_DEVICES: 'Successfully logged out all other devices.',
+  SESSION_REVOKED: 'Session has been revoked successfully.',
+  INVALID_SESSION: 'Invalid session identifier.',
+  CANNOT_REVOKE_CURRENT_SESSION: 'You cannot revoke your current session.',
   NEWSLETTER_ALREADY_SUBSCRIBED:
     'You are already subscribed to our newsletter.',
   NEWSLETTER_SUBSCRIBED:

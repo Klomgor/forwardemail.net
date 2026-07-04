@@ -99,6 +99,19 @@ block body
                   .text-center.py-4: i.fa.fa-2x.fa-spin.fa-spinner.text-muted
                 #reports-pagination.d-flex.justify-content-center.mt-3
 
+        //- FAQ help link
+        .row.mb-3
+          .col
+            .card
+              .card-body.text-center
+                p.mb-2
+                  i.fa.fa-question-circle.text-muted.mr-1
+                  = t("Seeing failures from unknown IP addresses in your reports?")
+                a.btn.btn-sm.btn-outline-dark(
+                  href=l("/faq#why-do-my-dmarc-reports-show-failures-from-unknown-ip-addresses")
+                )
+                  = t("Learn why this is normal and what it means")
+
       else
         .row
           .col

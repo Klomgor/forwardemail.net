@@ -268,7 +268,6 @@ async function listAnalytics(ctx) {
     'greylist',
     'message',
     'network',
-    'none',
     'other',
     'protocol',
     'recipient',

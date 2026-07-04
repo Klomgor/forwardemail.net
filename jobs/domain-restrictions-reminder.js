@@ -29,6 +29,7 @@ const logger = require('#helpers/logger');
 const setupMongoose = require('#helpers/setup-mongoose');
 const { Users, Domains } = require('#models');
 const createTangerine = require('#helpers/create-tangerine');
+const isTimeoutError = require('#helpers/is-timeout-error');
 
 const concurrency = config.env === 'development' ? 1 : os.cpus().length;
 
@@ -159,7 +160,11 @@ graceful.listen();
           //
           const hasDNSError =
             Array.isArray(errors) &&
-            errors.some((err) => err.code && DNS_RETRY_CODES.has(err.code));
+            errors.some(
+              (err) =>
+                (err.code && DNS_RETRY_CODES.has(err.code)) ||
+                isTimeoutError(err)
+            );
 
           if (!hasDNSError) {
             // reset missing txt so we alert users if they are missing a TXT in future again

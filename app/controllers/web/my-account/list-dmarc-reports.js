@@ -398,15 +398,11 @@ async function listDmarcReports(ctx) {
       verticalAlign: 'middle'
     },
     //
-    // NOTE: the `totalLabel` field is a pre-computed string that the
-    //       client-side code uses to build the donut center formatter.
-    //       We cannot use `plotOptions.pie.donut.labels.total.formatter`
-    //       directly because functions are stripped by JSON.stringify
-    //       when the response is serialized via ctx.body.
+    // NOTE: the center label formatter is built client-side because
+    //       functions are stripped by JSON.stringify during serialization.
+    //       The client dynamically sums the series values from ApexCharts
+    //       globals so the center always reflects the displayed data.
     //
-    totalLabel: hasAlignmentData
-      ? numeral(stats.total_messages).format('0,0')
-      : '0',
     plotOptions: {
       pie: {
         donut: {

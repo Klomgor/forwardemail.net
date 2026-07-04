@@ -30,6 +30,7 @@ const config = require('#config');
 const email = require('#helpers/email');
 const i18n = require('#helpers/i18n');
 const invalidateOtherSessions = require('#helpers/invalidate-other-sessions');
+const listUserSessions = require('#helpers/list-user-sessions');
 const policies = require('#helpers/policies');
 const rateLimit = require('#helpers/rate-limit');
 const web = require('#controllers/web');
@@ -585,9 +586,53 @@ router
     if (ctx.accepts('html')) ctx.redirect('back');
     else ctx.body = { reloadPage: true };
   })
+  .post('/revoke-session', async (ctx) => {
+    const targetId = ctx.request.body.session_id;
+    if (!isSANB(targetId))
+      throw Boom.badRequest(ctx.translateError('INVALID_SESSION'));
+    if (targetId === ctx.sessionId)
+      throw Boom.badRequest(
+        ctx.translateError('CANNOT_REVOKE_CURRENT_SESSION')
+      );
+    // Verify the session belongs to this user
+    const user = await Users.findById(ctx.state.user._id)
+      .select('sessions')
+      .lean();
+    if (
+      !user ||
+      !Array.isArray(user.sessions) ||
+      !user.sessions.includes(targetId)
+    )
+      throw Boom.notFound(ctx.translateError('INVALID_SESSION'));
+    // Delete from Redis
+    try {
+      await ctx.client.del(`koa:sess:${targetId}`);
+    } catch (err) {
+      ctx.logger.fatal(err);
+    }
+
+    // Remove from user.sessions array
+    await Users.findByIdAndUpdate(ctx.state.user._id, {
+      $pull: { sessions: targetId }
+    });
+    ctx.flash('success', ctx.translate('SESSION_REVOKED'));
+    if (ctx.accepts('html')) ctx.redirect('back');
+    else ctx.body = { reloadPage: true };
+  })
   .get(
     '/security',
     web.myAccount.checkVerifiedEmail,
+    async (ctx, next) => {
+      // Fetch session details for the session management UI
+      try {
+        ctx.state.sessionDetails = await listUserSessions(ctx, ctx.state.user);
+      } catch (err) {
+        ctx.logger.fatal(err);
+        ctx.state.sessionDetails = [];
+      }
+
+      return next();
+    },
     render('my-account/security')
   )
   .post('/recovery-keys', web.myAccount.recoveryKeys)

@@ -25,6 +25,7 @@ const createTangerine = require('#helpers/create-tangerine');
 const parseRootDomain = require('#helpers/parse-root-domain');
 const setupMongoose = require('#helpers/setup-mongoose');
 const logger = require('#helpers/logger');
+const isTimeoutError = require('#helpers/is-timeout-error');
 
 const breeSharedConfig = sharedConfig('BREE');
 const client = new Redis(breeSharedConfig.redis, logger);
@@ -92,7 +93,10 @@ graceful.listen();
 
       const hasDNSError =
         Array.isArray(errors) &&
-        errors.some((err) => err.code && DNS_RETRY_CODES.has(err.code));
+        errors.some(
+          (err) =>
+            (err.code && DNS_RETRY_CODES.has(err.code)) || isTimeoutError(err)
+        );
 
       if (!hasDNSError && !txt && !mx) {
         // otherwise remove the domain

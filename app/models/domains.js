@@ -49,6 +49,7 @@ const verificationRecordOptions = require('#config/verification-record');
 const checkDomainAndAct = require('#helpers/check-domain-and-act');
 const createTangerine = require('#helpers/create-tangerine');
 const emailHelper = require('#helpers/email');
+const isTimeoutError = require('#helpers/is-timeout-error');
 const { encrypt, decrypt } = require('#helpers/encrypt-decrypt');
 const {
   hasReputableDNS,
@@ -1491,7 +1492,11 @@ Domains.pre('save', async function (next) {
     //
     const hasDNSError =
       Array.isArray(errors) &&
-      errors.some((error) => error.code && DNS_RETRY_CODES.has(error.code));
+      errors.some(
+        (error) =>
+          (error.code && DNS_RETRY_CODES.has(error.code)) ||
+          isTimeoutError(error)
+      );
 
     if (!hasDNSError) {
       // Reset missing txt so we alert users if they are missing a TXT in future again

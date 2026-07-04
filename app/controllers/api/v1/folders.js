@@ -9,8 +9,11 @@ const isSANB = require('is-string-and-not-blank');
 const pify = require('pify');
 const { boolean } = require('boolean');
 
+const pMap = require('p-map');
+
 const Aliases = require('#models/aliases');
 const Mailboxes = require('#models/mailboxes');
+const Messages = require('#models/messages');
 const i18n = require('#helpers/i18n');
 const setPaginationHeaders = require('#helpers/set-pagination-headers');
 
@@ -22,7 +25,7 @@ const onDeletePromise = pify(onDelete, { multiArgs: true });
 const onCreatePromise = pify(onCreate, { multiArgs: true });
 const onRenamePromise = pify(onRename, { multiArgs: true });
 
-function json(mailbox) {
+function json(mailbox, { messages, unseen } = {}) {
   // Transform mailbox data for API response
   const object = {
     id: mailbox._id,
@@ -42,6 +45,10 @@ function json(mailbox) {
     updated_at: mailbox.updated_at,
     object: 'folder'
   };
+
+  // Include message counts when available
+  if (typeof messages === 'number') object.total = messages;
+  if (typeof unseen === 'number') object.unseen_count = unseen;
 
   return object;
 }
@@ -78,8 +85,30 @@ async function list(ctx) {
     itemCount
   );
 
+  // Fetch message counts for each folder in parallel
+  const counts = await pMap(
+    mailboxes,
+    async (mailbox) => {
+      try {
+        const [messages, unseen] = await Promise.all([
+          Messages.countDocuments(ctx.instance, ctx.state.session, {
+            mailbox: mailbox._id
+          }),
+          Messages.countDocuments(ctx.instance, ctx.state.session, {
+            mailbox: mailbox._id,
+            unseen: true
+          })
+        ]);
+        return { messages, unseen };
+      } catch {
+        return { messages: undefined, unseen: undefined };
+      }
+    },
+    { concurrency: 5 }
+  );
+
   ctx.body = Array.isArray(mailboxes)
-    ? mailboxes.map((mailbox) => json(mailbox))
+    ? mailboxes.map((mailbox, i) => json(mailbox, counts[i] || {}))
     : [];
 }
 

@@ -11,6 +11,7 @@ const config = require('#config');
 const emailHelper = require('#helpers/email');
 const i18n = require('#helpers/i18n');
 const logger = require('#helpers/logger');
+const isTimeoutError = require('#helpers/is-timeout-error');
 
 // <https://github.com/nodejs/node/blob/08dd4b1723b20d56fbedf37d52e736fe09715f80/lib/dns.js#L296-L320>
 // <https://docs.rs/c-ares/4.0.3/c_ares/enum.Error.html>
@@ -114,7 +115,10 @@ async function checkAndAutoApproveSMTP(options) {
   //
   const hasDNSError =
     Array.isArray(errors) &&
-    errors.some((err) => err.code && DNS_RETRY_CODES.has(err.code));
+    errors.some(
+      (err) =>
+        (err.code && DNS_RETRY_CODES.has(err.code)) || isTimeoutError(err)
+    );
 
   const result = {
     isVerified,

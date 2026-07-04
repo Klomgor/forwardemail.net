@@ -265,13 +265,53 @@ block body
           .card.border-themed.mb-3
             h2.h6.card-header= t("Session Management")
             .card-body
-              if user.sessions.length === 0
+              if !sessionDetails || sessionDetails.length === 0
                 p.mb-0= t("Your session management information is being automatically updated, please check back later.")
-              else if user.sessions.length === 1
-                p.mb-0!= t("You are logged in with the only active and current session on your account.")
               else
-                p.mb-0!= t('You have <span class="notranslate">%d</span> active sessions.', user.sessions.length)
-            if user.sessions.length > 1
+                p.mb-2!= t('You have <span class="notranslate">%d</span> active sessions.', sessionDetails.length)
+                .table-responsive
+                  table.table.table-hover.table-sm.mb-0
+                    thead
+                      tr
+                        th= t("Device")
+                        th= t("IP Address")
+                        th= t("Last Active")
+                        th.text-right= t("Actions")
+                    tbody
+                      each session in sessionDetails
+                        tr(class=session.is_current ? "table-active" : "")
+                          td
+                            span.notranslate= session.ua_short
+                            if session.is_current
+                              span.badge.badge-success.ml-1= t("Current")
+                          td
+                            code.notranslate= session.ip
+                          td.dayjs(
+                            data-time=session.last_active || "",
+                            title=session.last_active
+                              ? dayjs(session.last_active)
+                                  .tz(user.timezone === "Etc/Unknown" ? "UTC" : user.timezone)
+                                  .format("M/D/YY h:mm A z")
+                              : ""
+                          )
+                            small= session.last_active ? dayjs(session.last_active).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z") : t("Unknown")
+                          td.text-right
+                            if session.is_current
+                              span.text-muted= t("Current session")
+                            else
+                              form.ajax-form.confirm-prompt.d-inline(
+                                action=l("/my-account/revoke-session"),
+                                method="POST"
+                              )
+                                input(
+                                  type="hidden",
+                                  name="session_id",
+                                  value=session.id
+                                )
+                                button.btn.btn-sm.btn-outline-danger(
+                                  type="submit"
+                                )= t("Revoke")
+            if sessionDetails && sessionDetails.length > 1
               .card-footer.text-right
                 form.ajax-form.confirm-prompt(
                   action=l("/my-account/invalidate-other-sessions"),

@@ -626,6 +626,17 @@ module.exports = (redis) => ({
             .catch((err) => ctx.logger.fatal(err));
         }
 
+        // Store session metadata for session management UI
+        if (!ctx.session._meta) {
+          ctx.session._meta = {
+            ip: ctx.ip,
+            ua: ctx.get('user-agent'),
+            created_at: new Date().toISOString()
+          };
+        }
+
+        ctx.session._meta.last_active = new Date().toISOString();
+
         if (ctx.state.user[config.passport.fields.otpEnabled]) {
           if (ctx.session.otp) {
             if (ctx.session.otp_remember_me) {

@@ -200,20 +200,28 @@ async function loadCharts(reset = false) {
         };
       }
 
-      // Build the donut center label formatter from the server-provided
-      // `totalLabel` string (functions cannot survive JSON serialization).
+      // Build the donut center label formatter dynamically.
+      // Sum the actual series values so the center always reflects
+      // what is displayed in the chart (not a separate total_messages stat).
       if (
-        typeof chart.options.totalLabel === 'string' &&
         chart.options.plotOptions &&
         chart.options.plotOptions.pie &&
         chart.options.plotOptions.pie.donut &&
         chart.options.plotOptions.pie.donut.labels &&
         chart.options.plotOptions.pie.donut.labels.total
       ) {
-        const label = chart.options.totalLabel;
-        chart.options.plotOptions.pie.donut.labels.total.formatter = () =>
-          label;
-        delete chart.options.totalLabel;
+        chart.options.plotOptions.pie.donut.labels.total.formatter = function (
+          w
+        ) {
+          const totals = w.globals.seriesTotals;
+          if (!totals || totals.length === 0) return '0';
+          let sum = 0;
+          for (const total of totals) {
+            sum += total;
+          }
+
+          return sum.toLocaleString();
+        };
       }
 
       const apex = new Apex($element.get(0), chart.options);

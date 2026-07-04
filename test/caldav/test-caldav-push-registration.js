@@ -653,7 +653,11 @@ test('send-apn: createNote (Mail) sets pushType background and aps.m hash', (t) 
     'background',
     'Mail must use background (dovecot-xaps-daemon)'
   );
-  t.is(note.priority, 5, 'background pushes must use priority 5');
+  t.is(
+    note.priority,
+    undefined,
+    'Mail omits apns-priority header for immediate delivery'
+  );
   // md5("INBOX") = ... (verify shape only)
   t.true(Array.isArray(note.aps.m), 'aps.m must be an array');
   t.is(note.aps.m.length, 1, 'aps.m must have exactly one element');
@@ -724,9 +728,9 @@ test('send-apn: createNote (Mail) does NOT add Calendar payload fields', (t) => 
     { device_token: 'tok' },
     { mailboxPath: 'INBOX' }
   );
-  // Mail uses priority 5 (background) and an empty top-level payload
-  // object; the Calendar fields must not leak into Mail.
-  t.is(note.priority, 5, 'Mail must use priority 5');
+  // Mail omits apns-priority (undefined) so APNs defaults to immediate
+  // delivery; the Calendar fields must not leak into Mail.
+  t.is(note.priority, undefined, 'Mail omits apns-priority header');
   t.is(note.payload && note.payload.key, undefined);
   t.is(note.payload && note.payload.dataChangedTimestamp, undefined);
 });
