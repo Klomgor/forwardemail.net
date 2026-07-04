@@ -578,14 +578,15 @@ function getBounceInfo(err) {
     bounceInfo.action = 'reject';
 
   // <https://github.com/zone-eu/zone-mta/issues/434>
-  // DMARC failures should be retried (421) since they may be temporary SPF issues
+  // DMARC policy rejections are permanent (RFC 7489/9989 Section 6.7).
+  // The domain's p=reject policy will not change on retry; use 550 not 421.
   if (
     response.startsWith('DMARC ') ||
     response.includes(' DMARC ') ||
     response.includes('DMARC policy')
   ) {
     bounceInfo.category = 'dmarc';
-    bounceInfo.action = 'defer';
+    bounceInfo.action = 'reject';
   }
 
   return bounceInfo;

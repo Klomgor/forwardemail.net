@@ -60,6 +60,9 @@ function getErrorCode(err) {
     (typeof err.responseCode !== 'number' || err.responseCode >= 500) &&
     err.bounceInfo.action !== 'reject' &&
     err.bounceInfo.category !== 'protocol' &&
+    // DMARC rejections are permanent (RFC 7489/9989) — do not downgrade to 421.
+    // The domain's DMARC p=reject policy will not change on retry.
+    err.bounceInfo.category !== 'dmarc' &&
     (['defer', 'slowdown'].includes(err.bounceInfo.action) ||
       ['blocklist', 'network', 'protocol', 'policy'].includes(
         err.bounceInfo.category

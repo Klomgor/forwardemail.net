@@ -31,3 +31,28 @@ test('categorizes generic Abusix lookup blocked response as blocklist', (t) => {
   t.is(bounceInfo.category, 'blocklist');
   t.is(bounceInfo.action, 'defer');
 });
+
+test('categorizes DMARC policy rejection as permanent reject', (t) => {
+  const err = {
+    message:
+      "The email sent has failed DMARC validation and is rejected due to the domain's DMARC policy",
+    responseCode: 550
+  };
+
+  const bounceInfo = getBounceInfo(err);
+
+  t.is(bounceInfo.category, 'dmarc');
+  t.is(bounceInfo.action, 'reject');
+});
+
+test('categorizes remote DMARC rejection response as permanent reject', (t) => {
+  const err = {
+    response:
+      '550 5.7.26 Unauthenticated email from example.com is not accepted due to domain DMARC policy'
+  };
+
+  const bounceInfo = getBounceInfo(err);
+
+  t.is(bounceInfo.category, 'dmarc');
+  t.is(bounceInfo.action, 'reject');
+});

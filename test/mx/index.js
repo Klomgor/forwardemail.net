@@ -578,7 +578,7 @@ test('isExpiredOrNewlyCreated', async (t) => {
       obj.err.message,
       `The domain ${rootDomain} was detected as a pending state domain via WHOIS/RDAP lookup. Due to major registrars such as GoDaddy, Namecheap, and Hostgator previously blocking us due to abuse &mdash; we unfortunately have to enforce strict abuse prevention controls to block suspicious activity. Without this abuse prevention, our service would be blocked entirely from these registrars. We require that you please upgrade to a paid plan at ${config.urls.web} to use our service with this domain.`
     );
-    t.is(obj.err.responseCode, 550);
+    t.is(obj.err.responseCode, 421);
     t.is(obj.response.found, true);
     t.deepEqual(obj.response.status, ['pending delete']);
   }
@@ -605,7 +605,7 @@ test('isExpiredOrNewlyCreated', async (t) => {
       obj.err.message,
       `The domain ${rootDomain} was detected as a recently expired domain via WHOIS/RDAP lookup. Due to major registrars such as GoDaddy, Namecheap, and Hostgator previously blocking us due to abuse &mdash; we unfortunately have to enforce strict abuse prevention controls to block suspicious activity. Without this abuse prevention, our service would be blocked entirely from these registrars. We require that you please upgrade to a paid plan at ${config.urls.web} to use our service with this domain.`
     );
-    t.is(obj.err.responseCode, 550);
+    t.is(obj.err.responseCode, 421);
     t.is(obj.response.found, true);
     t.deepEqual(obj.response.ts.expires, expires);
   }
@@ -633,7 +633,7 @@ test('isExpiredOrNewlyCreated', async (t) => {
       obj.err.message,
       `The domain ${rootDomain} was detected as a newly created or transferred domain via WHOIS/RDAP lookup. Due to major registrars such as GoDaddy, Namecheap, and Hostgator previously blocking us due to abuse &mdash; we unfortunately have to enforce strict abuse prevention controls to block suspicious activity. Without this abuse prevention, our service would be blocked entirely from these registrars. We require that you please upgrade to a paid plan at ${config.urls.web} to use our service with this domain.`
     );
-    t.is(obj.err.responseCode, 550);
+    t.is(obj.err.responseCode, 421);
     t.is(obj.response.found, true);
     t.deepEqual(obj.response.ts.expires, expires);
     t.deepEqual(obj.response.ts.created, created);
