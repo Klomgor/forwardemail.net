@@ -430,6 +430,8 @@ module.exports = {
   INVALID_API_CREDENTIALS: 'Invalid API credentials.',
   INVALID_API_TOKEN: 'Invalid API token.',
   INVALID_EMAIL: 'Email address was invalid.',
+  INVALID_FORWARDING_ADDRESS:
+    'Default forwarding address must be a valid email address, fully-qualified domain name ("FQDN"), IP address, or webhook URL.',
   INVALID_FILE: 'File upload was invalid.',
   INVALID_DENYLIST_VALUE:
     'Invalid domain name, IP address, email address. Please correct your denylist removal request and try again.',

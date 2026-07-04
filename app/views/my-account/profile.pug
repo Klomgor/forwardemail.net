@@ -238,6 +238,16 @@ block body
                           selected=user[config.userFields.defaultDomain] && user[config.userFields.defaultDomain].toString() === domain.id
                         )= domain.name
                     label(for="input-default-domain")= t("Default Domain")
+                hr
+                .alert.alert-info.small= t("If you set a default forwarding address, it will be used instead of your account email when creating new aliases.")
+                .form-group.floating-label
+                  input#input-default-forwarding-address.form-control(
+                    type="text",
+                    name=config.userFields.defaultForwardingAddress,
+                    value=user[config.userFields.defaultForwardingAddress],
+                    placeholder="user@example.com or https://webhook.example.com/endpoint"
+                  )
+                  label(for="input-default-forwarding-address")= t("Default Forwarding Address")
               .card-footer
                 button.btn.btn-success.btn-lg.btn-block(type="submit")= t("Save Changes")
           .alert.alert-secondary.small.mt-3.mb-0.text-center

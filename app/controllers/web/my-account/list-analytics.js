@@ -226,11 +226,20 @@ async function listAnalytics(ctx) {
   };
 
   //
+  // Exclude transient timeout errors that are not actionable by users
+  //
+  const timeoutFilter = {
+    'err.message': {
+      $ne: 'Message delivery was temporarily interrupted, please try again later.'
+    }
+  };
+
+  //
   // Base match conditions
   //
   const baseMatch = {
     created_at: { $gte: SEVEN_DAYS_AGO },
-    $and: [{ $or: domainOrQuery }, codebugFilter]
+    $and: [{ $or: domainOrQuery }, codebugFilter, timeoutFilter]
   };
 
   const outboundBaseMatch = {

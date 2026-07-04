@@ -216,7 +216,10 @@ function validateAlias(ctx, next) {
   // (e.g. IMAP-only aliases that do not forward anywhere).
   //
   if (ctx.api && !ctx.state.alias && _.isEmpty(body.recipients))
-    body.recipients = [ctx.state.user.email];
+    body.recipients = [
+      ctx.state.user[config.userFields.defaultForwardingAddress] ||
+        ctx.state.user.email
+    ];
 
   //
   // if the domain is ubuntu.com and the user is in the user group

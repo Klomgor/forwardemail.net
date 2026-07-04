@@ -495,6 +495,29 @@ async function listLogs(ctx) {
     };
   }
 
+  //
+  // Filter out transient timeout/infrastructure errors from user-facing logs.
+  // These are retry-related messages that are not actionable by users
+  // and create false alarm noise in the logs UI.
+  //
+  const timeoutFilter = {
+    'err.message': {
+      $ne: 'Message delivery was temporarily interrupted, please try again later.'
+    }
+  };
+
+  if (query.$and) {
+    query.$and.push(timeoutFilter);
+  } else if (query.$or) {
+    query = {
+      $and: [query, timeoutFilter]
+    };
+  } else {
+    query = {
+      $and: [query, timeoutFilter]
+    };
+  }
+
   // in the future we can move this to a background job
   if (
     ctx.pathWithoutLocale === '/my-account/logs/download' ||

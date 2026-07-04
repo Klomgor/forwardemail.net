@@ -1078,6 +1078,7 @@ const config = {
     'userFields.addressCountry',
     // Additional fields for comprehensive audit logging
     'userFields.defaultDomain',
+    'userFields.defaultForwardingAddress',
     'userFields.smtpLimit',
     'userFields.maxQuotaPerAlias'
   ],
@@ -1221,6 +1222,7 @@ const config = {
     paypalPayerID: 'paypal_payer_id',
     paypalSubscriptionID: 'paypal_subscription_id',
     defaultDomain: 'default_domain',
+    defaultForwardingAddress: 'default_forwarding_address',
     domainCount: 'domain_count',
     aliasCount: 'alias_count',
     companyName: 'company_name',

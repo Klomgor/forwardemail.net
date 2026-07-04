@@ -12,6 +12,7 @@ const splitLines = require('split-lines');
 const { boolean } = require('boolean');
 const { isIP } = require('@forwardemail/validator');
 const _ = require('#helpers/lodash');
+const config = require('#config');
 const splitByComma = require('#helpers/split-by-comma');
 
 const isDenylisted = require('#helpers/is-denylisted');
@@ -126,7 +127,10 @@ async function validateDomain(ctx, next) {
       if (['false', '0', 0].includes(ctx.request.body.catchall)) {
         ctx.request.body.catchall = false;
       } else if (ctx.request.body.catchall === 'true') {
-        ctx.state.recipients.push(ctx.state.user.email);
+        ctx.state.recipients.push(
+          ctx.state.user[config.userFields.defaultForwardingAddress] ||
+            ctx.state.user.email
+        );
       } else {
         const rcpts = _.compact(
           _.uniq(
@@ -147,11 +151,17 @@ async function validateDomain(ctx, next) {
         ctx.state.recipients.push(...rcpts);
       }
     } else if (ctx.request.body.catchall === true) {
-      ctx.state.recipients.push(ctx.state.user.email);
+      ctx.state.recipients.push(
+        ctx.state.user[config.userFields.defaultForwardingAddress] ||
+          ctx.state.user.email
+      );
     }
   } else {
     ctx.request.body.catchall = true;
-    ctx.state.recipients.push(ctx.state.user.email);
+    ctx.state.recipients.push(
+      ctx.state.user[config.userFields.defaultForwardingAddress] ||
+        ctx.state.user.email
+    );
   }
 
   ctx.state.redirectTo = ctx.state.l(

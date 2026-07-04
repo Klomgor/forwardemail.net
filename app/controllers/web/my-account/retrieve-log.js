@@ -30,6 +30,12 @@ async function retrieveLog(ctx, next) {
           { 'err.isCodeBug': { $ne: true } },
           { message: 'delivered' }
         ]
+      },
+      // Exclude transient timeout errors that are not actionable by users
+      {
+        'err.message': {
+          $ne: 'Message delivery was temporarily interrupted, please try again later.'
+        }
       }
     ]
   })

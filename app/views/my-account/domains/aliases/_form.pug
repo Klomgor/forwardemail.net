@@ -119,7 +119,7 @@ if alias
     = t("Forwarding Recipients")
     = " "
     span.text-muted= t("(optional)")
-  textarea#textarea-alias-recipients.form-control(name="recipients", rows=1)= alias && Array.isArray(alias.recipients) ? alias.recipients.join(", ") : user.email
+  textarea#textarea-alias-recipients.form-control(name="recipients", rows=1)= alias && Array.isArray(alias.recipients) ? alias.recipients.join(", ") : user[config.userFields.defaultForwardingAddress] || user.email
   .alert.alert-secondary.small.mt-3
     if alias
       = t('Recipients must be a line-break/space/comma separated list of valid email addresses, fully-qualified domain names ("FQDN"), IP addresses, and/or webhook URL\'s.  We will automatically remove duplicate entries for you and perform validation when you click "Update Alias" below.')

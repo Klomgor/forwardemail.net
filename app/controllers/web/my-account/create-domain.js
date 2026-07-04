@@ -297,7 +297,10 @@ async function createDomain(ctx, next) {
         recipients:
           ctx.state.recipients.length > 0
             ? ctx.state.recipients
-            : [ctx.state.user.email],
+            : [
+                ctx.state.user[config.userFields.defaultForwardingAddress] ||
+                  ctx.state.user.email
+              ],
         locale: ctx.locale,
         ...(ctx.state.optionalBooleans.has_recipient_verification
           ? { has_recipient_verification: true }

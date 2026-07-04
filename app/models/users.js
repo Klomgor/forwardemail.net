@@ -435,6 +435,26 @@ object[config.userFields.defaultDomain] = {
   ref: 'Domains'
 };
 
+// Default forwarding address for new aliases
+// (accepts email, FQDN, IP, or webhook URL — same as alias recipients)
+object[config.userFields.defaultForwardingAddress] = {
+  type: String,
+  trim: true,
+  validate: {
+    validator(value) {
+      if (!value) return true;
+      return (
+        isIP(value) ||
+        isFQDN(value) ||
+        isEmail(value) ||
+        isURL(value, config.isURLOptions)
+      );
+    },
+    message:
+      'Default forwarding address must be a valid email address, fully-qualified domain name ("FQDN"), IP address, or webhook URL'
+  }
+};
+
 object[config.userFields.domainCount] = {
   type: Number,
   min: 0,

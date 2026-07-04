@@ -229,7 +229,11 @@ p.text-center.d-lg-none
                   )
                     input(type="hidden", name="name", value=str)
                     input(type="hidden", name="is_enabled", value="true")
-                    input(type="hidden", name="recipients", value=user.email)
+                    input(
+                      type="hidden",
+                      name="recipients",
+                      value=user[config.userFields.defaultForwardingAddress] || user.email
+                    )
                     button.btn.btn-success.font-weight-bold.text-uppercase(
                       type="submit"
                     )

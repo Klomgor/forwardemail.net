@@ -1841,7 +1841,10 @@ ${encode(safeStringify(parseErr(err), null, 2))}</code></pre>`
           user: ctx.state.user._id,
           domain: domain._id,
           name: '*',
-          recipients: [ctx.state.user.email],
+          recipients: [
+            ctx.state.user[config.userFields.defaultForwardingAddress] ||
+              ctx.state.user.email
+          ],
           locale: ctx.locale
         });
         if (domain.name.startsWith('www.'))

@@ -635,6 +635,9 @@ module.exports = (redis) => ({
           };
         }
 
+        // Keep IP and UA current (user may roam networks or switch devices)
+        ctx.session._meta.ip = ctx.ip;
+        ctx.session._meta.ua = ctx.get('user-agent');
         ctx.session._meta.last_active = new Date().toISOString();
 
         if (ctx.state.user[config.passport.fields.otpEnabled]) {

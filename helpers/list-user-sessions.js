@@ -15,19 +15,24 @@ function parseUA(ua) {
   let browser = 'Unknown';
   let os = 'Unknown';
 
-  // Detect OS
-  if (/Windows NT 10/.test(ua)) os = 'Windows 10+';
-  else if (/Windows NT/.test(ua)) os = 'Windows';
-  else if (/Mac OS X/.test(ua)) {
-    const m = ua.match(/Mac OS X ([\d_]+)/);
-    os = m ? `macOS ${m[1].replace(/_/g, '.')}` : 'macOS';
-  } else if (/Android ([\d.]+)/.test(ua)) {
-    os = `Android ${RegExp.$1}`;
-  } else if (/iPhone|iPad/.test(ua)) {
+  // Detect OS (order matters — check mobile before desktop since iOS UAs
+  // contain "like Mac OS X" which would otherwise match the macOS branch)
+  if (/iPhone|iPad|iPod/.test(ua)) {
     const m = ua.match(/OS ([\d_]+)/);
     os = m ? `iOS ${m[1].replace(/_/g, '.')}` : 'iOS';
-  } else if (/Linux/.test(ua)) os = 'Linux';
-  else if (/CrOS/.test(ua)) os = 'ChromeOS';
+  } else if (/Android ([\d.]+)/.test(ua)) {
+    os = `Android ${RegExp.$1}`;
+  } else if (/Windows NT 10/.test(ua)) os = 'Windows 10+';
+  else if (/Windows NT/.test(ua)) os = 'Windows';
+  else if (/Mac OS X/.test(ua) && /Mobile/.test(ua)) {
+    // iPadOS/iPhone in desktop-site mode sends a macOS UA but keeps "Mobile"
+    const m = ua.match(/Mac OS X ([\d_]+)/);
+    os = m ? `iOS ${m[1].replace(/_/g, '.')}` : 'iOS';
+  } else if (/Mac OS X/.test(ua)) {
+    const m = ua.match(/Mac OS X ([\d_]+)/);
+    os = m ? `macOS ${m[1].replace(/_/g, '.')}` : 'macOS';
+  } else if (/CrOS/.test(ua)) os = 'ChromeOS';
+  else if (/Linux/.test(ua)) os = 'Linux';
 
   // Detect browser (order matters — check specific before generic)
   if (/Edg(?:e|A|iOS)?\/([\d.]+)/.test(ua)) browser = `Edge ${RegExp.$1}`;

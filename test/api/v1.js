@@ -3529,3 +3529,205 @@ test('creates alias with empty string retention (form default)', async (t) => {
   t.is(res.body.name, 'retention-empty-string');
   t.is(res.body.retention, 0);
 });
+
+// =============================================================================
+// Default Forwarding Address Tests
+// =============================================================================
+
+test('creates alias using default forwarding address when set', async (t) => {
+  const user = await t.context.userFactory
+    .withState({
+      plan: 'enhanced_protection',
+      [config.userFields.planSetAt]: dayjs().startOf('day').toDate(),
+      [config.userFields.defaultForwardingAddress]: 'custom@example.org'
+    })
+    .create();
+
+  await t.context.paymentFactory
+    .withState({
+      user: user._id,
+      amount: 300,
+      invoice_at: dayjs().startOf('day').toDate(),
+      method: 'free_beta_program',
+      duration: ms('30d'),
+      plan: user.plan,
+      kind: 'one-time'
+    })
+    .create();
+
+  await user.save();
+
+  const domain = await t.context.domainFactory
+    .withState({
+      members: [{ user: user._id, group: 'admin' }],
+      plan: user.plan,
+      resolver,
+      has_smtp: true
+    })
+    .create();
+
+  const res = await t.context.api
+    .post(`/v1/domains/${domain.name}/aliases`)
+    .auth(user[config.userFields.apiToken])
+    .send({
+      name: 'fwd-test'
+    });
+
+  t.is(res.status, 200);
+  t.is(res.body.name, 'fwd-test');
+  t.deepEqual(res.body.recipients, ['custom@example.org']);
+});
+
+test('creates alias falling back to user email when default forwarding address is not set', async (t) => {
+  const user = await t.context.userFactory
+    .withState({
+      plan: 'enhanced_protection',
+      [config.userFields.planSetAt]: dayjs().startOf('day').toDate()
+    })
+    .create();
+
+  await t.context.paymentFactory
+    .withState({
+      user: user._id,
+      amount: 300,
+      invoice_at: dayjs().startOf('day').toDate(),
+      method: 'free_beta_program',
+      duration: ms('30d'),
+      plan: user.plan,
+      kind: 'one-time'
+    })
+    .create();
+
+  await user.save();
+
+  const domain = await t.context.domainFactory
+    .withState({
+      members: [{ user: user._id, group: 'admin' }],
+      plan: user.plan,
+      resolver,
+      has_smtp: true
+    })
+    .create();
+
+  const res = await t.context.api
+    .post(`/v1/domains/${domain.name}/aliases`)
+    .auth(user[config.userFields.apiToken])
+    .send({
+      name: 'fwd-fallback'
+    });
+
+  t.is(res.status, 200);
+  t.is(res.body.name, 'fwd-fallback');
+  t.deepEqual(res.body.recipients, [user.email]);
+});
+
+test('sets default forwarding address via API account update', async (t) => {
+  const user = await t.context.userFactory
+    .withState({
+      plan: 'enhanced_protection',
+      [config.userFields.planSetAt]: dayjs().startOf('day').toDate()
+    })
+    .create();
+
+  await t.context.paymentFactory
+    .withState({
+      user: user._id,
+      amount: 300,
+      invoice_at: dayjs().startOf('day').toDate(),
+      method: 'free_beta_program',
+      duration: ms('30d'),
+      plan: user.plan,
+      kind: 'one-time'
+    })
+    .create();
+
+  await user.save();
+
+  // Set a valid email as default forwarding address
+  let res = await t.context.api
+    .put('/v1/account')
+    .auth(user[config.userFields.apiToken])
+    .send({
+      [config.userFields.defaultForwardingAddress]: 'forward-to@example.net'
+    });
+
+  t.is(res.status, 200);
+  t.is(
+    res.body[config.userFields.defaultForwardingAddress],
+    'forward-to@example.net'
+  );
+
+  // Set a valid webhook URL
+  res = await t.context.api
+    .put('/v1/account')
+    .auth(user[config.userFields.apiToken])
+    .send({
+      [config.userFields.defaultForwardingAddress]:
+        'https://webhook.example.com/incoming'
+    });
+
+  t.is(res.status, 200);
+  t.is(
+    res.body[config.userFields.defaultForwardingAddress],
+    'https://webhook.example.com/incoming'
+  );
+
+  // Clear the field by sending empty string
+  res = await t.context.api
+    .put('/v1/account')
+    .auth(user[config.userFields.apiToken])
+    .send({
+      [config.userFields.defaultForwardingAddress]: ''
+    });
+
+  t.is(res.status, 200);
+  t.is(res.body[config.userFields.defaultForwardingAddress], undefined);
+});
+
+test('default forwarding address accepts FQDN and IP', async (t) => {
+  const user = await t.context.userFactory
+    .withState({
+      plan: 'enhanced_protection',
+      [config.userFields.planSetAt]: dayjs().startOf('day').toDate()
+    })
+    .create();
+
+  await t.context.paymentFactory
+    .withState({
+      user: user._id,
+      amount: 300,
+      invoice_at: dayjs().startOf('day').toDate(),
+      method: 'free_beta_program',
+      duration: ms('30d'),
+      plan: user.plan,
+      kind: 'one-time'
+    })
+    .create();
+
+  await user.save();
+
+  // Set a valid FQDN
+  let res = await t.context.api
+    .put('/v1/account')
+    .auth(user[config.userFields.apiToken])
+    .send({
+      [config.userFields.defaultForwardingAddress]: 'mail.example.com'
+    });
+
+  t.is(res.status, 200);
+  t.is(
+    res.body[config.userFields.defaultForwardingAddress],
+    'mail.example.com'
+  );
+
+  // Set a valid IP address
+  res = await t.context.api
+    .put('/v1/account')
+    .auth(user[config.userFields.apiToken])
+    .send({
+      [config.userFields.defaultForwardingAddress]: '192.168.1.100'
+    });
+
+  t.is(res.status, 200);
+  t.is(res.body[config.userFields.defaultForwardingAddress], '192.168.1.100');
+});

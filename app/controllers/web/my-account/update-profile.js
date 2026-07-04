@@ -7,8 +7,10 @@ const Boom = require('@hapi/boom');
 const cryptoRandomString = require('crypto-random-string');
 const dayjs = require('dayjs-with-plugins');
 const humanize = require('humanize-string');
+const isFQDN = require('is-fqdn');
 const isSANB = require('is-string-and-not-blank');
 const { boolean } = require('boolean');
+const { isIP, isURL } = require('@forwardemail/validator');
 const _ = require('#helpers/lodash');
 
 const config = require('#config');
@@ -125,6 +127,25 @@ async function updateProfile(ctx) {
         ctx.state.user[config.userFields.receiptEmail] =
           body[config.userFields.receiptEmail];
       } else ctx.state.user[config.userFields.receiptEmail] = undefined;
+    }
+
+    // default forwarding address
+    if (_.isString(body[config.userFields.defaultForwardingAddress])) {
+      if (isSANB(body[config.userFields.defaultForwardingAddress])) {
+        const val = body[config.userFields.defaultForwardingAddress].trim();
+        if (
+          !isEmail(val) &&
+          !isFQDN(val) &&
+          !isIP(val) &&
+          !isURL(val, config.isURLOptions)
+        )
+          throw Boom.badRequest(
+            ctx.translateError('INVALID_FORWARDING_ADDRESS')
+          );
+        ctx.state.user[config.userFields.defaultForwardingAddress] = val;
+      } else {
+        ctx.state.user[config.userFields.defaultForwardingAddress] = undefined;
+      }
     }
 
     //

@@ -118,6 +118,10 @@ async function getLogStats(domainIds, startDate, endDate) {
     created_at: {
       $gte: startDate,
       $lte: endDate
+    },
+    // Exclude transient timeout errors that are not actionable by users
+    'err.message': {
+      $ne: 'Message delivery was temporarily interrupted, please try again later.'
     }
   };
 
@@ -407,6 +411,10 @@ async function processUser(user, endDate) {
       created_at: {
         $gte: startDate,
         $lte: endDate
+      },
+      // Exclude transient timeout errors that are not actionable by users
+      'err.message': {
+        $ne: 'Message delivery was temporarily interrupted, please try again later.'
       }
     })
       .hint(INDEX_HINTS.domainsCreatedAt)

@@ -186,6 +186,14 @@ async function update(ctx) {
 
   if (_.isString(body.avatar_url)) ctx.state.user.avatar_url = body.avatar_url;
 
+  if (_.isString(body[config.userFields.defaultForwardingAddress])) {
+    ctx.state.user[config.userFields.defaultForwardingAddress] = isSANB(
+      body[config.userFields.defaultForwardingAddress]
+    )
+      ? body[config.userFields.defaultForwardingAddress].trim()
+      : undefined;
+  }
+
   ctx.state.user = await ctx.state.user.save();
   ctx.body = ctx.state.user.toObject();
 }
