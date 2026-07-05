@@ -2802,6 +2802,8 @@ Tasks.org 是一个流行的开源任务管理器，与 Forward Email 的 CalDAV
 | `index`                    | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | 访问特定邮件头出现次数                            |
 | `regex`                    | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | 正则表达式匹配                                   |
 | `enotify`                  | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | 发送通知（例如 mailto:）                          |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`              | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                               | 访问环境信息                                     |
 | `mailbox`                  | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                               | 测试邮箱存在性，创建邮箱                          |
 | `special-use`              | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                               | 归档到特殊用途邮箱（\Junk、\Trash）               |
@@ -2816,7 +2818,6 @@ Tasks.org 是一个流行的开源任务管理器，与 Forward Email 的 CalDAV
 | ------------------------------------------------------------ | ------------------------------------------------------------------- |
 | `include`                                                    | 安全风险（脚本注入）且需要全局脚本存储                              |
 | `mboxmetadata` / `servermetadata`                            | 需要 IMAP METADATA 扩展支持                                         |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | 复杂的 MIME 树操作尚未实现                                          |
 
 #### 示例 Sieve 脚本 {#example-sieve-scripts}
 

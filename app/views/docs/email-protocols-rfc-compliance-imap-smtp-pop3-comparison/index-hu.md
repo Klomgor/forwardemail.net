@@ -1147,6 +1147,8 @@ A [Sieve](https://en.wikipedia.org/wiki/Sieve_\(mail_filtering_language\)) egy s
 | `index`                      | Meghatározott fejléc előfordulások elérése | `:index` többértékű fejlécekhez                |
 | `regex`                      | Reguláris kifejezés egyezés                | Teljes regex támogatás tesztekben               |
 | `enotify`                    | Értesítések küldése                        | `mailto:` értesítések az Emails.queue-n keresztül |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Környezeti információk elérése             | Domain, host, remote-ip a munkamenetből         |
 | `mailbox`                    | Postafiók létezésének tesztelése           | `mailboxexists` teszt                            |
 | `special-use`                | Speciális használatú postafiókokba fájlba helyezés | \Junk, \Trash stb. mappák leképezése            |
@@ -1162,7 +1164,6 @@ A [Sieve](https://en.wikipedia.org/wiki/Sieve_\(mail_filtering_language\)) egy s
 | `mboxmetadata` / `servermetadata`   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | IMAP METADATA kiterjesztést igényel                             |
 | `fcc`                               | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Elküldött mappa integrációt igényel                             |
 | `encoded-character`                 | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parser módosítás szükséges a ${hex:} szintaxis miatt             |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Komplex MIME fa kezelés                                          |
 #### Sieve feldolgozási folyamat {#sieve-processing-flow}
 
 ```mermaid

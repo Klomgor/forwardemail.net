@@ -1147,6 +1147,8 @@ Các phần mở rộng lịch sau KHÔNG được hỗ trợ:
 | `index`                      | Truy cập các lần xuất hiện tiêu đề cụ thể | `:index` cho tiêu đề đa giá trị                |
 | `regex`                      | So khớp biểu thức chính quy               | Hỗ trợ đầy đủ regex trong kiểm tra             |
 | `enotify`                    | Gửi thông báo                            | Thông báo `mailto:` qua Emails.queue           |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Truy cập thông tin môi trường             | Tên miền, máy chủ, IP từ phiên làm việc        |
 | `mailbox`                    | Kiểm tra sự tồn tại hộp thư                | Kiểm tra `mailboxexists`                      |
 | `special-use`                | Lưu vào các hộp thư đặc biệt               | Ánh xạ \Junk, \Trash, v.v. thành thư mục       |
@@ -1162,7 +1164,6 @@ Các phần mở rộng lịch sau KHÔNG được hỗ trợ:
 | `mboxmetadata` / `servermetadata`   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Yêu cầu phần mở rộng METADATA của IMAP                           |
 | `fcc`                               | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Yêu cầu tích hợp thư mục Sent                                    |
 | `encoded-character`                 | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Cần thay đổi trình phân tích cú pháp cho cú pháp ${hex:}         |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Xử lý cây MIME phức tạp                                         |
 #### Luồng Xử Lý Sieve {#sieve-processing-flow}
 
 ```mermaid

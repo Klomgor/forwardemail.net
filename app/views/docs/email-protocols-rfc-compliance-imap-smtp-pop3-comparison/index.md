@@ -1151,40 +1151,41 @@ The following calendaring extensions are NOT supported:
 
 #### Supported Sieve Extensions
 
-| Extension                    | Description                              | Integration                                |
-| ---------------------------- | ---------------------------------------- | ------------------------------------------ |
-| `fileinto`                   | File messages into specific folders      | Messages stored in specified IMAP folder   |
-| `reject` / `ereject`         | Reject messages with an error            | SMTP rejection with bounce message         |
-| `vacation`                   | Automatic vacation/out-of-office replies | Queued via Emails.queue with rate limiting |
-| `vacation-seconds`           | Fine-grained vacation response intervals | TTL from `:seconds` parameter              |
-| `imap4flags`                 | Set IMAP flags (\Seen, \Flagged, etc.)   | Flags applied during message storage       |
-| `envelope`                   | Test envelope sender/recipient           | Access to SMTP envelope data               |
-| `body`                       | Test message body content                | Full body text matching                    |
-| `variables`                  | Store and use variables in scripts       | Variable expansion with modifiers          |
-| `relational`                 | Relational comparisons                   | `:count`, `:value` with gt/lt/eq           |
-| `comparator-i;ascii-numeric` | Numeric comparisons                      | Numeric string comparison                  |
-| `copy`                       | Copy messages while redirecting          | `:copy` flag on fileinto/redirect          |
-| `editheader`                 | Add or delete message headers            | Headers modified before storage            |
-| `date`                       | Test date/time values                    | `currentdate` and header date tests        |
-| `index`                      | Access specific header occurrences       | `:index` for multi-value headers           |
-| `regex`                      | Regular expression matching              | Full regex support in tests                |
-| `enotify`                    | Send notifications                       | `mailto:` notifications via Emails.queue   |
-| `environment`                | Access environment information           | Domain, host, remote-ip from session       |
-| `mailbox`                    | Test mailbox existence                   | `mailboxexists` test                       |
-| `special-use`                | File into special-use mailboxes          | Maps \Junk, \Trash, etc. to folders        |
-| `duplicate`                  | Detect duplicate messages                | Redis-based duplicate tracking             |
-| `ihave`                      | Test for extension availability          | Runtime capability checking                |
-| `subaddress`                 | Access user+detail address parts         | `:user` and `:detail` address parts        |
+| Extension                    | Description                              | Integration                                                                                                                                                                                                                                                              |
+| ---------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `fileinto`                   | File messages into specific folders      | Messages stored in specified IMAP folder                                                                                                                                                                                                                                 |
+| `reject` / `ereject`         | Reject messages with an error            | SMTP rejection with bounce message                                                                                                                                                                                                                                       |
+| `vacation`                   | Automatic vacation/out-of-office replies | Queued via Emails.queue with rate limiting                                                                                                                                                                                                                               |
+| `vacation-seconds`           | Fine-grained vacation response intervals | TTL from `:seconds` parameter                                                                                                                                                                                                                                            |
+| `imap4flags`                 | Set IMAP flags (\Seen, \Flagged, etc.)   | Flags applied during message storage                                                                                                                                                                                                                                     |
+| `envelope`                   | Test envelope sender/recipient           | Access to SMTP envelope data                                                                                                                                                                                                                                             |
+| `body`                       | Test message body content                | Full body text matching                                                                                                                                                                                                                                                  |
+| `variables`                  | Store and use variables in scripts       | Variable expansion with modifiers                                                                                                                                                                                                                                        |
+| `relational`                 | Relational comparisons                   | `:count`, `:value` with gt/lt/eq                                                                                                                                                                                                                                         |
+| `comparator-i;ascii-numeric` | Numeric comparisons                      | Numeric string comparison                                                                                                                                                                                                                                                |
+| `copy`                       | Copy messages while redirecting          | `:copy` flag on fileinto/redirect                                                                                                                                                                                                                                        |
+| `editheader`                 | Add or delete message headers            | Headers modified before storage                                                                                                                                                                                                                                          |
+| `date`                       | Test date/time values                    | `currentdate` and header date tests                                                                                                                                                                                                                                      |
+| `index`                      | Access specific header occurrences       | `:index` for multi-value headers                                                                                                                                                                                                                                         |
+| `regex`                      | Regular expression matching              | Full regex support in tests                                                                                                                                                                                                                                              |
+| `enotify`                    | Send notifications                       | `mailto:` notifications via Emails.queue                                                                                                                                                                                                                                 |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias)                                                                                                                                                               |
+| `mime`                       | MIME part tests and iteration            | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
+| `environment`                | Access environment information           | Domain, host, remote-ip from session                                                                                                                                                                                                                                     |
+| `mailbox`                    | Test mailbox existence                   | `mailboxexists` test                                                                                                                                                                                                                                                     |
+| `special-use`                | File into special-use mailboxes          | Maps \Junk, \Trash, etc. to folders                                                                                                                                                                                                                                      |
+| `duplicate`                  | Detect duplicate messages                | Redis-based duplicate tracking                                                                                                                                                                                                                                           |
+| `ihave`                      | Test for extension availability          | Runtime capability checking                                                                                                                                                                                                                                              |
+| `subaddress`                 | Access user+detail address parts         | `:user` and `:detail` address parts                                                                                                                                                                                                                                      |
 
 #### Sieve Extensions NOT Supported
 
-| Extension                               | RFC                                                       | Reason                                                           |
-| --------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
-| `include`                               | [RFC 6609](https://datatracker.ietf.org/doc/html/rfc6609) | Security risk (script injection), requires global script storage |
-| `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Requires IMAP METADATA extension                                 |
-| `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Requires Sent folder integration                                 |
-| `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parser changes required for ${hex:} syntax                       |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Complex MIME tree manipulation                                   |
+| Extension                         | RFC                                                       | Reason                                                           |
+| --------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
+| `include`                         | [RFC 6609](https://datatracker.ietf.org/doc/html/rfc6609) | Security risk (script injection), requires global script storage |
+| `mboxmetadata` / `servermetadata` | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Requires IMAP METADATA extension                                 |
+| `fcc`                             | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Requires Sent folder integration                                 |
+| `encoded-character`               | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parser changes required for ${hex:} syntax                       |
 
 #### Sieve Processing Flow
 

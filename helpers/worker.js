@@ -339,6 +339,16 @@ async function rekey(payload) {
     logger.fatal(err);
   }
 
+  //
+  // If the error is ServerShutdownError, do NOT clear is_rekey.
+  // The job will be re-queued by sqlite-worker.js and retried
+  // after the next restart. Clearing is_rekey here would allow
+  // auth while the rekey is incomplete (corrupted state).
+  //
+  if (err instanceof ServerShutdownError) {
+    throw err;
+  }
+
   try {
     // unset `is_rekey` on the user
     await Aliases.findOneAndUpdate(
@@ -349,6 +359,9 @@ async function rekey(payload) {
       {
         $set: {
           is_rekey: false
+        },
+        $unset: {
+          rekey_started_at: 1
         }
       }
     );

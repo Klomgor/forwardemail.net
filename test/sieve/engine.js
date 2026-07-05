@@ -32,7 +32,9 @@ const SUPPORTED_CAPABILITIES = [
   'index',
   'regex',
   'enotify',
-  'environment'
+  'environment',
+  'mime',
+  'notify'
 ];
 
 // Helper to execute a script
@@ -1265,7 +1267,6 @@ describe('Core Sieve tests (RFC 5228 Section 5)', () => {
           fileinto "Duplicate";
         }
       `;
-
       // Test with numeric message-id
       const message = createMessage({
         headers: {
@@ -1276,6 +1277,605 @@ describe('Core Sieve tests (RFC 5228 Section 5)', () => {
       const result = await executeScript(script, message);
       // Should not throw
       assert.ok(!result.error);
+    });
+  });
+
+  describe('Notify alias for enotify', () => {
+    it('should accept require "notify" as alias for enotify', async () => {
+      const script = `
+        require "notify";
+        notify :method "mailto:admin@example.com" :message "Alert";
+      `;
+      const result = await executeScript(script, createMessage());
+      assert.ok(!result.error);
+      const notify = result.actions.find((a) => a.type === 'notify');
+      assert.ok(notify);
+      assert.strictEqual(notify.method, 'mailto:admin@example.com');
+    });
+
+    it('should accept require "enotify" and produce notify action', async () => {
+      const script = `
+        require "enotify";
+        notify :method "mailto:user@example.com" :message "Test";
+      `;
+      const result = await executeScript(script, createMessage());
+      assert.ok(!result.error);
+      const notify = result.actions.find((a) => a.type === 'notify');
+      assert.ok(notify);
+    });
+  });
+
+  describe('MIME tree manipulation (RFC 5703)', () => {
+    // Helper to create a message with MIME parts
+    function createMimeMessage(parts) {
+      return {
+        ...createMessage(),
+        mimeParts: parts
+      };
+    }
+
+    describe('foreverypart command', () => {
+      it('should iterate over all MIME parts', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "count" "0";
+          foreverypart {
+            set "count" "\${count}1";
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'Hello',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/html',
+            headers: {},
+            body: '<p>World</p>',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'image/png',
+            headers: {},
+            body: 'binary',
+            encoding: 'base64',
+            charset: false
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        // count should be "0111" (initial "0" + "1" for each of 3 parts)
+        assert.strictEqual(result.variables.count, '0111');
+      });
+
+      it('should support :name tag for named loops', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "x" "";
+          foreverypart :name "outer" {
+            set "x" "\${x}A";
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'b',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.x, 'AA');
+      });
+
+      it('should handle empty mimeParts gracefully', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "x" "none";
+          foreverypart {
+            set "x" "found";
+          }
+        `;
+        const message = createMimeMessage([]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.x, 'none');
+      });
+
+      it('should handle missing mimeParts (undefined)', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "x" "none";
+          foreverypart {
+            set "x" "found";
+          }
+        `;
+        const message = createMessage();
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.x, 'none');
+      });
+    });
+
+    describe('break command', () => {
+      it('should exit foreverypart loop early', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "count" "0";
+          foreverypart {
+            set "count" "\${count}1";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'b',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'c',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        // Should only iterate once due to break
+        assert.strictEqual(result.variables.count, '01');
+      });
+
+      it('should exit named loop with break :name', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "x" "";
+          foreverypart :name "outer" {
+            set "x" "\${x}A";
+            break :name "outer";
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'b',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.x, 'A');
+      });
+    });
+
+    describe('extracttext command', () => {
+      it('should extract text from text/plain part', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            extracttext "content";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'Hello World',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.content, 'Hello World');
+      });
+
+      it('should strip HTML tags from text/html parts', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            extracttext "content";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/html',
+            headers: {},
+            body: '<p>Hello <b>World</b></p>',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.content, 'Hello World');
+      });
+
+      it('should decode base64 content', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            extracttext "content";
+            break;
+          }
+        `;
+        // "Hello Base64" in base64
+        const b64 = require('node:buffer')
+          .Buffer.from('Hello Base64')
+          .toString('base64');
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: b64,
+            encoding: 'base64',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.content, 'Hello Base64');
+      });
+
+      it('should decode quoted-printable content', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            extracttext "content";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'Hello=20World=21',
+            encoding: 'quoted-printable',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.content, 'Hello World!');
+      });
+
+      it('should limit output with :first N', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            extracttext :first 5 "content";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'Hello World',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.content, 'Hello');
+      });
+
+      it('should return empty string for non-text parts', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            extracttext "content";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'image/png',
+            headers: {},
+            body: 'binarydata',
+            encoding: 'base64',
+            charset: false
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.content, '');
+      });
+    });
+
+    describe('replace command', () => {
+      it('should produce replace action with part index', async () => {
+        const script = `
+          require ["mime", "variables"];
+          foreverypart {
+            replace "New content";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'Old content',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        const replace = result.actions.find((a) => a.type === 'replace');
+        assert.ok(replace);
+        assert.strictEqual(replace.partIndex, 0);
+        assert.strictEqual(replace.replacement, 'New content');
+      });
+    });
+
+    describe('enclose command', () => {
+      it('should produce enclose action', async () => {
+        const script = `
+          require "mime";
+          foreverypart {
+            enclose :subject "Wrapped" "This message has been enclosed.";
+            break;
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'content',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        const enclose = result.actions.find((a) => a.type === 'enclose');
+        assert.ok(enclose);
+        assert.strictEqual(enclose.subject, 'Wrapped');
+      });
+    });
+
+    describe(':mime tag on header tests', () => {
+      it('should test current part headers with :mime tag', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "found" "no";
+          foreverypart {
+            if header :mime :contains "content-type" "text/html" {
+              set "found" "yes";
+            }
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: { 'content-type': 'text/plain; charset=utf8' },
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/html',
+            headers: { 'content-type': 'text/html; charset=utf8' },
+            body: '<p>b</p>',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.found, 'yes');
+      });
+
+      it('should extract type with :type tag', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "found" "no";
+          foreverypart {
+            if header :mime :type :is "content-type" "image" {
+              set "found" "yes";
+            }
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: { 'content-type': 'text/plain' },
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'image/jpeg',
+            headers: { 'content-type': 'image/jpeg' },
+            body: 'binary',
+            encoding: 'base64',
+            charset: false
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.found, 'yes');
+      });
+
+      it('should extract subtype with :subtype tag', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "found" "no";
+          foreverypart {
+            if header :mime :subtype :is "content-type" "html" {
+              set "found" "yes";
+            }
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: { 'content-type': 'text/plain' },
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/html',
+            headers: { 'content-type': 'text/html' },
+            body: '<p>b</p>',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.found, 'yes');
+      });
+
+      it('should extract contenttype with :contenttype tag', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "found" "no";
+          foreverypart {
+            if header :mime :contenttype :is "content-type" "text/html" {
+              set "found" "yes";
+            }
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: { 'content-type': 'text/plain; charset=utf8' },
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          },
+          {
+            contentType: 'text/html',
+            headers: { 'content-type': 'text/html; charset=utf8' },
+            body: '<p>b</p>',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.found, 'yes');
+      });
+
+      it('should extract param with :param tag', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "found" "no";
+          foreverypart {
+            if header :mime :param "charset" :is "content-type" "utf8" {
+              set "found" "yes";
+            }
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: { 'content-type': 'text/plain; charset=utf8' },
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        assert.strictEqual(result.variables.found, 'yes');
+      });
+    });
+
+    describe('Security limits', () => {
+      it('should enforce max parts iteration limit', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "count" "0";
+          foreverypart {
+            set "count" "\${count}1";
+          }
+        `;
+        // Create 150 parts (exceeds default limit of 100)
+        const parts = Array.from({ length: 150 }, (_, i) => ({
+          contentType: 'text/plain',
+          headers: { 'content-type': 'text/plain' },
+          body: `Part ${i}`,
+          encoding: '',
+          charset: 'utf8'
+        }));
+        const message = createMimeMessage(parts);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        // Should stop at 100 iterations
+        assert.strictEqual(result.variables.count.length - 1, 100);
+      });
+
+      it('should enforce max foreverypart nesting depth', async () => {
+        const script = `
+          require ["mime", "variables"];
+          set "depth" "0";
+          foreverypart {
+            set "depth" "1";
+            foreverypart {
+              set "depth" "2";
+              foreverypart {
+                set "depth" "3";
+                foreverypart {
+                  set "depth" "4";
+                }
+              }
+            }
+          }
+        `;
+        const message = createMimeMessage([
+          {
+            contentType: 'text/plain',
+            headers: {},
+            body: 'a',
+            encoding: '',
+            charset: 'utf8'
+          }
+        ]);
+        const result = await executeScript(script, message);
+        assert.ok(!result.error);
+        // Depth 4 should not execute (max depth is 3)
+        assert.strictEqual(result.variables.depth, '3');
+      });
     });
   });
 });

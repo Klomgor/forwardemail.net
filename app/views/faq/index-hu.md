@@ -2805,6 +2805,8 @@ Igen! Támogatjuk a [Sieve](https://en.wikipedia.org/wiki/Sieve_\(mail_filtering
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Meghatározott fejléc előfordulások elérése        |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)| Reguláris kifejezés egyezés                        |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                             | Értesítések küldése (pl. mailto:)                  |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                             | Környezeti információk elérése                      |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                             | Postafiók létezésének tesztelése, postafiókok létrehozása |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                             | Speciális használatú postafiókokba fájlba helyezés (\Junk, \Trash) |
@@ -2819,7 +2821,6 @@ A következő kiterjesztések jelenleg nem támogatottak:
 | -------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `include`                                                      | Biztonsági kockázat (szkript befecskendezés) és globális szkript tárolást igényel |
 | `mboxmetadata` / `servermetadata`                              | IMAP METADATA kiterjesztés támogatást igényel                      |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Összetett MIME fa kezelés még nincs megvalósítva                   |
 
 #### Példa Sieve szkriptek {#example-sieve-scripts}
 

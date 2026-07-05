@@ -37,13 +37,74 @@ test('parseUA: macOS Safari (frozen at 10.15.7)', (t) => {
   t.is(result.os, 'macOS 26.5');
 });
 
-// macOS Chrome (frozen at 10.15.7)
-test('parseUA: macOS Chrome (frozen at 10.15.7)', (t) => {
+// macOS Chrome (frozen at 10.15.7, no client hints)
+test('parseUA: macOS Chrome (frozen at 10.15.7, no hints)', (t) => {
   const ua =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
   const result = parseUA(ua);
   t.is(result.browser, 'Chrome 136.0.0.0');
+  // Without client hints, the frozen version is the best we can do
   t.is(result.os, 'macOS 10.15.7');
+});
+
+// macOS Chrome with Client Hints - should resolve real version
+test('parseUA: macOS Chrome with Client Hints resolves real version', (t) => {
+  const ua =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+  const meta = {
+    ch_platform: '"macOS"',
+    ch_platform_version: '"15.5.0"'
+  };
+  const result = parseUA(ua, meta);
+  t.is(result.browser, 'Chrome 149.0.0.0');
+  t.is(result.os, 'macOS 15.5');
+  t.is(result.short, 'Chrome 149.0.0.0 on macOS 15.5');
+});
+
+// macOS Edge with Client Hints
+test('parseUA: macOS Edge with Client Hints resolves real version', (t) => {
+  const ua =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0';
+  const meta = {
+    ch_platform: '"macOS"',
+    ch_platform_version: '"14.6.1"'
+  };
+  const result = parseUA(ua, meta);
+  t.is(result.browser, 'Edge 149.0.0.0');
+  t.is(result.os, 'macOS 14.6');
+});
+
+// Client hints with macOS 11 (Big Sur)
+test('parseUA: macOS Chrome with Client Hints macOS 11', (t) => {
+  const ua =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
+  const meta = {
+    ch_platform: '"macOS"',
+    ch_platform_version: '"11.7.10"'
+  };
+  const result = parseUA(ua, meta);
+  t.is(result.os, 'macOS 11.7');
+});
+
+// Client hints where version is actually 10.15.7 (genuine Catalina)
+test('parseUA: genuine Catalina with Client Hints confirming 10.15.7', (t) => {
+  const ua =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  const meta = {
+    ch_platform: '"macOS"',
+    ch_platform_version: '"10.15.7"'
+  };
+  const result = parseUA(ua, meta);
+  // Should stay at 10.15.7 since that's the real version
+  t.is(result.os, 'macOS 10.15.7');
+});
+
+// Empty meta object (backward compatibility)
+test('parseUA: backward compatible with no meta argument', (t) => {
+  const ua =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5.2 Safari/605.1.15';
+  const result = parseUA(ua);
+  t.is(result.os, 'macOS 26.5.2');
 });
 
 // Chrome on iOS (CriOS)

@@ -2805,6 +2805,8 @@ Wij ondersteunen een uitgebreide set Sieve-extensies:
 | `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Toegang tot specifieke header-voorkomens          |
 | `regex`                      | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | Reguliere expressie matching                       |
 | `enotify`                    | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Verstuur notificaties (bijv. mailto:)              |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`                | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                              | Toegang tot omgevingsinformatie                    |
 | `mailbox`                    | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                              | Test bestaan mailbox, maak mailboxen aan           |
 | `special-use`                | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                              | Plaats in speciale mailboxen (\Junk, \Trash)      |
@@ -2819,7 +2821,6 @@ De volgende extensies worden momenteel niet ondersteund:
 | --------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `include`                                                       | Beveiligingsrisico (scriptinjectie) en vereist globale scriptopslag |
 | `mboxmetadata` / `servermetadata`                               | Vereist IMAP METADATA extensie-ondersteuning                        |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Complexe MIME-boom manipulatie nog niet geïmplementeerd             |
 
 #### Voorbeeld Sieve Scripts {#example-sieve-scripts}
 

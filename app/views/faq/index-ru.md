@@ -2805,6 +2805,8 @@ Tasks.org — популярный менеджер задач с открыты
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Доступ к конкретным вхождениям заголовков         |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)| Сопоставление с регулярными выражениями           |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                             | Отправка уведомлений (например, mailto:)           |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                             | Доступ к информации об окружении                   |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                             | Проверка существования почтового ящика, создание ящиков |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                             | Помещение в специальные почтовые ящики (\Junk, \Trash) |
@@ -2819,7 +2821,6 @@ Tasks.org — популярный менеджер задач с открыты
 | ------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `include`                                                    | Риск безопасности (внедрение скриптов) и требует глобального хранения скриптов |
 | `mboxmetadata` / `servermetadata`                            | Требуется поддержка расширения IMAP METADATA                       |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Сложная манипуляция MIME-деревом пока не реализована               |
 
 #### Примеры скриптов Sieve {#example-sieve-scripts}
 

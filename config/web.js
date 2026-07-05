@@ -336,6 +336,14 @@ module.exports = (redis) => ({
       // <https://github.com/helmetjs/helmet/issues/230>
       ctx.set('X-XSS-Protection', '0');
       //
+      // Client Hints — request high-entropy platform version so we can
+      // display the real macOS/Windows version in the session list.
+      // Chromium-based browsers freeze the UA string at macOS 10.15.7;
+      // the Sec-CH-UA-Platform-Version header provides the true version.
+      // <https://wicg.github.io/ua-client-hints/>
+      //
+      ctx.set('Accept-CH', 'Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version');
+      //
       // Permissions-Policy response header.
       //
       // We disable every powerful API we don't actually use. This both
@@ -642,6 +650,14 @@ module.exports = (redis) => ({
         ctx.session._meta.ip = ctx.ip;
         ctx.session._meta.ua = ctx.get('user-agent');
         ctx.session._meta.last_active = new Date().toISOString();
+
+        // Capture Client Hints headers for accurate OS version detection.
+        // Chromium-based browsers send these when Accept-CH is set.
+        const chPlatform = ctx.get('sec-ch-ua-platform');
+        const chPlatformVersion = ctx.get('sec-ch-ua-platform-version');
+        if (chPlatform) ctx.session._meta.ch_platform = chPlatform;
+        if (chPlatformVersion)
+          ctx.session._meta.ch_platform_version = chPlatformVersion;
 
         if (ctx.state.user[config.passport.fields.otpEnabled]) {
           if (ctx.session.otp) {

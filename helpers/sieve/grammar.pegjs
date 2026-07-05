@@ -38,6 +38,8 @@ ControlCommand
   = IfCommand
   / RequireCommand
   / StopCommand
+  / ForeverypartCommand
+  / BreakCommand
 
 IfCommand
   = "if"i _ test:Test _ block:Block elsifParts:ElsifPart* elsePart:ElsePart? {
@@ -69,6 +71,26 @@ StopCommand
       return node('Stop');
     }
 
+// MIME Part Iteration (RFC 5703)
+ForeverypartCommand
+  = "foreverypart"i _ name:ForeverypartName? _ block:Block {
+      return node('Foreverypart', {
+        name: name || null,
+        block
+      });
+    }
+
+ForeverypartName
+  = ":name"i _ s:String _ { return s; }
+
+BreakCommand
+  = "break"i _ name:BreakName? _ ";" {
+      return node('Break', { name: name || null });
+    }
+
+BreakName
+  = ":name"i _ s:String _ { return s; }
+
 // Action Commands
 ActionCommand
   = KeepCommand
@@ -84,6 +106,9 @@ ActionCommand
   / SetCommand
   / AddheaderCommand
   / DeleteheaderCommand
+  / ExtracttextCommand
+  / ReplaceCommand
+  / EncloseCommand
   / NotifyCommand
 
 KeepCommand
@@ -228,6 +253,76 @@ VacationArg
   / ":mime"i { return { mime: true }; }
   / ":handle"i _ s:String { return { handle: s }; }
 
+// MIME Extracttext Command (RFC 5703)
+ExtracttextCommand
+  = "extracttext"i _ opts:ExtracttextOptions _ name:String _ ";" {
+      return node('Extracttext', {
+        ...opts,
+        name
+      });
+    }
+
+ExtracttextOptions
+  = opts:(ExtracttextOption _)* {
+      const result = { first: null };
+      for (const [opt] of opts) {
+        Object.assign(result, opt);
+      }
+      return result;
+    }
+
+ExtracttextOption
+  = ":first"i _ n:Number { return { first: n }; }
+
+// MIME Replace Command (RFC 5703)
+ReplaceCommand
+  = "replace"i _ opts:ReplaceOptions _ replacement:String _ ";" {
+      return node('Replace', {
+        ...opts,
+        replacement
+      });
+    }
+
+ReplaceOptions
+  = opts:(ReplaceOption _)* {
+      const result = { mime: false, subject: null, from: null };
+      for (const [opt] of opts) {
+        Object.assign(result, opt);
+      }
+      return result;
+    }
+
+ReplaceOption
+  = ":mime"i _ { return { mime: true }; }
+  / ":subject"i _ s:String { return { subject: s }; }
+  / ":from"i _ s:String { return { from: s }; }
+
+// MIME Enclose Command (RFC 5703)
+EncloseCommand
+  = "enclose"i _ opts:EncloseOptions _ value:String _ ";" {
+      return node('Enclose', {
+        ...opts,
+        value
+      });
+    }
+
+EncloseOptions
+  = opts:(EncloseOption _)* {
+      const result = { subject: null, headers: [] };
+      for (const [opt] of opts) {
+        if (opt.header) {
+          result.headers.push(opt.header);
+        } else {
+          Object.assign(result, opt);
+        }
+      }
+      return result;
+    }
+
+EncloseOption
+  = ":subject"i _ s:String { return { subject: s }; }
+  / ":headers"i _ s:String { return { header: s }; }
+
 // Notify Extension (RFC 5435)
 NotifyCommand
   = "notify"i _ args:NotifyArgs _ ";" {
@@ -343,6 +438,10 @@ HeaderTest
       return node('HeaderTest', {
         matchType: opts.matchType || 'is',
         comparator: opts.comparator || 'i;ascii-casemap',
+        mime: opts.mime || false,
+        mimeType: opts.mimeType || null,
+        mimeParam: opts.mimeParam || null,
+        anychild: opts.anychild || false,
         headers,
         keys
       });
@@ -350,7 +449,7 @@ HeaderTest
 
 HeaderTestOptions
   = opts:(HeaderTestOption _)* {
-      const result = { matchType: null, comparator: null };
+      const result = { matchType: null, comparator: null, mime: false, mimeType: null, mimeParam: null, anychild: false };
       for (const [opt] of opts) {
         Object.assign(result, opt);
       }
@@ -360,6 +459,12 @@ HeaderTestOptions
 HeaderTestOption
   = m:MatchType { return { matchType: m }; }
   / c:Comparator { return { comparator: c }; }
+  / ":mime"i { return { mime: true }; }
+  / ":type"i { return { mime: true, mimeType: 'type' }; }
+  / ":subtype"i { return { mime: true, mimeType: 'subtype' }; }
+  / ":contenttype"i { return { mime: true, mimeType: 'contenttype' }; }
+  / ":param"i _ p:String { return { mime: true, mimeType: 'param', mimeParam: p }; }
+  / ":anychild"i { return { anychild: true }; }
 
 EnvelopeTest
   = "envelope"i _ addressPart:AddressPart? _ matchType:MatchType? _ comparator:Comparator? _ parts:StringList _ keys:StringList {

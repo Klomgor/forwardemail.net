@@ -2805,6 +2805,8 @@ Podporujeme rozsáhlou sadu rozšíření Sieve:
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Přistupovat ke konkrétním výskytům hlaviček        |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | Porovnávání pomocí regulárních výrazů              |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Odesílat oznámení (např. mailto:)                  |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                              | Přistupovat k informacím o prostředí                |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                              | Testovat existenci schránky, vytvářet schránky     |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                              | Ukládat do speciálních schránek (\Junk, \Trash)    |
@@ -2819,7 +2821,6 @@ Následující rozšíření momentálně nejsou podporována:
 | -------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `include`                                                      | Bezpečnostní riziko (injekce skriptu) a vyžaduje globální úložiště skriptů |
 | `mboxmetadata` / `servermetadata`                              | Vyžaduje podporu rozšíření IMAP METADATA                           |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Komplexní manipulace s MIME stromem zatím není implementována      |
 
 #### Příklad Sieve skriptů {#example-sieve-scripts}
 

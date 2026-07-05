@@ -51,10 +51,12 @@ async function mapper(domain) {
   // This returns unique admin emails and the majority locale
   let to;
   let locale;
+  let timezone;
   try {
     const obj = await Domains.getToAndMajorityLocaleByDomain(domain);
     to = obj.to;
     locale = obj.locale;
+    timezone = obj.timezone || 'UTC';
   } catch (err) {
     logger.warn(err, { domain: domain.name });
     return;
@@ -128,7 +130,8 @@ async function mapper(domain) {
       locals: {
         domainUpdates,
         domain,
-        locale
+        locale,
+        timezone
       }
     });
 

@@ -2804,6 +2804,8 @@ Chúng tôi hỗ trợ một bộ phần mở rộng Sieve toàn diện:
 | `index`                    | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                                | Truy cập các lần xuất hiện tiêu đề cụ thể          |
 | `regex`                    | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)   | So khớp biểu thức chính quy                         |
 | `enotify`                  | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                                | Gửi thông báo (ví dụ: mailto:)                      |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`              | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                                | Truy cập thông tin môi trường                       |
 | `mailbox`                  | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                                | Kiểm tra sự tồn tại hộp thư, tạo hộp thư           |
 | `special-use`              | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                                | Lưu vào các hộp thư đặc biệt (\Junk, \Trash)       |
@@ -2818,7 +2820,6 @@ Các tiện ích mở rộng sau hiện không được hỗ trợ:
 | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `include`                                                     | Rủi ro bảo mật (chèn script) và yêu cầu lưu trữ script toàn cục   |
 | `mboxmetadata` / `servermetadata`                             | Yêu cầu hỗ trợ tiện ích mở rộng IMAP METADATA                     |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Chưa triển khai thao tác phức tạp trên cây MIME                   |
 
 #### Ví Dụ Các Script Sieve {#example-sieve-scripts}
 

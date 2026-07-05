@@ -1147,6 +1147,8 @@ sequenceDiagram
 | `index`                      | الوصول إلى تكرارات رأس محددة                | `:index` للرؤوس متعددة القيم                   |
 | `regex`                      | مطابقة التعبيرات النمطية                   | دعم كامل للتعبيرات النمطية في الاختبارات      |
 | `enotify`                    | إرسال الإشعارات                            | إشعارات `mailto:` عبر Emails.queue            |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | الوصول إلى معلومات البيئة                  | النطاق، المضيف، العنوان البعيد من الجلسة      |
 | `mailbox`                    | اختبار وجود صندوق البريد                    | اختبار `mailboxexists`                        |
 | `special-use`                | تصنيف في صناديق بريد خاصة الاستخدام          | تعيين \Junk، \Trash، إلخ إلى مجلدات             |
@@ -1162,7 +1164,6 @@ sequenceDiagram
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | يتطلب امتداد IMAP METADATA                                     |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | يتطلب تكامل مجلد المرسلة                                       |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | يتطلب تغييرات في المحلل للنحو ${hex:}                          |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | تعقيد في معالجة شجرة MIME                                      |
 #### تدفق معالجة Sieve {#sieve-processing-flow}
 
 ```mermaid

@@ -27,6 +27,7 @@ const i18n = require('#helpers/i18n');
 const isEmail = require('#helpers/is-email');
 const isErrorConstructorName = require('#helpers/is-error-constructor-name');
 const isValidPassword = require('#helpers/is-valid-password');
+const ServerShutdownError = require('#helpers/server-shutdown-error');
 const { encrypt } = require('#helpers/encrypt-decrypt');
 
 //
@@ -170,13 +171,15 @@ async function generateAliasPassword(ctx) {
 
     try {
       if (isSANB(ctx.request.body.password)) {
-        // change password on existing sqlite file using supplied password and new password
-        //
-        // TODO: because rekey has VACUUM INTO and VACUUM calls
-        //       this operation is likely to take longer than HTTP timeout
-        //       therefore we should change messaging and functionality
-        //       so that this alerts the user via email once it is complete
-        //
+        // Bail early if the server is shutting down — do not start a
+        // long-running rekey operation that may never complete.
+        if (ctx.instance?.isClosing || ctx.isClosing) {
+          throw new ServerShutdownError();
+        }
+
+        // Enqueue the rekey job via WSP → parse-payload → Redis List.
+        // The actual rekey is performed asynchronously by sqlite-worker;
+        // the user is emailed on completion or failure.
         await wsp.request(
           {
             action: 'rekey',
@@ -207,7 +210,24 @@ async function generateAliasPassword(ctx) {
           0
         );
 
-        if (!ctx.api) {
+        // don't save until we're sure that the job was enqueued
+        alias.is_rekey = true;
+        alias.rekey_started_at = new Date();
+        await alias.save();
+
+        //
+        // Return early for rekey — the user will be emailed once complete.
+        // This avoids HTTP timeout issues since rekey involves VACUUM INTO
+        // and VACUUM calls that can take longer than the HTTP timeout.
+        //
+        if (ctx.api) {
+          ctx.body = {
+            message: ctx.translate(
+              'ALIAS_REKEY_STARTED',
+              `${alias.name}@${ctx.state.domain.name}`
+            )
+          };
+        } else {
           ctx.flash(
             'success',
             ctx.translate(
@@ -215,12 +235,14 @@ async function generateAliasPassword(ctx) {
               `${alias.name}@${ctx.state.domain.name}`
             )
           );
+          if (ctx.accepts('html')) ctx.redirect(redirectTo);
+          else ctx.body = { redirectTo };
         }
 
-        // don't save until we're sure that sqlite operations were performed
-        alias.is_rekey = true;
-        await alias.save();
-      } else if (boolean(ctx.request.body.is_override)) {
+        return;
+      }
+
+      if (boolean(ctx.request.body.is_override)) {
         // reset existing mailbox and create new mailbox
         await wsp.request(
           {

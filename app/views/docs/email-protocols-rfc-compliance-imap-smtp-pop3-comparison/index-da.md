@@ -1147,6 +1147,8 @@ Følgende kalenderudvidelser understøttes IKKE:
 | `index`                      | Adgang til specifikke header-forekomster    | `:index` for multi-værdi hoveder                 |
 | `regex`                      | Regulære udtryk matchning                    | Fuld regex-understøttelse i tests                |
 | `enotify`                    | Send notifikationer                          | `mailto:` notifikationer via Emails.queue        |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Adgang til miljøinformation                  | Domæne, host, remote-ip fra session              |
 | `mailbox`                    | Test af postkassens eksistens                | `mailboxexists` test                              |
 | `special-use`                | Fil ind i special-use postkasser             | Mapper \Junk, \Trash, osv. til mapper             |
@@ -1162,7 +1164,6 @@ Følgende kalenderudvidelser understøttes IKKE:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Kræver IMAP METADATA-udvidelse                                  |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Kræver integration med Sendt-mappe                              |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parserændringer krævet for ${hex:} syntaks                      |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Kompleks MIME-træ-manipulation                                  |
 #### Sieve-behandlingsflow {#sieve-processing-flow}
 
 ```mermaid

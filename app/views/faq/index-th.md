@@ -2804,6 +2804,8 @@ It supports both IPv4 and IPv6 and is available over port `443` (HTTPS).
 | `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | เข้าถึงการเกิดขึ้นของหัวข้อเฉพาะ                 |
 | `regex`                      | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | การจับคู่ด้วยนิพจน์ปกติ                          |
 | `enotify`                    | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | ส่งการแจ้งเตือน (เช่น mailto:)                   |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`                | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                              | เข้าถึงข้อมูลสภาพแวดล้อม                        |
 | `mailbox`                    | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                              | ทดสอบการมีอยู่ของกล่องจดหมาย สร้างกล่องจดหมาย  |
 | `special-use`                | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                              | จัดเก็บลงกล่องจดหมายพิเศษ (\Junk, \Trash)       |
@@ -2818,7 +2820,6 @@ It supports both IPv4 and IPv6 and is available over port `443` (HTTPS).
 | --------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `include`                                                       | ความเสี่ยงด้านความปลอดภัย (การแทรกสคริปต์) และต้องการการจัดเก็บสคริปต์แบบทั่วโลก |
 | `mboxmetadata` / `servermetadata`                               | ต้องการการรองรับส่วนขยาย IMAP METADATA                            |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | การจัดการโครงสร้าง MIME ที่ซับซ้อนยังไม่ได้รับการพัฒนา             |
 
 #### Example Sieve Scripts {#example-sieve-scripts}
 

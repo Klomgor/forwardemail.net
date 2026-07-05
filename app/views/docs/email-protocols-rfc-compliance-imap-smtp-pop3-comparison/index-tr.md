@@ -1147,6 +1147,8 @@ Aşağıdaki takvim uzantıları DESTEKLENMEMEKTEDİR:
 | `index`                      | Belirli başlık tekrarlarına erişim         | Çok değerli başlıklar için `:index`           |
 | `regex`                      | Düzenli ifade eşleştirme                   | Testlerde tam regex desteği                    |
 | `enotify`                    | Bildirim gönderme                          | Emails.queue üzerinden `mailto:` bildirimleri |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Ortam bilgilerine erişim                    | Oturumdan domain, host, remote-ip             |
 | `mailbox`                    | Posta kutusu varlığını test etme            | `mailboxexists` testi                          |
 | `special-use`                | Özel kullanım posta kutularına dosyalama   | \Junk, \Trash vb. klasörlere eşleme            |
@@ -1162,7 +1164,6 @@ Aşağıdaki takvim uzantıları DESTEKLENMEMEKTEDİR:
 | `mboxmetadata` / `servermetadata`    | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | IMAP METADATA uzantısı gerektirir                              |
 | `fcc`                                | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Gönderilenler klasörü entegrasyonu gerektirir                  |
 | `encoded-character`                  | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | `${hex:}` sözdizimi için ayrıştırıcı değişiklikleri gerekir    |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Karmaşık MIME ağacı manipülasyonu                              |
 #### Eleme İşleme Akışı {#sieve-processing-flow}
 
 ```mermaid

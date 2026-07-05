@@ -59,6 +59,12 @@ const DEFAULT_SECURITY_CONFIG = {
   maxRulesPerScript: 500,
   maxNestingDepth: 10,
 
+  // MIME manipulation limits (RFC 5703)
+  maxMimePartsIteration: 100,
+  maxExtractedTextSize: 102_400, // 100KB
+  maxForeverypartDepth: 3,
+  maxInstructionsPerScript: 10_000,
+
   // Redirect restrictions
   maxRedirectsPerScript: 10,
   maxRedirectsPerDay: 100,
@@ -374,6 +380,26 @@ class SieveSecurityValidator {
 
           if (cmd.else) {
             this.analyzeCommands(cmd.else, result, context, depth + 1);
+          }
+
+          break;
+        }
+
+        case 'foreverypart': {
+          // Enforce foreverypart nesting depth
+          if (depth >= this.config.maxForeverypartDepth) {
+            result.securityIssues.push({
+              type: 'excessive_mime_nesting',
+              severity: 'medium',
+              message: `foreverypart nesting depth ${
+                depth + 1
+              } exceeds limit of ${this.config.maxForeverypartDepth}`
+            });
+          }
+
+          // Recurse into the foreverypart block
+          if (cmd.block) {
+            this.analyzeCommands(cmd.block, result, context, depth + 1);
           }
 
           break;
@@ -841,6 +867,30 @@ class SieveRateLimiter {
           ? data.timestamps[0] + windowMs
           : now + windowMs
     };
+  }
+
+  /**
+   * Check if a notification action is allowed
+   * @param {string} userId - The user ID
+   * @returns {Promise<Object>} Result with allowed flag
+   */
+  async checkNotification(userId) {
+    const key = `sieve:notify:${userId}`;
+    const windowMs = 60 * 60 * 1000; // 1 hour
+    // Limit notifications to 10/hour per alias to prevent flooding
+    return this.checkLimit(
+      key,
+      this.config.notificationsPerHour || 10,
+      windowMs
+    );
+  }
+
+  /**
+   * Record a notification action
+   * @param {string} userId - The user ID
+   */
+  async recordNotification(userId) {
+    return this.checkNotification(userId);
   }
 
   /**

@@ -52,7 +52,9 @@ const SUPPORTED_CAPABILITIES = [
   'index',
   'regex',
   'enotify',
-  'environment'
+  'environment',
+  'mime',
+  'notify'
 ];
 
 /**

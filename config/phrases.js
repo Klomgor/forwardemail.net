@@ -268,6 +268,10 @@ module.exports = {
     'Alias password change (rekey) for <span class="notranslate">%s</span> has failed due to an error',
   ALIAS_REKEY_FAILED_MESSAGE:
     '<p>The alias password change (rekey) for <span class="notranslate text-monospace font-weight-bold">%s</span> has failed and we have been alerted.</p><p>You may proceed to retry if necessary, and we may email you soon to provide help if necessary.</p><p>The error received during the rekey process was:</p><pre><code>%s</code></pre>',
+  ALIAS_REKEY_INTERRUPTED_SUBJECT:
+    'Alias password change (rekey) for <span class="notranslate">%s</span> was interrupted',
+  ALIAS_REKEY_INTERRUPTED:
+    '<p>The alias password change (rekey) for <span class="notranslate text-monospace font-weight-bold">%s</span> was interrupted by a server restart and could not be completed.</p><p>Your mailbox has not been modified. Please try changing your password again.</p>',
   ALIAS_BACKUP_READY:
     'Click the button below within 4 hours to download the <span class="notranslate">"%s"</span> backup for <span class="notranslate font-weight-bold text-monospace">%s</span>.<br /><br /><a href="%s" target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Download Now</a>',
   ALIAS_BACKUP_READY_SUBJECT:

@@ -2805,6 +2805,8 @@ Kapsamlı bir Sieve uzantıları setini destekliyoruz:
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Belirli başlık tekrarlarına erişim                |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)| Düzenli ifade eşleştirme                          |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                             | Bildirim gönderme (örneğin, mailto:)             |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                             | Ortam bilgilerine erişim                           |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                             | Posta kutusu varlığını test etme, posta kutuları oluşturma |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                             | Özel kullanım posta kutularına dosyalama (\Junk, \Trash) |
@@ -2819,7 +2821,6 @@ Aşağıdaki uzantılar şu anda desteklenmemektedir:
 | ------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `include`                                                     | Güvenlik riski (script enjeksiyonu) ve global script depolama gerektirir |
 | `mboxmetadata` / `servermetadata`                             | IMAP METADATA uzantısı desteği gerektirir                          |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Karmaşık MIME ağacı manipülasyonu henüz uygulanmadı               |
 
 #### Örnek Sieve Scriptleri {#example-sieve-scripts}
 

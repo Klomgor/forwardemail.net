@@ -1147,6 +1147,8 @@ Følgende kalenderutvidelser støttes IKKE:
 | `index`                      | Tilgang til spesifikke forekomster av overskrifter | `:index` for flerverdige overskrifter       |
 | `regex`                      | Regulært uttrykk-matching                  | Full regex-støtte i tester                   |
 | `enotify`                    | Send varsler                              | `mailto:`-varsler via Emails.queue           |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Tilgang til miljøinformasjon               | Domene, vert, ekstern IP fra sesjon          |
 | `mailbox`                    | Test for postkasseeksistens                | `mailboxexists`-test                         |
 | `special-use`                | Filtrer til spesialbruk-postkasser         | Mapper \Junk, \Trash, osv. til mapper        |
@@ -1162,7 +1164,6 @@ Følgende kalenderutvidelser støttes IKKE:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Krever IMAP METADATA-utvidelse                                 |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Krever integrasjon med Sendt-mappe                             |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parserendringer kreves for ${hex:}-syntaks                     |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Kompleks MIME-trestrukturmanipulering                          |
 #### Sieve-behandlingsflyt {#sieve-processing-flow}
 
 ```mermaid

@@ -44,7 +44,12 @@ const graceful = new Graceful({
   mongooses: [mongoose],
   servers: [api.server],
   redisClients: [api.client],
-  customHandlers: [() => wsHandler.close()],
+  customHandlers: [
+    () => {
+      api.isClosing = true;
+    },
+    () => wsHandler.close()
+  ],
   logger
 });
 graceful.listen();

@@ -1147,6 +1147,8 @@ As seguintes extensões de calendário NÃO são suportadas:
 | `index`                      | Acessar ocorrências específicas de cabeçalhos       | `:index` para cabeçalhos com múltiplos valores           |
 | `regex`                      | Correspondência com expressões regulares              | Suporte completo a regex em testes                |
 | `enotify`                    | Enviar notificações                       | Notificações `mailto:` via Emails.queue   |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Acessar informações do ambiente           | Domínio, host, remote-ip da sessão       |
 | `mailbox`                    | Testar existência de caixa postal                   | Teste `mailboxexists`                       |
 | `special-use`                | Arquivar em caixas postais de uso especial          | Mapeia \Junk, \Trash, etc. para pastas        |
@@ -1162,7 +1164,6 @@ As seguintes extensões de calendário NÃO são suportadas:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Requer extensão IMAP METADATA                                 |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Requer integração com pasta Enviados                                 |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Alterações no parser necessárias para sintaxe ${hex:}                       |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Manipulação complexa da árvore MIME                                   |
 #### Fluxo de Processamento Sieve {#sieve-processing-flow}
 
 ```mermaid

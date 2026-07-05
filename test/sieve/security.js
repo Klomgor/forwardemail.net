@@ -880,3 +880,83 @@ redirect "backup@external.com";`;
     );
   });
 });
+
+describe('Sieve Security - MIME Tree Manipulation Limits (RFC 5703)', () => {
+  let validator;
+  beforeEach(() => {
+    validator = new SieveSecurityValidator();
+  });
+
+  it('should detect excessive foreverypart nesting depth', () => {
+    // Depth 4 exceeds the default limit of 3
+    const script = `require "mime";
+foreverypart {
+  foreverypart {
+    foreverypart {
+      foreverypart {
+        discard;
+      }
+    }
+  }
+}`;
+    const result = validator.validate(script);
+    // Should flag excessive nesting
+    assert.ok(
+      result.securityIssues.some((i) => i.type === 'excessive_mime_nesting')
+    );
+  });
+
+  it('should allow foreverypart within depth limit', () => {
+    const script = `require "mime";
+foreverypart {
+  foreverypart {
+    foreverypart {
+      discard;
+    }
+  }
+}`;
+    const result = validator.validate(script);
+    // Depth 3 is within the default limit
+    assert.ok(
+      !result.securityIssues.some((i) => i.type === 'excessive_mime_nesting')
+    );
+  });
+
+  it('should have MIME limits in DEFAULT_SECURITY_CONFIG', () => {
+    // Verify the config has the expected MIME-related limits
+    const { config } = validator;
+    assert.strictEqual(config.maxMimePartsIteration, 100);
+    assert.strictEqual(config.maxExtractedTextSize, 102_400);
+    assert.strictEqual(config.maxForeverypartDepth, 3);
+    assert.strictEqual(config.maxInstructionsPerScript, 10_000);
+  });
+
+  it('should accept custom MIME limits via config', () => {
+    const custom = new SieveSecurityValidator({
+      maxMimePartsIteration: 50,
+      maxForeverypartDepth: 2
+    });
+    assert.strictEqual(custom.config.maxMimePartsIteration, 50);
+    assert.strictEqual(custom.config.maxForeverypartDepth, 2);
+  });
+});
+
+describe('Sieve Security - Notification Rate Limiting', () => {
+  it('should enforce notification rate limit', async () => {
+    const store = new MemoryRateLimitStore();
+    const limiter = new SieveRateLimiter(store, {
+      notificationsPerHour: 10
+    });
+    const aliasId = 'test-alias-123';
+
+    // First 10 notifications should be allowed (checkNotification records on allow)
+    for (let i = 0; i < 10; i++) {
+      const res = await limiter.checkNotification(aliasId);
+      assert.strictEqual(res.allowed, true);
+    }
+
+    // 11th notification should be denied (limit is 10/hour)
+    const eleventh = await limiter.checkNotification(aliasId);
+    assert.strictEqual(eleventh.allowed, false);
+  });
+});

@@ -1147,6 +1147,8 @@ Ekstensi kalender berikut TIDAK didukung:
 | `index`                      | Mengakses kejadian header tertentu         | `:index` untuk header multi-nilai              |
 | `regex`                      | Pencocokan ekspresi reguler                | Dukungan regex penuh dalam pengujian           |
 | `enotify`                    | Mengirim notifikasi                        | Notifikasi `mailto:` melalui Emails.queue      |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Mengakses informasi lingkungan             | Domain, host, remote-ip dari sesi               |
 | `mailbox`                    | Menguji keberadaan kotak surat             | Tes `mailboxexists`                            |
 | `special-use`                | Memasukkan ke kotak surat penggunaan khusus | Memetakan \Junk, \Trash, dll. ke folder        |
@@ -1162,7 +1164,6 @@ Ekstensi kalender berikut TIDAK didukung:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Memerlukan ekstensi METADATA IMAP                                 |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Memerlukan integrasi folder Terkirim                              |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Perubahan parser diperlukan untuk sintaks ${hex:}                |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Manipulasi pohon MIME yang kompleks                               |
 #### Alur Pemrosesan Sieve {#sieve-processing-flow}
 
 ```mermaid

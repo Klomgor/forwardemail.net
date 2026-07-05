@@ -2738,7 +2738,7 @@ async function getToAndMajorityLocaleByDomain(domain) {
     [config.userFields.isBanned]: false
   })
     .select(
-      `email ${config.lastLocaleField} ${config.userFields.hasVerifiedEmail}`
+      `email timezone ${config.lastLocaleField} ${config.userFields.hasVerifiedEmail}`
     )
     .lean()
     .exec();
@@ -2770,7 +2770,14 @@ async function getToAndMajorityLocaleByDomain(domain) {
   const maxLocaleEntry = _.maxBy(localeEntries, (entry) => entry[1]);
   const locale = maxLocaleEntry[0];
 
-  return { to, locale };
+  // Determine majority timezone for date formatting in emails
+  const timezones = users.map((user) => user.timezone || 'UTC');
+  const countedTimezones = _.countBy(timezones);
+  const timezoneEntries = Object.entries(countedTimezones);
+  const maxTimezoneEntry = _.maxBy(timezoneEntries, (entry) => entry[1]);
+  const timezone = maxTimezoneEntry[0];
+
+  return { to, locale, timezone };
 }
 
 Domains.statics.getToAndMajorityLocaleByDomain = getToAndMajorityLocaleByDomain;

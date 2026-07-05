@@ -481,3 +481,127 @@ describe('Sieve Parser', () => {
     });
   });
 });
+
+describe('Sieve Parser - MIME Commands (RFC 5703)', () => {
+  it('should parse foreverypart command', () => {
+    const ast = parse('require "mime"; foreverypart { discard; }');
+    const cmd = ast.commands.find((c) => c.type === 'Foreverypart');
+    assert.ok(cmd);
+    assert.ok(Array.isArray(cmd.block));
+    assert.strictEqual(cmd.block[0].type, 'Discard');
+  });
+
+  it('should parse foreverypart with :name tag', () => {
+    const ast = parse('require "mime"; foreverypart :name "loop1" { keep; }');
+    const cmd = ast.commands.find((c) => c.type === 'Foreverypart');
+    assert.ok(cmd);
+    assert.strictEqual(cmd.name, 'loop1');
+  });
+
+  it('should parse break command', () => {
+    const ast = parse('require "mime"; foreverypart { break; }');
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    assert.ok(fep);
+    assert.strictEqual(fep.block[0].type, 'Break');
+  });
+
+  it('should parse break with :name tag', () => {
+    const ast = parse(
+      'require "mime"; foreverypart :name "x" { break :name "x"; }'
+    );
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const brk = fep.block[0];
+    assert.strictEqual(brk.type, 'Break');
+    assert.strictEqual(brk.name, 'x');
+  });
+
+  it('should parse extracttext command', () => {
+    const ast = parse(
+      'require ["mime", "variables"]; foreverypart { extracttext "myvar"; }'
+    );
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const ext = fep.block[0];
+    assert.strictEqual(ext.type, 'Extracttext');
+    assert.strictEqual(ext.name, 'myvar');
+  });
+
+  it('should parse extracttext with :first modifier', () => {
+    const ast = parse(
+      'require ["mime", "variables"]; foreverypart { extracttext :first 100 "myvar"; }'
+    );
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const ext = fep.block[0];
+    assert.strictEqual(ext.type, 'Extracttext');
+    assert.strictEqual(ext.first, 100);
+    assert.strictEqual(ext.name, 'myvar');
+  });
+
+  it('should parse replace command', () => {
+    const ast = parse(
+      'require "mime"; foreverypart { replace "new content"; }'
+    );
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const rep = fep.block[0];
+    assert.strictEqual(rep.type, 'Replace');
+    assert.strictEqual(rep.replacement, 'new content');
+  });
+
+  it('should parse enclose command', () => {
+    const ast = parse(
+      'require "mime"; foreverypart { enclose :subject "Wrapped" "wrapper text"; }'
+    );
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const enc = fep.block[0];
+    assert.strictEqual(enc.type, 'Enclose');
+    assert.strictEqual(enc.subject, 'Wrapped');
+  });
+
+  it('should parse header test with :mime tag', () => {
+    const script =
+      'require "mime"; foreverypart { if header :mime :contains "content-type" "text/html" { discard; } }';
+    const ast = parse(script);
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    assert.ok(fep);
+    const ifCmd = fep.block[0];
+    assert.strictEqual(ifCmd.type, 'If');
+    assert.ok(ifCmd.test.mime);
+  });
+
+  it('should parse header test with :type tag', () => {
+    const script =
+      'require "mime"; foreverypart { if header :mime :type :is "content-type" "text" { discard; } }';
+    const ast = parse(script);
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const ifCmd = fep.block[0];
+    assert.strictEqual(ifCmd.test.mimeType, 'type');
+  });
+
+  it('should parse header test with :subtype tag', () => {
+    const script =
+      'require "mime"; foreverypart { if header :mime :subtype :is "content-type" "html" { discard; } }';
+    const ast = parse(script);
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const ifCmd = fep.block[0];
+    assert.strictEqual(ifCmd.test.mimeType, 'subtype');
+  });
+
+  it('should parse header test with :param tag', () => {
+    const script =
+      'require "mime"; foreverypart { if header :mime :param "charset" :is "content-type" "utf-8" { discard; } }';
+    const ast = parse(script);
+    const fep = ast.commands.find((c) => c.type === 'Foreverypart');
+    const ifCmd = fep.block[0];
+    assert.ok(ifCmd.test.mimeParam);
+    assert.strictEqual(ifCmd.test.mimeParam, 'charset');
+  });
+
+  it('should parse notify command (alias for enotify)', () => {
+    const ast = parse(
+      'require "notify"; notify :method "mailto:a@b.com" :message "hi";'
+    );
+    const cmd = ast.commands.find((c) => c.type === 'Notify');
+    assert.ok(cmd);
+    assert.strictEqual(cmd.method, 'mailto:a@b.com');
+    assert.strictEqual(cmd.message, 'hi');
+  });
+});

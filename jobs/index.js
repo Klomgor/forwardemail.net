@@ -133,6 +133,11 @@ let jobs = [
     timeout: 0
   },
   {
+    name: 'cleanup-stuck-rekeys',
+    interval: '5m',
+    timeout: 0
+  },
+  {
     name: 'check-unknown-payment-methods',
     interval: '1d',
     timeout: 0

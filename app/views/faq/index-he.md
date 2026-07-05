@@ -2805,6 +2805,8 @@ Tasks.org הוא מנהל משימות קוד פתוח פופולרי שעובד
 | `index`                    | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | גישה להופעות ספציפיות בכותרת                       |
 | `regex`                    | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | התאמת ביטוי רגולרי                                |
 | `enotify`                  | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | שליחת התראות (למשל, mailto:)                       |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`              | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                              | גישה למידע סביבתי                                 |
 | `mailbox`                  | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                              | בדיקת קיום תיבת דואר, יצירת תיבות דואר            |
 | `special-use`              | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                              | ארכוב לתיבות דואר לשימוש מיוחד (\Junk, \Trash)     |
@@ -2819,7 +2821,6 @@ Tasks.org הוא מנהל משימות קוד פתוח פופולרי שעובד
 | ------------------------------------------------------------ | ------------------------------------------------------------------ |
 | `include`                                                    | סיכון אבטחה (הזרקת סקריפטים) ודורש אחסון סקריפטים גלובלי          |
 | `mboxmetadata` / `servermetadata`                            | דורש תמיכה בהרחבת IMAP METADATA                                    |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | טיפול מורכב בעץ MIME שטרם יושם                                    |
 
 #### דוגמאות לסקריפטים של Sieve {#example-sieve-scripts}
 

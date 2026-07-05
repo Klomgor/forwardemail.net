@@ -2805,6 +2805,8 @@ Vi stödjer ett omfattande set av Sieve-tillägg:
 | `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Åtkomst till specifika förekomster i huvuden     |
 | `regex`                      | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | Matchning med reguljära uttryck                   |
 | `enotify`                    | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | Skicka notifieringar (t.ex. mailto:)              |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`                | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                               | Åtkomst till miljöinformation                      |
 | `mailbox`                    | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                               | Testa postlådas existens, skapa postlådor        |
 | `special-use`                | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                               | Placera i specialanvända postlådor (\Junk, \Trash) |
@@ -2819,7 +2821,6 @@ Följande extensions stöds för närvarande inte:
 | --------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `include`                                                       | Säkerhetsrisk (scriptinjektion) och kräver global skriptlagring    |
 | `mboxmetadata` / `servermetadata`                               | Kräver stöd för IMAP METADATA extension                             |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Komplex MIME-trädmanipulation är ännu inte implementerad           |
 
 #### Exempel på Sieve-skript {#example-sieve-scripts}
 

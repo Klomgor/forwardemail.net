@@ -1147,6 +1147,8 @@ Die folgenden Kalendererweiterungen werden NICHT unterstützt:
 | `index`                      | Zugriff auf bestimmte Header-Vorkommen   | `:index` für mehrwertige Header              |
 | `regex`                      | Reguläre Ausdrücke verwenden              | Vollständige Regex-Unterstützung bei Tests  |
 | `enotify`                    | Benachrichtigungen senden                 | `mailto:` Benachrichtigungen über Emails.queue |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Zugriff auf Umgebungsinformationen        | Domain, Host, remote-ip aus der Sitzung     |
 | `mailbox`                    | Postfach-Existenz testen                   | `mailboxexists` Test                         |
 | `special-use`                | In spezielle Postfächer ablegen            | Ordnerzuordnung für \Junk, \Trash, etc.     |
@@ -1162,7 +1164,6 @@ Die folgenden Kalendererweiterungen werden NICHT unterstützt:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Erfordert IMAP METADATA Erweiterung                              |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Erfordert Integration des Gesendet-Ordners                      |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parser-Anpassungen für ${hex:} Syntax erforderlich              |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Komplexe MIME-Baum-Manipulation                                 |
 #### Sieve-Verarbeitungsablauf {#sieve-processing-flow}
 
 ```mermaid

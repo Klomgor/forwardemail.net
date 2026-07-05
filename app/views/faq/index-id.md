@@ -2805,6 +2805,8 @@ Kami mendukung serangkaian lengkap ekstensi Sieve:
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Mengakses kemunculan header tertentu              |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | Pencocokan ekspresi reguler                        |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | Mengirim notifikasi (misalnya, mailto:)           |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                               | Mengakses informasi lingkungan                     |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                               | Menguji keberadaan mailbox, membuat mailbox       |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                               | Memasukkan ke mailbox penggunaan khusus (\Junk, \Trash) |
@@ -2819,7 +2821,6 @@ Ekstensi berikut saat ini tidak didukung:
 | --------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `include`                                                       | Risiko keamanan (injeksi skrip) dan memerlukan penyimpanan skrip global |
 | `mboxmetadata` / `servermetadata`                               | Memerlukan dukungan ekstensi IMAP METADATA                          |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Manipulasi pohon MIME yang kompleks belum diimplementasikan         |
 
 #### Contoh Skrip Sieve {#example-sieve-scripts}
 

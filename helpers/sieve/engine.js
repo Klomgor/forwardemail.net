@@ -6,6 +6,8 @@
  * Sieve Execution Engine - Executes parsed Sieve ASTs against email messages
  */
 
+const { Buffer } = require('node:buffer');
+
 const RE2 = require('re2');
 
 /**
@@ -112,7 +114,14 @@ const EXTENDED_CAPABILITIES = new Set([
   'comparator-i;ascii-numeric',
   'mboxmetadata',
   'servermetadata',
-  'extlists'
+  'extlists',
+  'mime',
+  'notify'
+]);
+
+// Capability aliases - maps deprecated/alternate names to canonical names
+const CAPABILITY_ALIASES = new Map([
+  ['notify', 'enotify'] // draft-martin-sieve-notify -> RFC 5435 enotify
 ]);
 
 /**
@@ -167,12 +176,16 @@ class SieveEngine {
    * @returns {boolean} True if supported
    */
   hasCapability(capability) {
+    // Map deprecated capability names to their modern equivalents
+    // 'notify' (draft-martin-sieve-notify) is superseded by 'enotify' (RFC 5435)
+    // 'mime' enables partial RFC 5703 support (vacation :mime tag)
+    const resolved = CAPABILITY_ALIASES.get(capability) || capability;
     // Accept core tests (RFC 5228 Section 5) even though they don't need require
     // This provides compatibility with scripts that incorrectly require them
     return (
-      this.capabilities.has(capability) ||
-      EXTENDED_CAPABILITIES.has(capability) ||
-      CORE_TESTS.has(capability)
+      this.capabilities.has(resolved) ||
+      EXTENDED_CAPABILITIES.has(resolved) ||
+      CORE_TESTS.has(resolved)
     );
   }
 
@@ -193,7 +206,14 @@ class SieveEngine {
       flags: new Set(),
       message: this.normalizeMessage(message),
       context,
-      enabledCapabilities: new Set()
+      enabledCapabilities: new Set(),
+      // MIME part iteration state (RFC 5703)
+      mimeParts: message.mimeParts || [],
+      currentPartIndex: -1,
+      partIterStack: [],
+      breakSignal: null,
+      // Instruction counter for CPU abuse prevention
+      instructionCount: 0
     };
 
     // Process require statements first
@@ -277,6 +297,10 @@ class SieveEngine {
             throw new Error(`Unsupported capability: ${capability}`);
           }
 
+          // Resolve aliases so downstream checks use the canonical name
+          const resolved = CAPABILITY_ALIASES.get(capability) || capability;
+          state.enabledCapabilities.add(resolved);
+          // Also add the original name for scripts that check it
           state.enabledCapabilities.add(capability);
         }
       }
@@ -480,6 +504,32 @@ class SieveEngine {
         break;
       }
 
+      case 'Foreverypart': {
+        await this.executeForeverypart(command, state);
+        break;
+      }
+
+      case 'Break': {
+        // Signal break to the nearest enclosing foreverypart loop
+        state.breakSignal = command.name || true;
+        break;
+      }
+
+      case 'Extracttext': {
+        this.executeExtracttext(command, state);
+        break;
+      }
+
+      case 'Replace': {
+        this.executeReplace(command, state);
+        break;
+      }
+
+      case 'Enclose': {
+        this.executeEnclose(command, state);
+        break;
+      }
+
       default: {
         this.logger.warn(`Unknown command type: ${command.type}`);
       }
@@ -660,12 +710,23 @@ class SieveEngine {
 
   /**
    * Evaluate a header test
+   * When the :mime tag is present (RFC 5703), tests against the current
+   * MIME part's headers instead of the top-level message headers.
+   * The :type, :subtype, :contenttype, and :param tags provide
+   * structured access to Content-Type fields.
+   *
    * @param {Object} test - The header test
    * @param {Object} state - Execution state
    * @returns {boolean} Test result
    */
   evaluateHeaderTest(test, state) {
     const { headers, keys, matchType, comparator } = test;
+
+    // RFC 5703: :mime tag redirects header lookup to current MIME part
+    if (test.mime) {
+      return this.evaluateMimeHeaderTest(test, state);
+    }
+
     const { message } = state;
 
     for (const headerName of headers) {
@@ -696,6 +757,143 @@ class SieveEngine {
     }
 
     return false;
+  }
+
+  /**
+   * Evaluate a header test with :mime tag against the current MIME part
+   * Supports :type, :subtype, :contenttype, :param, and :anychild tags
+   * per RFC 5703 Section 4.
+   *
+   * @param {Object} test - The header test with mime tags
+   * @param {Object} state - Execution state
+   * @returns {boolean} Test result
+   */
+  evaluateMimeHeaderTest(test, state) {
+    const { headers, keys, matchType, comparator } = test;
+    const part = this.getCurrentMimePart(state);
+
+    if (!part) {
+      return false;
+    }
+
+    // Determine which parts to check (:anychild includes all descendants)
+    const partsToCheck = test.anychild
+      ? this.getDescendantParts(state)
+      : [part];
+
+    for (const checkPart of partsToCheck) {
+      for (const headerName of headers) {
+        let headerValue;
+
+        // Handle :type, :subtype, :contenttype, :param structured access
+        if (test.mimeType) {
+          headerValue = this.getMimeStructuredValue(
+            checkPart,
+            test.mimeType,
+            test.mimeParam
+          );
+        } else {
+          // Regular header lookup on the MIME part
+          headerValue =
+            checkPart.headers && checkPart.headers[headerName.toLowerCase()];
+        }
+
+        if (headerValue === undefined || headerValue === null) {
+          continue;
+        }
+
+        const values = Array.isArray(headerValue) ? headerValue : [headerValue];
+        for (const value of values) {
+          const stringValue =
+            value === null || value === undefined ? '' : String(value);
+          for (const key of keys) {
+            const interpolatedKey = this.interpolateVariables(key, state);
+            if (
+              this.matchString(
+                stringValue,
+                interpolatedKey,
+                matchType,
+                comparator
+              )
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Get structured MIME value based on :type/:subtype/:contenttype/:param tags
+   * @param {Object} part - MIME part
+   * @param {string} mimeType - One of 'type', 'subtype', 'contenttype', 'param'
+   * @param {string} mimeParam - Parameter name (for :param)
+   * @returns {string|undefined} The extracted value
+   */
+  getMimeStructuredValue(part, mimeType, mimeParam) {
+    const ct = part.contentType || '';
+
+    switch (mimeType) {
+      case 'type': {
+        // Major type (e.g., "text" from "text/plain")
+        const slashIdx = ct.indexOf('/');
+        return slashIdx > 0 ? ct.slice(0, slashIdx) : ct;
+      }
+
+      case 'subtype': {
+        // Subtype (e.g., "plain" from "text/plain")
+        const slashIdx2 = ct.indexOf('/');
+        return slashIdx2 > 0 ? ct.slice(slashIdx2 + 1) : '';
+      }
+
+      case 'contenttype': {
+        // Full content-type value
+        return ct;
+      }
+
+      case 'param': {
+        // Content-Type parameter value
+        if (!mimeParam || !part.headers) {
+          return undefined;
+        }
+
+        const ctHeader = part.headers['content-type'] || '';
+        const paramRegex = new RegExp(
+          `${mimeParam.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            '\\$&'
+          )}\\s*=\\s*(?:"([^"]*)"|([^;\\s]*))`,
+          'i'
+        );
+        const match = ctHeader.match(paramRegex);
+        return match ? match[1] || match[2] : undefined;
+      }
+
+      default: {
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * Get all descendant parts from current position (for :anychild)
+   * @param {Object} state - Execution state
+   * @returns {Object[]} Array of descendant MIME parts
+   */
+  getDescendantParts(state) {
+    // Return all parts after the current one (flat list approximation)
+    // In a flat MIME part list, descendants follow the current multipart node
+    const parts = state.mimeParts;
+    const idx = state.currentPartIndex;
+    if (idx < 0 || idx >= parts.length) {
+      return [];
+    }
+
+    // Include current part and all subsequent non-root parts
+    return parts.slice(idx);
   }
 
   /**
@@ -1598,6 +1796,317 @@ class SieveEngine {
     }
 
     return true;
+  }
+
+  // =========================================================================
+  // RFC 5703 - MIME Part Iteration and Manipulation
+  // =========================================================================
+
+  /**
+   * Security limits for MIME operations
+   */
+  static MIME_LIMITS = {
+    maxPartsIteration: 100,
+    maxExtractedTextSize: 102_400, // 100KB
+    maxForeverypartDepth: 3,
+    maxInstructionsPerScript: 10_000
+  };
+
+  /**
+   * Increment instruction counter and check CPU limit
+   * @param {Object} state - Execution state
+   * @throws {Error} If instruction limit exceeded
+   */
+  checkInstructionLimit(state) {
+    state.instructionCount++;
+    if (
+      state.instructionCount > SieveEngine.MIME_LIMITS.maxInstructionsPerScript
+    ) {
+      throw new Error(
+        'Sieve script exceeded maximum instruction count (possible infinite loop)'
+      );
+    }
+  }
+
+  /**
+   * Execute a foreverypart loop (RFC 5703 Section 3)
+   * Iterates over each MIME part in the message, executing the block
+   * with the current part context set for each iteration.
+   *
+   * @param {Object} command - The foreverypart command
+   * @param {Object} state - Execution state
+   */
+  async executeForeverypart(command, state) {
+    // Enforce nesting depth limit
+    if (
+      state.partIterStack.length >= SieveEngine.MIME_LIMITS.maxForeverypartDepth
+    ) {
+      this.logger.warn(
+        'foreverypart nesting depth exceeded, skipping inner loop'
+      );
+      return;
+    }
+
+    const parts = state.mimeParts;
+    if (!parts || parts.length === 0) {
+      return;
+    }
+
+    // Enforce max parts iteration limit
+    const maxParts = Math.min(
+      parts.length,
+      SieveEngine.MIME_LIMITS.maxPartsIteration
+    );
+
+    // Push current iteration context onto stack
+    state.partIterStack.push({
+      name: command.name || null,
+      previousPartIndex: state.currentPartIndex
+    });
+
+    try {
+      for (let i = 0; i < maxParts; i++) {
+        this.checkInstructionLimit(state);
+
+        state.currentPartIndex = i;
+        state.breakSignal = null;
+
+        // Execute the block commands for this part
+        for (const cmd of command.block) {
+          if (state.stopped || state.breakSignal) {
+            break;
+          }
+
+          await this.executeCommand(cmd, state);
+        }
+
+        // Handle break signal
+        if (state.breakSignal) {
+          // Named break: only break if name matches or it's unnamed
+          if (
+            state.breakSignal === true ||
+            state.breakSignal === command.name
+          ) {
+            state.breakSignal = null;
+            break;
+          }
+
+          // Named break for outer loop: propagate
+          break;
+        }
+
+        if (state.stopped) {
+          break;
+        }
+      }
+    } finally {
+      // Restore previous iteration context
+      const ctx = state.partIterStack.pop();
+      state.currentPartIndex = ctx.previousPartIndex;
+    }
+  }
+
+  /**
+   * Execute an extracttext command (RFC 5703 Section 7)
+   * Extracts the text content of the current MIME part and stores it
+   * in the named variable.
+   *
+   * @param {Object} command - The extracttext command
+   * @param {Object} state - Execution state
+   */
+  executeExtracttext(command, state) {
+    // extracttext requires variables extension
+    if (!state.enabledCapabilities.has('variables')) {
+      this.logger.warn('extracttext requires variables extension');
+      return;
+    }
+
+    // Must be inside a foreverypart loop
+    if (state.partIterStack.length === 0 || state.currentPartIndex < 0) {
+      this.logger.warn('extracttext used outside of foreverypart loop');
+      return;
+    }
+
+    const part = state.mimeParts[state.currentPartIndex];
+    if (!part) {
+      state.variables.set(command.name.toLowerCase(), '');
+      return;
+    }
+
+    let text = this.extractTextFromPart(part);
+
+    // Apply :first N character limit
+    if (command.first && command.first > 0) {
+      text = text.slice(0, command.first);
+    }
+
+    // Enforce maximum extracted text size
+    if (text.length > SieveEngine.MIME_LIMITS.maxExtractedTextSize) {
+      text = text.slice(0, SieveEngine.MIME_LIMITS.maxExtractedTextSize);
+    }
+
+    state.variables.set(command.name.toLowerCase(), text);
+  }
+
+  /**
+   * Extract text content from a MIME part
+   * Handles content-transfer-encoding decoding and HTML stripping.
+   *
+   * @param {Object} part - The MIME part object
+   * @returns {string} Extracted text content
+   */
+  extractTextFromPart(part) {
+    // Only extract from text/* content types
+    if (!part.contentType || !part.contentType.startsWith('text/')) {
+      return '';
+    }
+
+    // Skip multipart containers
+    if (part.multipart) {
+      return '';
+    }
+
+    let content = part.body || '';
+
+    // Decode content-transfer-encoding if needed
+    if (part.encoding === 'base64') {
+      try {
+        content = Buffer.from(content, 'base64').toString(
+          part.charset || 'utf8'
+        );
+      } catch {
+        return '';
+      }
+    } else if (part.encoding === 'quoted-printable') {
+      content = this.decodeQuotedPrintable(content, part.charset || 'utf8');
+    }
+
+    // Strip HTML tags for text/html parts
+    if (part.contentType === 'text/html') {
+      content = this.htmlToText(content);
+    }
+
+    return content;
+  }
+
+  /**
+   * Decode quoted-printable encoded content
+   * @param {string} input - QP encoded string
+   * @param {string} charset - Character set (unused for utf-8)
+   * @returns {string} Decoded string
+   */
+  decodeQuotedPrintable(input, charset) {
+    try {
+      // Remove soft line breaks
+      let decoded = input.replaceAll(/=\r?\n/g, '');
+      // Decode =XX hex sequences
+      decoded = decoded.replaceAll(/=([\dA-Fa-f]{2})/g, (_, hex) =>
+        String.fromCodePoint(Number.parseInt(hex, 16))
+      );
+      // Handle multi-byte UTF-8 if needed
+      if (charset && charset.toLowerCase() !== 'us-ascii') {
+        try {
+          const bytes = new Uint8Array(
+            // eslint-disable-next-line no-bitwise
+            [...decoded].map((c) => c.codePointAt(0) & 0xff)
+          );
+          decoded = new TextDecoder(charset).decode(bytes);
+        } catch {
+          // Fall through with raw decoded
+        }
+      }
+
+      return decoded;
+    } catch {
+      return input;
+    }
+  }
+
+  /**
+   * Convert HTML to plain text (basic tag stripping)
+   * @param {string} html - HTML content
+   * @returns {string} Plain text
+   */
+  htmlToText(html) {
+    return html
+      .replaceAll(/<br\s*\/?>/gi, '\n')
+      .replaceAll(/<\/p>/gi, '\n\n')
+      .replaceAll(/<\/div>/gi, '\n')
+      .replaceAll(/<\/li>/gi, '\n')
+      .replaceAll(/<[^>]*>/g, '')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  /**
+   * Execute a replace command (RFC 5703 Section 5)
+   * Replaces the body of the current MIME part.
+   * Produces an action record for the integration layer to apply.
+   *
+   * @param {Object} command - The replace command
+   * @param {Object} state - Execution state
+   */
+  executeReplace(command, state) {
+    if (state.partIterStack.length === 0 || state.currentPartIndex < 0) {
+      this.logger.warn('replace used outside of foreverypart loop');
+      return;
+    }
+
+    const part = state.mimeParts[state.currentPartIndex];
+    if (!part || part.multipart) {
+      return;
+    }
+
+    state.actions.push({
+      type: 'replace',
+      partIndex: state.currentPartIndex,
+      replacement: this.interpolateVariables(command.replacement, state),
+      mime: command.mime || false,
+      subject: command.subject
+        ? this.interpolateVariables(command.subject, state)
+        : null,
+      from: command.from ? this.interpolateVariables(command.from, state) : null
+    });
+  }
+
+  /**
+   * Execute an enclose command (RFC 5703 Section 6)
+   * Wraps the entire message as an attachment inside a new MIME message.
+   * Produces an action record for the integration layer to apply.
+   *
+   * @param {Object} command - The enclose command
+   * @param {Object} state - Execution state
+   */
+  executeEnclose(command, state) {
+    state.actions.push({
+      type: 'enclose',
+      value: this.interpolateVariables(command.value, state),
+      subject: command.subject
+        ? this.interpolateVariables(command.subject, state)
+        : null,
+      headers: (command.headers || []).map((h) =>
+        this.interpolateVariables(h, state)
+      )
+    });
+  }
+
+  /**
+   * Get the current MIME part (for use by :mime tagged tests)
+   * @param {Object} state - Execution state
+   * @returns {Object|null} Current MIME part or null
+   */
+  getCurrentMimePart(state) {
+    if (state.partIterStack.length === 0 || state.currentPartIndex < 0) {
+      return null;
+    }
+
+    return state.mimeParts[state.currentPartIndex] || null;
   }
 }
 

@@ -1147,6 +1147,8 @@ sequenceDiagram
 | `index`                      | 특정 헤더 발생 횟수 접근                     | 다중 값 헤더에 `:index` 사용                    |
 | `regex`                      | 정규 표현식 매칭                            | 테스트에서 전체 정규식 지원                      |
 | `enotify`                    | 알림 전송                                 | Emails.queue를 통한 `mailto:` 알림               |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | 환경 정보 접근                             | 세션에서 도메인, 호스트, 원격 IP 정보 접근        |
 | `mailbox`                    | 메일박스 존재 여부 테스트                    | `mailboxexists` 테스트                          |
 | `special-use`                | 특수 용도 메일박스에 저장                    | \Junk, \Trash 등 특수 폴더 매핑                  |
@@ -1162,7 +1164,6 @@ sequenceDiagram
 | `mboxmetadata` / `servermetadata`    | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | IMAP METADATA 확장 필요                                          |
 | `fcc`                                | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | 발신함 폴더 통합 필요                                            |
 | `encoded-character`                  | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | `${hex:}` 구문에 대한 파서 변경 필요                             |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | 복잡한 MIME 트리 조작                                            |
 #### Sieve 처리 흐름 {#sieve-processing-flow}
 
 ```mermaid

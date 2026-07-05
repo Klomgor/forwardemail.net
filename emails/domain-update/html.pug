@@ -55,7 +55,7 @@ block content
                           em.text-muted= t("Unknown")
                       td
                         if field.changedAt
-                          span= new Date(field.changedAt).toLocaleString(locale || "en")
+                          span= new Date(field.changedAt).toLocaleString(locale || "en", { timeZone: timezone || "UTC" })
                         else
                           em.text-muted= t("Unknown")
               //- Only show technical details for non-admin, non-system changes that have user agent

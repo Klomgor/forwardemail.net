@@ -38,7 +38,14 @@ const graceful = new Graceful({
   mongooses: [mongoose],
   servers: [web.server],
   redisClients: [redis],
-  logger
+  logger,
+  customHandlers: [
+    () => {
+      // Expose shutdown state to all Koa request contexts.
+      // Controllers can check `ctx.isClosing` to bail early.
+      web.app.context.isClosing = true;
+    }
+  ]
 });
 graceful.listen();
 

@@ -273,6 +273,12 @@ const Aliases = new mongoose.Schema({
     default: false
   },
 
+  // timestamp when the rekey operation was initiated
+  // (used by cleanup job and startup recovery to detect stuck rekeys)
+  rekey_started_at: {
+    type: Date
+  },
+
   // alias specific max quota (set by admins only)
   max_quota: {
     type: Number,

@@ -61,6 +61,7 @@ const parseRootDomain = require('#helpers/parse-root-domain');
 const recursivelyParse = require('#helpers/recursively-parse');
 const sendApn = require('#helpers/send-apn');
 const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const ServerShutdownError = require('#helpers/server-shutdown-error');
 const syncTemporaryMailbox = require('#helpers/sync-temporary-mailbox');
 const updateStorageUsed = require('#helpers/update-storage-used');
 const { encoder, decoder } = require('#helpers/encoder-decoder');
@@ -2170,6 +2171,9 @@ async function parsePayload(data, ws) {
       //       `db.pragma(`rekey="${decrypt(payload.new_password)}"`);`
       //
       case 'rekey': {
+        // Do not accept new rekey jobs if the sqlite-server is shutting down
+        if (this.isClosing) throw new ServerShutdownError();
+
         // leverages `payload.new_password` to rekey existing
         if (!isSANB(payload.new_password))
           throw new TypeError('New password missing');
@@ -2232,9 +2236,14 @@ async function parsePayload(data, ws) {
           ms('30s')
         );
 
-        // publish to dedicated sqlite-worker process via Redis Pub/Sub
-        this.client.publish(
-          `sqlite_backup_queue:${config.env}`,
+        //
+        // Enqueue to Redis List (persistent queue) instead of Pub/Sub.
+        // This guarantees the job survives restarts/deploys — unlike Pub/Sub
+        // which is fire-and-forget and loses messages when no subscriber
+        // is listening.
+        //
+        await this.client.rpush(
+          `rekey_queue:${config.env}`,
           safeStringify(payload)
         );
 

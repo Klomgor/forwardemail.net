@@ -1147,6 +1147,8 @@ Následující rozšíření kalendáře nejsou podporována:
 | `index`                      | Přístup ke konkrétním výskytům hlaviček   | `:index` pro vícenásobné hodnoty hlaviček      |
 | `regex`                      | Porovnání pomocí regulárních výrazů       | Plná podpora regexů v testech                   |
 | `enotify`                    | Odesílání notifikací                      | Notifikace `mailto:` přes Emails.queue          |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Přístup k informacím o prostředí           | Doména, host, remote-ip ze session              |
 | `mailbox`                    | Test existence schránky                    | Test `mailboxexists`                             |
 | `special-use`                | Ukládání do speciálních schránek           | Mapování \Junk, \Trash atd. na složky            |
@@ -1162,7 +1164,6 @@ Následující rozšíření kalendáře nejsou podporována:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Vyžaduje IMAP rozšíření METADATA                                 |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Vyžaduje integraci složky Odeslané                              |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Vyžaduje změny parseru pro syntaxi ${hex:}                      |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Komplexní manipulace s MIME stromem                             |
 #### Průběh zpracování Sieve {#sieve-processing-flow}
 
 ```mermaid

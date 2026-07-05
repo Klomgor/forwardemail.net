@@ -18,11 +18,13 @@
  */
 
 const { Buffer } = require('node:buffer');
+const { Readable } = require('node:stream');
 
 const libmime = require('libmime');
 const mongoose = require('mongoose');
 const RE2 = require('re2');
 const { simpleParser } = require('mailparser');
+const { Splitter } = require('mailsplit');
 const SieveEngine = require('./engine');
 const { SieveFilterHandler } = require('./filter-handler');
 const {
@@ -103,11 +105,14 @@ const DEFAULT_CONFIG = {
     // Utility extensions
     'duplicate',
     'ihave',
-    'subaddress'
+    'subaddress',
+    // Partial support
+    'mime', // RFC 5703 - partial: vacation :mime tag supported; foreverypart/extracttext not yet
+    'notify' // Alias for enotify (draft-martin-sieve-notify -> RFC 5435)
     // NOT IMPLEMENTED (require external dependencies):
     // - mboxmetadata, servermetadata (require IMAP METADATA extension)
     // - include (security risk, requires global script storage)
-    // - extracttext, foreverypart, mime, replace, enclose (complex MIME manipulation)
+    // - extracttext, foreverypart, replace, enclose (complex MIME manipulation)
   ]
 };
 
@@ -484,12 +489,36 @@ class SieveIntegration {
       if (filterResult.notifications && filterResult.notifications.length > 0) {
         for (const notification of filterResult.notifications) {
           try {
+            // Rate limit notifications (same bucket as vacations - 10/hour)
+            const notifyRateCheck = await this.rateLimiter.checkNotification(
+              aliasId
+            );
+            if (!notifyRateCheck.allowed) {
+              result.errors.push({
+                type: 'rate_limit',
+                message: `Notification rate limit exceeded: ${notifyRateCheck.remaining} remaining`
+              });
+              logger.warn('sieve notify rate limited', {
+                ignore_hook: false,
+                session,
+                sieve: {
+                  action: 'notify',
+                  script: script.name,
+                  alias: aliasAddress,
+                  method: notification.method,
+                  rateLimitRemaining: notifyRateCheck.remaining
+                }
+              });
+              continue;
+            }
+
             await this.sendNotification(notification, {
               aliasId,
               aliasAddress,
               envelope,
               session
             });
+            await this.rateLimiter.recordNotification(aliasId);
             result.notifications.push({
               ...notification,
               sent: true
@@ -672,6 +701,18 @@ class SieveIntegration {
       headers.date = parsed.date.toISOString();
     }
 
+    // Parse MIME tree for foreverypart/extracttext support (RFC 5703)
+    let mimeParts = [];
+    try {
+      mimeParts = await this.parseMimeTree(raw);
+    } catch (err) {
+      // Non-fatal: MIME tree parsing failure should not block delivery
+      logger.warn('sieve mime tree parse error', {
+        ignore_hook: true,
+        err
+      });
+    }
+
     return {
       headers,
       envelope: {
@@ -683,8 +724,101 @@ class SieveIntegration {
         html: parsed.html || ''
       },
       size: Buffer.byteLength(raw),
-      raw
+      raw,
+      mimeParts
     };
+  }
+
+  /**
+   * Parse raw message into a flat MIME parts array using mailsplit.
+   * Each part includes content-type, encoding, headers, and body content.
+   * Enforces a maximum part count to prevent abuse from deeply nested messages.
+   *
+   * @param {Buffer} raw - Raw message bytes
+   * @returns {Promise<Object[]>} Array of MIME part objects
+   */
+  async parseMimeTree(raw) {
+    const MAX_MIME_PARTS = 100;
+    const MAX_BODY_SIZE = 256 * 1024; // 256KB per part body
+
+    return new Promise((resolve) => {
+      const splitter = new Splitter();
+      const parts = [];
+      let currentPart = null;
+      let bodySize = 0;
+
+      // Safety timeout to prevent hanging on malformed messages
+      const timeout = setTimeout(() => {
+        splitter.destroy();
+        resolve(parts);
+      }, 5000);
+
+      splitter.on('data', (chunk) => {
+        if (chunk.type === 'node') {
+          // Enforce max parts limit
+          if (parts.length >= MAX_MIME_PARTS) {
+            return;
+          }
+
+          currentPart = {
+            contentType: chunk.contentType || 'application/octet-stream',
+            encoding: chunk.encoding || '',
+            charset: chunk.charset || false,
+            disposition: chunk.disposition || false,
+            filename: chunk.filename || false,
+            multipart: chunk.multipart || false,
+            headers: {},
+            body: ''
+          };
+
+          // Parse part headers
+          try {
+            const rawHeaders = chunk.getHeaders().toString();
+            for (const line of rawHeaders.split(/\r?\n/)) {
+              const colonIdx = line.indexOf(':');
+              if (colonIdx > 0) {
+                const name = line.slice(0, colonIdx).trim().toLowerCase();
+                const value = line.slice(colonIdx + 1).trim();
+                currentPart.headers[name] = value;
+              }
+            }
+          } catch {
+            // Header parsing failure is non-fatal
+          }
+
+          parts.push(currentPart);
+          bodySize = 0;
+        } else if (
+          chunk.type === 'body' &&
+          currentPart && // Accumulate body content with size limit
+          bodySize < MAX_BODY_SIZE
+        ) {
+          const text = chunk.value ? chunk.value.toString() : '';
+          const remaining = MAX_BODY_SIZE - bodySize;
+          currentPart.body += text.slice(0, remaining);
+          bodySize += text.length;
+        }
+      });
+
+      splitter.on('end', () => {
+        clearTimeout(timeout);
+        resolve(parts);
+      });
+
+      splitter.on('error', (_err) => {
+        clearTimeout(timeout);
+        // Return whatever parts we collected so far
+        resolve(parts);
+      });
+
+      // Feed the raw message into the splitter
+      try {
+        Readable.from(raw).pipe(splitter);
+      } catch {
+        clearTimeout(timeout);
+        resolve(parts);
+      }
+    });
   }
 
   /**

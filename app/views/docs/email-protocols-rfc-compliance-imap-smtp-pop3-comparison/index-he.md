@@ -1147,6 +1147,8 @@ sequenceDiagram
 | `index`                      | גישה להתרחשויות ספציפיות של כותרות       | `:index` לכותרות עם ערכים מרובים             |
 | `regex`                      | התאמת ביטוי רגולרי                       | תמיכה מלאה בביטויים רגולריים בבדיקות         |
 | `enotify`                    | שליחת התראות                            | התראות `mailto:` דרך Emails.queue            |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | גישה למידע סביבתי                       | דומיין, מארח, remote-ip מהסשן                 |
 | `mailbox`                    | בדיקת קיום תיבת דואר                    | בדיקת `mailboxexists`                        |
 | `special-use`                | סיווג לתיבות דואר לשימוש מיוחד           | ממפה \Junk, \Trash וכו' לתיקיות               |
@@ -1162,7 +1164,6 @@ sequenceDiagram
 | `mboxmetadata` / `servermetadata`   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | דורש הרחבת METADATA ב-IMAP                                      |
 | `fcc`                               | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | דורש אינטגרציה עם תיקיית Sent                                  |
 | `encoded-character`                 | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | נדרשות שינויים בפרסר עבור תחביר ${hex:}                        |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | טיפול מורכב בעץ MIME                                            |
 #### זרימת עיבוד Sieve {#sieve-processing-flow}
 
 ```mermaid

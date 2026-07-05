@@ -1147,6 +1147,8 @@ Följande kalenderförlängningar stöds INTE:
 | `index`                      | Åtkomst till specifika förekomster av huvud | `:index` för flervärda huvuden               |
 | `regex`                      | Reguljära uttrycksmatchningar              | Fullt regex-stöd i tester                    |
 | `enotify`                    | Skicka aviseringar                         | `mailto:`-aviseringar via Emails.queue       |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Åtkomst till miljöinformation              | Domän, värd, remote-ip från session          |
 | `mailbox`                    | Testa om brevlåda finns                     | `mailboxexists`-test                         |
 | `special-use`                | Placera i specialanvända brevlådor          | Kartlägger \Junk, \Trash, etc. till mappar   |
@@ -1162,7 +1164,6 @@ Följande kalenderförlängningar stöds INTE:
 | `mboxmetadata` / `servermetadata`     | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Kräver IMAP METADATA-tillägg                                    |
 | `fcc`                                 | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Kräver integration med Skickat-mapp                            |
 | `encoded-character`                   | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parserändringar krävs för ${hex:}-syntax                        |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Komplex MIME-trädmanipulation                                  |
 #### Sieve Processing Flow {#sieve-processing-flow}
 
 ```mermaid

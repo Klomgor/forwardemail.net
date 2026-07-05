@@ -2806,6 +2806,8 @@ Soportamos un conjunto completo de extensiones Sieve:
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Acceder a ocurrencias específicas de encabezados  |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | Coincidencia con expresiones regulares             |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | Enviar notificaciones (por ejemplo, mailto:)       |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                               | Acceder a información del entorno                   |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                               | Probar existencia de buzones, crear buzones        |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                               | Archivar en buzones de uso especial (\Junk, \Trash)|
@@ -2820,7 +2822,6 @@ Las siguientes extensiones no están soportadas actualmente:
 | -------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `include`                                                      | Riesgo de seguridad (inyección de scripts) y requiere almacenamiento global de scripts |
 | `mboxmetadata` / `servermetadata`                              | Requiere soporte para la extensión IMAP METADATA                   |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Manipulación compleja del árbol MIME aún no implementada           |
 
 #### Ejemplos de Scripts Sieve {#example-sieve-scripts}
 

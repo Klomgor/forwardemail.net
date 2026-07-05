@@ -2804,6 +2804,8 @@ Tuemme laajaa valikoimaa Sieve-laajennuksia:
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Pääsy tiettyihin otsikon esiintymiin               |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | Säännöllisten lausekkeiden vastaavuus             |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | Lähetä ilmoituksia (esim. mailto:)                 |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                               | Pääsy ympäristötietoihin                           |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                               | Testaa postilaatikon olemassaolo, luo postilaatikoita |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                               | Tallenna erityiskäyttöisiin postilaatikoihin (\Junk, \Trash) |
@@ -2818,7 +2820,6 @@ Seuraavia laajennuksia ei tällä hetkellä tueta:
 | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `include`                                                      | Turvariski (skriptin injektointi) ja vaatii globaalin skriptin tallennuksen |
 | `mboxmetadata` / `servermetadata`                              | Vaatii IMAP METADATA -laajennuksen tuen                          |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Monimutkainen MIME-puun käsittely ei ole vielä toteutettu         |
 
 #### Esimerkkisieve-skriptit {#example-sieve-scripts}
 

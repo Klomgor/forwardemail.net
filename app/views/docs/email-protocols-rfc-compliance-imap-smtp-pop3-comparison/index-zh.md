@@ -1147,6 +1147,8 @@ sequenceDiagram
 | `index`                      | 访问特定邮件头出现次数                     | 多值邮件头使用 `:index`                      |
 | `regex`                      | 正则表达式匹配                          | 测试中支持完整正则表达式                       |
 | `enotify`                    | 发送通知                               | 通过 Emails.queue 发送 `mailto:` 通知          |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | 访问环境信息                           | 会话中的域、主机、远程 IP                      |
 | `mailbox`                    | 测试邮箱是否存在                         | `mailboxexists` 测试                         |
 | `special-use`                | 归档到特殊用途邮箱                        | 映射 \Junk、\Trash 等到文件夹                   |
@@ -1162,7 +1164,6 @@ sequenceDiagram
 | `mboxmetadata` / `servermetadata`     | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)  | 需要 IMAP METADATA 扩展                                           |
 | `fcc`                                 | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580)  | 需要已发送文件夹集成                                             |
 | `encoded-character`                   | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228)  | 解析器需支持 `${hex:}` 语法的更改                                 |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)  | 复杂的 MIME 树操作                                               |
 #### 筛选器处理流程 {#sieve-processing-flow}
 
 ```mermaid

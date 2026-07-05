@@ -1147,6 +1147,8 @@ De volgende agenda-uitbreidingen worden NIET ondersteund:
 | `index`                      | Toegang tot specifieke header-voorkomens       | `:index` voor headers met meerdere waarden           |
 | `regex`                      | Regular expression matching              | Volledige regex-ondersteuning in tests                |
 | `enotify`                    | Verstuur notificaties                       | `mailto:` notificaties via Emails.queue   |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Toegang tot omgevingsinformatie           | Domein, host, remote-ip vanuit sessie       |
 | `mailbox`                    | Test of mailbox bestaat                   | `mailboxexists` test                       |
 | `special-use`                | Plaats in speciale mailboxen          | Koppelt \Junk, \Trash, enz. aan mappen        |
@@ -1162,7 +1164,6 @@ De volgende agenda-uitbreidingen worden NIET ondersteund:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Vereist IMAP METADATA-extensie                                 |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Vereist integratie met Verzonden-map                                 |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parserwijzigingen vereist voor ${hex:} syntax                       |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Complexe MIME-boommanipulatie                                   |
 #### Sieve Verwerkingsstroom {#sieve-processing-flow}
 
 ```mermaid

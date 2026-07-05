@@ -1147,6 +1147,8 @@ Seuraavia kalenterilaajennuksia EI tueta:
 | `index`                      | Pääsy tiettyihin otsikon esiintymiin     | `:index` moniarvoisille otsikoille           |
 | `regex`                      | Säännöllisten lausekkeiden vastaavuus    | Täysi regex-tuki testeissä                   |
 | `enotify`                    | Lähetä ilmoituksia                       | `mailto:`-ilmoitukset Emails.queue-palvelun kautta |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | Pääsy ympäristötietoihin                  | Domain, host, remote-ip istunnosta           |
 | `mailbox`                    | Testaa postilaatikon olemassaolo          | `mailboxexists`-testi                        |
 | `special-use`                | Tallenna erikoiskäyttöisiin postilaatikoihin | Karttaa \Junk, \Trash jne. kansioihin        |
@@ -1162,7 +1164,6 @@ Seuraavia kalenterilaajennuksia EI tueta:
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | Vaatii IMAP METADATA -laajennuksen                              |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | Vaatii Lähetetyt-kansion integraation                           |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | Parsinmuutoksia vaaditaan ${hex:}-syntaksille                   |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | Monimutkainen MIME-puun käsittely                               |
 #### Siivilän käsittelyprosessi {#sieve-processing-flow}
 
 ```mermaid

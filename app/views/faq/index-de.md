@@ -2805,6 +2805,8 @@ Wir unterstützen eine umfassende Reihe von Sieve-Erweiterungen:
 | `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Zugriff auf bestimmte Header-Vorkommen          |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | Reguläre Ausdrucksübereinstimmung               |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Benachrichtigungen senden (z.B. mailto:)        |
+| `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |
+| `mime`                       | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703)                              | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags. Security hardened with iteration limits and depth restrictions. |
 | `environment`               | [RFC 5183](https://datatracker.ietf.org/doc/html/rfc5183)                              | Zugriff auf Umgebungsinformationen              |
 | `mailbox`                   | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490)                              | Postfachexistenz testen, Postfächer erstellen   |
 | `special-use`               | [RFC 8579](https://datatracker.ietf.org/doc/html/rfc8579)                              | In spezielle Postfächer ablegen (\Junk, \Trash) |
@@ -2819,7 +2821,6 @@ Die folgenden Erweiterungen werden derzeit nicht unterstützt:
 | -------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `include`                                                      | Sicherheitsrisiko (Skripteinfügung) und erfordert globalen Skriptspeicher |
 | `mboxmetadata` / `servermetadata`                              | Erfordert Unterstützung der IMAP METADATA-Erweiterung             |
-| `foreverypart` / `mime` / `extracttext` / `replace` / `enclose` | Komplexe MIME-Baum-Manipulation noch nicht implementiert          |
 
 #### Beispiel-Sieve-Skripte {#example-sieve-scripts}
 

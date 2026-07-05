@@ -1147,6 +1147,8 @@ sequenceDiagram
 | `index`                      | 特定のヘッダーの出現回数にアクセス            | 複数値ヘッダーに対する`:index`               |
 | `regex`                      | 正規表現マッチング                         | テストでの完全な正規表現サポート             |
 | `enotify`                    | 通知の送信                               | Emails.queue経由の`mailto:`通知              |
+| `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |
+| `mime`                       | MIME part tests and iteration    | ✅ Full — `foreverypart`, `break`, `extracttext`, `replace`, `enclose` commands; `:mime`, `:type`, `:subtype`, `:contenttype`, `:param`, `:anychild` tags on header/address tests. Security hardened with iteration limits, instruction counting, and depth restrictions. |
 | `environment`                | 環境情報へのアクセス                       | セッションからドメイン、ホスト、リモートIPを取得 |
 | `mailbox`                    | メールボックスの存在をテスト                 | `mailboxexists`テスト                       |
 | `special-use`                | 特殊用途メールボックスへの振り分け            | \Junk、\Trashなどをフォルダーにマッピング    |
@@ -1162,7 +1164,6 @@ sequenceDiagram
 | `mboxmetadata` / `servermetadata`       | [RFC 5490](https://datatracker.ietf.org/doc/html/rfc5490) | IMAP METADATA拡張が必要                                         |
 | `fcc`                                   | [RFC 8580](https://datatracker.ietf.org/doc/html/rfc8580) | 送信済みフォルダーとの統合が必要                               |
 | `encoded-character`                     | [RFC 5228](https://datatracker.ietf.org/doc/html/rfc5228) | `${hex:}`構文のためにパーサーの変更が必要                       |
-| `foreverypart` / `mime` / `extracttext` | [RFC 5703](https://datatracker.ietf.org/doc/html/rfc5703) | 複雑なMIMEツリーの操作が必要                                   |
 #### Sieve処理フロー {#sieve-processing-flow}
 
 ```mermaid
