@@ -66,7 +66,7 @@ const SERVICES = {
     subtopic: 'com.apple.mobilemail',
     cachePrefix: 'aps_check',
     errorLabel: 'APS failed',
-    pushType: 'background'
+    pushType: undefined
   },
   Calendar: {
     cert: 'Calendar',
