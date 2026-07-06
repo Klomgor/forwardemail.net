@@ -16,10 +16,24 @@ const refineAndLogError = require('#helpers/refine-and-log-error');
 // <https://github.com/nodemailer/wildduck/issues/711> and the dovecot
 // x-aps daemon source.
 //
-// Persistence is now done via atomic `Aliases.updateOne()` instead of
-// findOne+save to eliminate the read-modify-write race that affected
-// concurrent registrations from the same alias (e.g. when the same iOS
-// device subscribes to multiple mailboxes within a single sync window).
+// Registration strategy (atomic, race-free):
+//
+//   iOS Mail generates a brand-new `account_id` UUID every time it
+//   re-registers (after a reboot, iOS update, account remove/re-add, or
+//   backup-restore).  The `device_token` is stable across re-registrations
+//   for the same physical device.
+//
+//   The old upsert keyed on (account_id, device_token) meant that each
+//   re-registration appended a NEW row instead of replacing the old one,
+//   because the account_id changed.  Over time this accumulated dozens of
+//   stale rows per device.  The push pipeline's deduplication kept the
+//   FIRST (oldest) row, which had an account_id that iOS no longer
+//   recognised -- so APNs delivered the push but iOS silently ignored it.
+//
+//   Fix: on every registration, atomically $pull ALL existing aps[] entries
+//   for this device_token (regardless of account_id), then $push the fresh
+//   entry.  This guarantees exactly one row per (alias, device_token, subtopic)
+//   and ensures the push pipeline always uses the current account_id.
 // See helpers/dav-apns-subscribe.js for the same pattern on the DAV side.
 //
 // eslint-disable-next-line max-params
@@ -47,47 +61,49 @@ async function onXAPPLEPUSHSERVICE(
     const aliasId = session.user.alias_id;
 
     //
-    // Try to update an existing (account_id, device_token) registration
-    // first.  If found, refresh subtopic and mailboxes; otherwise append
-    // a new entry atomically with $push.  Both paths avoid the
-    // read-modify-write race in the previous findOne+save implementation.
+    // Step 1: atomically remove ALL existing aps[] entries for this
+    // (device_token, subtopic) pair (any account_id).  APNs treats device
+    // tokens as case-insensitive hex so we match both casings.  Scoping to
+    // subtopic ensures that when Mail re-registers it does not wipe out the
+    // Calendar or Contacts entries for the same physical device, and vice
+    // versa.  This cleans up stale rows from previous registrations where iOS
+    // rotated the account_id.
     //
-    const matchResult = await Aliases.updateOne(
+    await Aliases.updateOne(
+      { id: aliasId },
       {
-        id: aliasId,
-        'aps.account_id': accountID,
-        'aps.device_token': deviceToken
-      },
-      {
-        $set: {
-          'aps.$.subtopic': subTopic,
-          'aps.$.mailboxes': mailboxes
+        $pull: {
+          aps: {
+            device_token: {
+              $in: [
+                deviceToken,
+                deviceToken.toLowerCase(),
+                deviceToken.toUpperCase()
+              ]
+            },
+            subtopic: subTopic
+          }
         }
       }
     );
-
-    if (matchResult.matchedCount === 0) {
-      //
-      // No existing entry -- append.  We use updateOne here (not save)
-      // so concurrent registrations of distinct (account_id, device_token)
-      // pairs each successfully $push without overwriting one another.
-      //
-      const pushResult = await Aliases.updateOne(
-        { id: aliasId },
-        {
-          $push: {
-            aps: {
-              account_id: accountID,
-              device_token: deviceToken,
-              subtopic: subTopic,
-              mailboxes
-            }
+    //
+    // Step 2: atomically append the fresh registration entry.
+    //
+    const pushResult = await Aliases.updateOne(
+      { id: aliasId },
+      {
+        $push: {
+          aps: {
+            account_id: accountID,
+            device_token: deviceToken,
+            subtopic: subTopic,
+            mailboxes
           }
         }
-      );
-      if (pushResult.matchedCount === 0)
-        throw new TypeError('Alias does not exist');
-    }
+      }
+    );
+    if (pushResult.matchedCount === 0)
+      throw new TypeError('Alias does not exist');
 
     const certs = await getApnCerts(this.client);
     fn(null, certs.Mail.topic);

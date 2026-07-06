@@ -425,16 +425,28 @@ function createNote(certBundle, service, obj, options) {
 //   * Mail               -> lowercase(device_token) + '|' + mailboxPath
 //   * Calendar / Contact -> lowercase(device_token) + '|' + (key || '')
 //
-// The first row encountered for each dedupe key wins so the original
-// device_token casing is preserved for the 410-Gone unsubscribe path.
+// The most recently updated row for each dedupe key wins so that when iOS
+// rotates its account_id on re-registration the fresh account_id is used.
+// device_token casing from the winning row is preserved for the 410-Gone
+// unsubscribe path.
 //
 function dedupeRegistrations(matched, service, options = {}) {
   const mailboxPathForKey =
     service.cert === 'Mail' ? options.mailboxPath || 'INBOX' : null;
-
+  //
+  // Sort descending by updated_at so the most recently registered entry wins.
+  // iOS generates a new account_id UUID on every re-registration (reboot,
+  // iOS update, account remove/re-add) while keeping the same device_token.
+  // Without this sort the oldest stale account_id would win and iOS would
+  // silently ignore the push even though APNs returns HTTP 200.
+  //
+  const sorted = [...matched].sort((a, b) => {
+    const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    return tb - ta;
+  });
   const seen = new Map();
-
-  for (const row of matched) {
+  for (const row of sorted) {
     if (!row || !row.device_token) continue;
     const tokenLc = row.device_token.toLowerCase();
     const dedupeKey =
