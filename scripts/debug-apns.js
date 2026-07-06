@@ -42,6 +42,8 @@
 //
 
 const crypto = require('node:crypto');
+const { Buffer } = require('node:buffer');
+const http2 = require('node:http2');
 const process = require('node:process');
 
 // eslint-disable-next-line import/no-unassigned-import
@@ -52,8 +54,6 @@ require('#config/mongoose');
 const Graceful = require('@ladjs/graceful');
 const Mongoose = require('@ladjs/mongoose');
 const Redis = require('@ladjs/redis');
-const apn = require('@parse/node-apn');
-const ms = require('ms');
 const sharedConfig = require('@ladjs/shared-config');
 const splitLines = require('split-lines');
 
@@ -65,9 +65,21 @@ const logger = require('#helpers/logger');
 const setupMongoose = require('#helpers/setup-mongoose');
 
 const SERVICES = {
-  Mail: { subtopic: 'com.apple.mobilemail', pushType: 'alert' },
-  Calendar: { subtopic: 'com.apple.mobilecal', pushType: 'background' },
-  Contact: { subtopic: 'com.apple.mobileaddressbook', pushType: 'background' }
+  Mail: {
+    subtopic: 'com.apple.mobilemail',
+    pushType: 'background',
+    cert: 'Mail'
+  },
+  Calendar: {
+    subtopic: 'com.apple.mobilecal',
+    pushType: 'background',
+    cert: 'Calendar'
+  },
+  Contact: {
+    subtopic: 'com.apple.mobileaddressbook',
+    pushType: 'background',
+    cert: 'Contact'
+  }
 };
 
 const breeSharedConfig = sharedConfig('BREE');
@@ -126,11 +138,37 @@ async function cmdCerts() {
 async function findAlias(idOrEmail) {
   if (idOrEmail.includes('@')) {
     const [name, domainName] = idOrEmail.split('@');
+
+    // Try exact single-domain lookup first (fast path).
     const dom = await Domains.findOne({ name: domainName }).lean().exec();
-    return Aliases.findOne({ name, domain: dom && dom._id })
-      .select('+aps')
+    if (dom) {
+      const alias = await Aliases.findOne({ name, domain: dom._id })
+        .select('+aps')
+        .lean()
+        .exec();
+      if (alias) return alias;
+    }
+
+    // Fallback: global / admin domains may have multiple DB entries.
+    // Find all domains with this name and search across all of them.
+    const doms = await Domains.find({ name: domainName })
+      .select('_id')
       .lean()
       .exec();
+    if (doms.length > 0) {
+      const alias = await Aliases.findOne({
+        name,
+        domain: { $in: doms.map((d) => d._id) }
+      })
+        .select('+aps')
+        .lean()
+        .exec();
+      if (alias) return alias;
+    }
+
+    // Last resort: match by alias name only (useful for global domains
+    // that are not stored in the Domains collection under the same key).
+    return Aliases.findOne({ name }).select('+aps').lean().exec();
   }
 
   return Aliases.findOne({ id: idOrEmail }).select('+aps').lean().exec();
@@ -157,7 +195,69 @@ async function cmdAlias(idOrEmail) {
     console.log('    subtopic:    ', row.subtopic || '(none)');
     console.log('    key:         ', row.key || '(none)');
     console.log('    account_id:  ', row.account_id || '(none)');
+    console.log(
+      '    mailboxes:   ',
+      Array.isArray(row.mailboxes) ? row.mailboxes.join(', ') : '(none)'
+    );
+    console.log('    updated_at:  ', row.updated_at || '(none)');
   }
+}
+
+//
+// Lightweight APNs HTTP/2 sender that mirrors helpers/send-apn.js exactly.
+// Uses Node's native http2 module -- no node-apn dependency -- so the
+// diagnostic produces the same wire bytes as production.
+//
+async function sendOneApns(opts) {
+  const { cert, key, topic, pushType, priority, deviceToken, payload } = opts;
+  return new Promise((resolve, reject) => {
+    const session = http2.connect('https://api.push.apple.com', {
+      cert,
+      key,
+      ALPNProtocols: ['h2']
+    });
+
+    session.once('error', reject);
+    session.once('connect', () => {
+      const body = JSON.stringify(payload);
+      const headers = {
+        ':method': 'POST',
+        ':path': `/3/device/${deviceToken}`,
+        ':scheme': 'https',
+        ':authority': 'api.push.apple.com',
+        'content-type': 'application/json; charset=utf-8',
+        'content-length': String(Buffer.byteLength(body)),
+        'apns-topic': topic,
+        'apns-push-type': pushType,
+        'apns-expiration': String(Math.floor(Date.now() / 1000) + 86400)
+      };
+      if (priority) headers['apns-priority'] = String(priority);
+
+      console.log('  request headers:', JSON.stringify(headers, null, 2));
+      console.log('  request body:   ', body);
+
+      const req = session.request(headers);
+      req.write(body);
+      req.end();
+
+      let status;
+      let responseBody = '';
+      req.on('response', (resHeaders) => {
+        status = resHeaders[':status'];
+        console.log('  response status:', status);
+        console.log('  apns-id:        ', resHeaders['apns-id'] || '(none)');
+      });
+      req.on('data', (chunk) => {
+        responseBody += chunk;
+      });
+      req.on('end', () => {
+        session.close();
+        if (responseBody) console.log('  response body:  ', responseBody);
+        resolve({ status, body: responseBody });
+      });
+      req.on('error', reject);
+    });
+  });
 }
 
 async function cmdPush(idOrEmail, serviceName, keyOverride) {
@@ -192,58 +292,62 @@ async function cmdPush(idOrEmail, serviceName, keyOverride) {
   const certs = await getApnCerts(client);
   const topic = await getApnTopic(client, serviceName);
   console.log('Using topic:', topic);
+  console.log(`Sending ${rows.length} push(es) for service=${serviceName}...`);
 
-  const provider = new apn.Provider({
-    cert: certs[serviceName].certificate,
-    key: certs[serviceName].privateKey,
-    requestTimeout: ms('15s'),
-    production: true
-  });
+  for (const row of rows) {
+    console.log(`\n>> device=${row.device_token.slice(0, 16)}...`);
+    console.log('   account_id:', row.account_id || '(none)');
+    console.log('   subtopic:  ', row.subtopic || '(none)');
+    console.log(
+      '   mailboxes:',
+      Array.isArray(row.mailboxes) ? row.mailboxes.join(', ') : '(none)'
+    );
 
-  try {
-    for (const row of rows) {
-      const note = new apn.Notification();
-      note.urlArgs = [];
-      note.pushType = service.pushType;
-      note.topic = topic;
-      note.expiry = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-      note.aps = {};
-      if (row.account_id) note.aps['account-id'] = row.account_id;
+    let payload;
+    let priority;
 
-      if (serviceName === 'Mail') {
-        // Mirror helpers/send-apn.js: aps.m carries md5(mailboxPath), and
-        // for diagnostics we default to INBOX.  Mail pushType=background
-        // has aps.m defined so apsPayload() emits a non-empty aps and
-        // there is no risk of the `400 PayloadEmpty` rejection that the
-        // CalDAV/CardDAV path used to hit.
-        note.aps.m = [crypto.createHash('md5').update('INBOX').digest('hex')];
-      }
-
-      if (serviceName === 'Calendar' || serviceName === 'Contact') {
-        // CRITICAL: APNs HTTP/2 v3 rejects background pushes lacking aps
-        // with `400 PayloadEmpty`; the contentAvailable setter writes
-        // aps['content-available']=1 so the wire body always contains aps.
-        // Mirror helpers/send-apn.js exactly so the diagnostic reproduces
-        // the production push shape on the wire.
-        note.contentAvailable = 1;
-        const now = Math.floor(Date.now() / 1000);
-        note.payload = {
-          key: keyOverride || row.key || '',
-          dataChangedTimestamp: now,
-          pushRequestSubmittedTimestamp: now
-        };
-        note.priority = 5;
-      }
-
-      console.log(
-        `>> sending to ${row.device_token.slice(0, 8)}... key=${row.key} ...`
-      );
-      console.log('   wire body:', note.compile());
-      const result = await provider.send(note, row.device_token);
-      console.log(JSON.stringify(result, null, 2));
+    if (serviceName === 'Mail') {
+      const mailboxPath = 'INBOX';
+      const mailboxHash = crypto
+        .createHash('md5')
+        .update(mailboxPath)
+        .digest('hex');
+      const aps = {};
+      if (row.account_id) aps['account-id'] = row.account_id;
+      aps.m = [mailboxHash];
+      payload = { aps };
+      // priority omitted for Mail (matches dovecot-xaps-daemon behaviour)
+      priority = undefined;
+      console.log(`   aps.m md5(${mailboxPath})=${mailboxHash}`);
+    } else {
+      const now = Math.floor(Date.now() / 1000);
+      payload = {
+        key: keyOverride || row.key || '',
+        dataChangedTimestamp: now,
+        pushRequestSubmittedTimestamp: now,
+        aps: { 'content-available': 1 }
+      };
+      priority = 5;
     }
-  } finally {
-    await provider.shutdown();
+
+    try {
+      const result = await sendOneApns({
+        cert: certs[service.cert].certificate,
+        key: certs[service.cert].privateKey,
+        topic,
+        pushType: service.pushType,
+        priority,
+        deviceToken: row.device_token,
+        payload
+      });
+      console.log(
+        `   result: status=${result.status}${
+          result.body ? ` body=${result.body}` : ''
+        }`
+      );
+    } catch (err) {
+      console.error('   ERROR:', err.message);
+    }
   }
 }
 
