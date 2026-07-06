@@ -2,16 +2,15 @@
  * Copyright (c) Forward Email LLC
  * SPDX-License-Identifier: BUSL-1.1
  */
-
 const crypto = require('node:crypto');
+const http2 = require('node:http2');
+const { Buffer } = require('node:buffer');
 const { setTimeout } = require('node:timers/promises');
 
-const apn = require('@parse/node-apn');
 const dayjs = require('dayjs-with-plugins');
 const ms = require('ms');
 const pMap = require('p-map');
 const revHash = require('rev-hash');
-const splitLines = require('split-lines');
 
 const Aliases = require('#models/aliases');
 const config = require('#config');
@@ -45,7 +44,6 @@ const logger = require('#helpers/logger');
 // thin wrapper modules were intentionally deleted in v15 to avoid having
 // two equivalent require paths for the same function.
 //
-
 //
 // Per-service push semantics:
 //
@@ -90,158 +88,327 @@ let certs;
 const providers = Object.create(null);
 
 function ensureTopic(certBundle, certKey) {
+  console.log(
+    `[send-apn] ensureTopic: certKey=${certKey} existing topic=${
+      certBundle[certKey].topic || '(none)'
+    }`
+  );
   if (certBundle[certKey].topic) return certBundle[certKey].topic;
   const cert = new crypto.X509Certificate(certBundle[certKey].certificate);
-  //
-  // The cert.subject is multi-line (one DN component per line).  The Mail
-  // cert happens to have UID= on line 0, but the Calendar and Contact
-  // certs do NOT -- the UID line position varies.  Use the same
-  // .find((l) => l.includes('UID=')) lookup as helpers/get-apn-topic.js
-  // so the topic advertised in <CS:apsbundleid> matches the topic the
-  // APNs Provider actually uses on the wire.  A mismatch causes APNs to
-  // reply 400 BadTopic and the push is silently dropped.
-  //
-  const subjectLine = splitLines(cert.subject).find((l) => l.includes('UID='));
-  if (!subjectLine) {
-    throw new TypeError(
-      `APNs cert ${certKey} has no UID component in subject: ${cert.subject}`
+  const parsedCert = new (require('@peculiar/x509').X509Certificate)(
+    certBundle[certKey].certificate
+  );
+  const extension = parsedCert.extensions.find(
+    (e) => e.type === '1.2.840.113635.100.6.3.6'
+  );
+  if (extension) {
+    const value = Buffer.from(extension.value).toString('utf8');
+    const match = value.match(/com\.apple\.[a-zA-Z\d.-]+/);
+    if (match) {
+      certBundle[certKey].topic = match[0];
+      console.log(
+        `[send-apn] ensureTopic: resolved from OID extension: ${match[0]}`
+      );
+      return match[0];
+    }
+  }
+
+  const lines = cert.subject.split('\n');
+  const uidLine = lines.find((l) => l.includes('UID='));
+  if (uidLine) {
+    certBundle[certKey].topic = uidLine.split('UID=')[1].trim();
+    console.log(
+      `[send-apn] ensureTopic: resolved from Subject UID: ${certBundle[certKey].topic}`
+    );
+    return certBundle[certKey].topic;
+  }
+
+  throw new Error(`Could not determine APNs topic for ${certKey}`);
+}
+
+//
+// Pure Node.js HTTP/2 APNs Client
+// Replaces @parse/node-apn to fix missing Content-Type headers and connection
+// lifecycle issues.
+//
+// Key differences from @parse/node-apn:
+//   1. Explicitly sets `content-type: application/json; charset=utf-8` on every
+//      request -- node-apn never set this header, which caused APNs to silently
+//      drop payloads even while returning HTTP 200.
+//      <https://github.com/sideshow/apns2/blob/master/client.go#L214>
+//   2. Connection lifecycle managed via native http2 session events (close /
+//      error / goaway) instead of the fragile isProviderAlive() property check.
+//   3. No third-party dependency -- uses Node's built-in node:http2 module.
+//
+class ApnsClient {
+  constructor(cert, key, serviceName) {
+    this.cert = cert;
+    this.key = key;
+    this.serviceName = serviceName;
+    //
+    // Always use the production endpoint.  The XAPPLEPUSHSERVICE certificates
+    // are provisioned against production APNs only; the sandbox endpoint will
+    // reject them with a 403 InvalidProviderToken.
+    //
+    this.host = 'api.push.apple.com';
+    this.client = null;
+    this.connectPromise = null;
+    console.log(
+      `[send-apn] ApnsClient constructed: service=${serviceName} host=${this.host}`
     );
   }
 
-  certBundle[certKey].topic = subjectLine.split('UID=')[1].trim();
-  return certBundle[certKey].topic;
-}
+  async connect() {
+    if (this.client && !this.client.closed && !this.client.destroyed) {
+      console.log(
+        `[send-apn] ApnsClient.connect: reusing existing HTTP/2 session (service=${this.serviceName})`
+      );
+      return this.client;
+    }
 
-function isProviderAlive(provider) {
-  return Boolean(
-    provider &&
-      provider.client &&
-      provider.client.session &&
-      !provider.client.session.closed &&
-      !provider.client.session.destroyed
-  );
+    if (this.connectPromise) {
+      console.log(
+        `[send-apn] ApnsClient.connect: connection already in progress, awaiting (service=${this.serviceName})`
+      );
+      return this.connectPromise;
+    }
+
+    console.log(
+      `[send-apn] ApnsClient.connect: opening new HTTP/2 session to ${this.host} (service=${this.serviceName})`
+    );
+
+    this.connectPromise = new Promise((resolve, reject) => {
+      const client = http2.connect(`https://${this.host}`, {
+        cert: this.cert,
+        key: this.key,
+        ALPNProtocols: ['h2'],
+        rejectUnauthorized: true
+      });
+
+      client.on('connect', () => {
+        console.log(
+          `[send-apn] ApnsClient: HTTP/2 session connected to ${this.host} (service=${this.serviceName})`
+        );
+        this.client = client;
+        this.connectPromise = null;
+        resolve(client);
+      });
+
+      client.on('error', (err) => {
+        console.error(
+          `[send-apn] ApnsClient: HTTP/2 session error (service=${this.serviceName}): ${err.message}`
+        );
+        logger.error(`APNs HTTP/2 connection error: ${err.message}`);
+        this.client = null;
+        this.connectPromise = null;
+        reject(err);
+      });
+
+      client.on('close', () => {
+        console.log(
+          `[send-apn] ApnsClient: HTTP/2 session closed (service=${this.serviceName})`
+        );
+        this.client = null;
+        this.connectPromise = null;
+      });
+
+      client.on('goaway', (errorCode, lastStreamId, opaqueData) => {
+        console.warn(
+          `[send-apn] ApnsClient: GOAWAY received (service=${this.serviceName}) errorCode=${errorCode} lastStreamId=${lastStreamId} opaqueData=${opaqueData}`
+        );
+        this.client = null;
+        this.connectPromise = null;
+      });
+    });
+
+    return this.connectPromise;
+  }
+
+  async send(note, deviceToken) {
+    console.log(
+      `[send-apn] ApnsClient.send: service=${
+        this.serviceName
+      } device=${deviceToken} topic=${note.topic} pushType=${
+        note.pushType
+      } priority=${
+        note.priority === undefined ? '(omitted)' : note.priority
+      } expiry=${note.expiry}`
+    );
+    console.log(
+      `[send-apn] ApnsClient.send: payload=${JSON.stringify(note.payload)}`
+    );
+
+    const client = await this.connect();
+
+    return new Promise((resolve) => {
+      const headers = {
+        ':method': 'POST',
+        ':path': `/3/device/${deviceToken}`,
+        'content-type': 'application/json; charset=utf-8',
+        'apns-topic': note.topic,
+        'apns-push-type': note.pushType,
+        'apns-expiration': note.expiry
+      };
+
+      if (note.priority !== undefined) {
+        headers['apns-priority'] = note.priority;
+      }
+
+      console.log(
+        `[send-apn] ApnsClient.send: HTTP/2 request headers=${JSON.stringify(
+          headers
+        )}`
+      );
+
+      const req = client.request(headers);
+
+      req.setEncoding('utf8');
+
+      let status;
+      req.on('response', (resHeaders) => {
+        status = resHeaders[':status'];
+        console.log(
+          `[send-apn] ApnsClient.send: HTTP/2 response status=${status} apns-id=${
+            resHeaders['apns-id'] || '(none)'
+          } (device=${deviceToken})`
+        );
+      });
+
+      let data = '';
+      req.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      req.on('end', () => {
+        console.log(
+          `[send-apn] ApnsClient.send: response ended status=${status} body=${
+            data || '(empty)'
+          } (device=${deviceToken})`
+        );
+        if (status === 200) {
+          console.log(
+            `[send-apn] ApnsClient.send: SUCCESS device=${deviceToken}`
+          );
+          resolve({ sent: [{ device: deviceToken }], failed: [] });
+        } else {
+          let reason = 'UnknownError';
+          try {
+            if (data) reason = JSON.parse(data).reason;
+          } catch (err) {
+            console.error(
+              `[send-apn] ApnsClient.send: failed to parse error body: ${err.message}`
+            );
+          }
+
+          console.error(
+            `[send-apn] ApnsClient.send: FAILED device=${deviceToken} status=${status} reason=${reason}`
+          );
+          resolve({
+            sent: [],
+            failed: [{ device: deviceToken, status, response: { reason } }]
+          });
+        }
+      });
+
+      req.on('error', (err) => {
+        console.error(
+          `[send-apn] ApnsClient.send: request error device=${deviceToken}: ${err.message}`
+        );
+        resolve({
+          sent: [],
+          failed: [
+            {
+              device: deviceToken,
+              status: 500,
+              response: { reason: err.message }
+            }
+          ]
+        });
+      });
+
+      const body = JSON.stringify(note.payload);
+      console.log(
+        `[send-apn] ApnsClient.send: writing body (${Buffer.byteLength(
+          body
+        )} bytes): ${body}`
+      );
+      req.write(body);
+      req.end();
+    });
+  }
 }
 
 function createNote(certBundle, service, obj, options) {
-  // <https://github.com/argon/push_notify/blob/05b3d8025b217694e45eab8202f3d460f9237652/lib/controller.js#L48>
-  // <https://github.com/argon/push_notify/pull/6#issue-179062203>
-  const note = new apn.Notification();
+  console.log(
+    `[send-apn] createNote: service=${service.cert} device=${
+      obj.device_token
+    } account_id=${obj.account_id || '(none)'} key=${
+      obj.key || '(none)'
+    } mailboxPath=${options.mailboxPath || '(none)'}`
+  );
 
-  // Per-service push type (see SERVICES table above).
-  note.pushType = service.pushType;
-  //
-  // NOTE: it's not as simple as setting topic to `com.apple.mobilemail`
-  // <https://lists.andrew.cmu.edu/pipermail/info-cyrus/2017-August/039743.html#:~:text=aps_topic%3A%20com.apple.mail.XServer.xxxxxxxxxxxxxxx%0A%0Aaps_topic%20is%20the%20common%20name%20take%20from%20the%20certificate.%20It%E2%80%99s%20sent%20to%20the%20mobile%20device%20so%20that%20it%20will%20match%20the%20source%20of%20the%20push%20notification%20when%20it%20arrives.>
-  // note.topic = 'com.apple.mobilemail';
-  //
-  // instead, the topic is extracted from the common name of the certificate:
-  //
-  // note.topic = 'com.apple.mail.XServer.xxxxxxxxxxxxxxx';
-  //
-  // to extract the <UUID> portion we need to follow similar process to this
-  // (but in a more automated way)
-  // <https://github.com/jcvernaleo/macports-ports/blob/72f6ba4623151b6171ed2262af0bcaba88d3dd93/mail/dovecot/Portfile#L216-L247>
-  //
-  note.topic = certBundle[service.cert].topic;
-  note.expiry = Math.floor(dayjs().add(24, 'hour').toDate().getTime() / 1000);
+  const note = {
+    topic: certBundle[service.cert].topic,
+    pushType: service.pushType,
+    expiry: Math.floor(dayjs().add(24, 'hour').toDate().getTime() / 1000),
+    payload: {}
+  };
 
-  //
-  // APNs priority handling:
-  //
-  // For MAIL: we OMIT the `apns-priority` header entirely by setting
-  // priority to `undefined`.  This matches the dovecot-xaps-daemon
-  // reference implementation, which never sets the Priority field on the
-  // Go apns2.Notification struct.  In Go's sideshow/apns2 library, an
-  // unset Priority (value 0) causes the header to be omitted from the
-  // HTTP/2 request (the library checks `if n.Priority > 0`).
-  //
-  // Apple's documentation states that for `apns-push-type: background`:
-  //   "Always use priority 5. Using priority 10 is an error."
-  //   <https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns>
-  //
-  // However, the XAPPLEPUSHSERVICE Mail certificate is a special
-  // system-level cert (com.apple.mail.XServer.*) that predates the
-  // push-type/priority validation rules.  The working behavior observed
-  // in dovecot-xaps-daemon and confirmed via curl testing is:
-  //   - Set `apns-push-type: background`
-  //   - OMIT `apns-priority` entirely (Apple internally defaults to 10)
-  //
-  // When the header is OMITTED, APNs defaults to priority 10 internally
-  // without triggering the validation rule that rejects explicit
-  // `apns-priority: 10` with background push type.  This gives immediate
-  // delivery without the batching/delay that priority 5 would cause.
-  //
-  // Explicitly sending `apns-priority: 10` (node-apn's default when
-  // priority is left as a number) triggers Apple's validation and causes
-  // iOS to silently ignore the push -- the device never refreshes Mail.
-  // <https://github.com/freswa/dovecot-xaps-daemon/blob/main/internal/apns.go#L162-L163>
-  //
-  // For CALENDAR/CONTACT: priority 5 is correct -- these are true
-  // background content pushes where batched delivery is acceptable.
-  //
-  // Omit the apns-priority header: Number.isInteger(undefined) === false
-  // so node-apn's headers() method will skip the header entirely.
-  note.priority = service.cert === 'Mail' ? undefined : 5;
-
-  //
-  // Build the APNs aps payload.  The aps dictionary contents differ by
-  // service to match each reference implementation:
-  //
-  // Mail (dovecot-xaps-daemon):
-  //   Wire body: { "aps": { "account-id": "UUID", "m": "<md5>" } }
-  //   `account-id` is OPTIONAL and is included ONLY when iOS provided one
-  //   at registration time.  `m` carries the md5 of the mailbox path so
-  //   iOS knows which mailbox to refresh.
-  //   <https://github.com/freswa/dovecot-xaps-daemon/blob/main/internal/apns.go>
-  //   <https://github.com/freswa/dovecot-xaps-daemon/issues/39#issuecomment-2262987315>
-  //
-  // Calendar / Contact (Apple ccs-calendarserver applepush.py):
-  //   Wire body: { "key": "...", "dataChangedTimestamp": N,
-  //                "pushRequestSubmittedTimestamp": N }
-  //   NO `aps` dictionary at all -- the spec (caldav-pubsubdiscovery.txt
-  //   Section 4.3) defines only the three top-level fields above.
-  //   node-apn's apsPayload() returns `undefined` when every key in
-  //   `this.aps` is undefined, which causes JSON.stringify to omit the
-  //   `aps` key entirely -- exactly matching Apple's reference.
-  //   The payload body is never empty (it contains key + timestamps),
-  //   so APNs will not reject with PayloadEmpty.
-  //
   if (service.cert === 'Mail') {
-    if (obj.account_id) note.aps['account-id'] = obj.account_id;
-    note.aps.m = [
+    //
+    // Mail: omit apns-priority header entirely.
+    // dovecot-xaps-daemon never sets Priority on the Go apns2.Notification
+    // struct; sideshow/apns2 only emits the header when Priority > 0.
+    // Omitting the header causes APNs to default to priority 10 internally
+    // without triggering the validation rule that rejects an explicit
+    // `apns-priority: 10` when push-type is background.
+    //
+    note.priority = undefined;
+
+    const aps = {};
+    if (obj.account_id) aps['account-id'] = obj.account_id;
+    aps.m = [
       crypto
         .createHash('md5')
         .update(options.mailboxPath || 'INBOX')
         .digest('hex')
     ];
-  }
+    note.payload.aps = aps;
+    console.log(
+      `[send-apn] createNote: Mail aps=${JSON.stringify(aps)} (md5 of "${
+        options.mailboxPath || 'INBOX'
+      }")`
+    );
+  } else {
+    //
+    // Calendar / Contact: priority 5 (background batched delivery is fine).
+    // Payload matches Apple's ccs-calendarserver reference implementation:
+    //   { key, dataChangedTimestamp, pushRequestSubmittedTimestamp }
+    // No `aps` dictionary -- node-apn's apsPayload() returns undefined when
+    // all aps keys are undefined, so JSON.stringify omits the key entirely.
+    //
+    note.priority = 5;
 
-  //
-  // CalDAV / CardDAV ONLY: top-level `key`, `dataChangedTimestamp`, and
-  // `pushRequestSubmittedTimestamp` fields per Apple's reference
-  // ccs-calendarserver/calendarserver/push/applepush.py:
-  //
-  //   payload = json.dumps({
-  //     "key": key,
-  //     "dataChangedTimestamp": dataChangedTimestamp,
-  //     "pushRequestSubmittedTimestamp": int(time.time()),
-  //   })
-  //
-  // node-apn merges `note.payload` at the top of the JSON object alongside
-  // `aps`, so setting these on `note.payload` produces the on-the-wire
-  // shape iOS dataaccessd expects.  Without `key`, iOS receives the push
-  // but cannot determine which collection changed, so the refresh is a
-  // best-effort no-op.
-  //
-  if (service.cert === 'Calendar' || service.cert === 'Contact') {
     const now = Math.floor(Date.now() / 1000);
     note.payload = {
       key: obj.key || '',
       dataChangedTimestamp: now,
       pushRequestSubmittedTimestamp: now
     };
+    console.log(
+      `[send-apn] createNote: ${service.cert} payload=${JSON.stringify(
+        note.payload
+      )}`
+    );
   }
 
+  console.log(
+    `[send-apn] createNote: topic=${note.topic} pushType=${
+      note.pushType
+    } priority=${
+      note.priority === undefined ? '(omitted)' : note.priority
+    } expiry=${note.expiry}`
+  );
   return note;
 }
 
@@ -260,7 +427,9 @@ function createNote(certBundle, service, obj, options) {
 function dedupeRegistrations(matched, service, options = {}) {
   const mailboxPathForKey =
     service.cert === 'Mail' ? options.mailboxPath || 'INBOX' : null;
+
   const seen = new Map();
+
   for (const row of matched) {
     if (!row || !row.device_token) continue;
     const tokenLc = row.device_token.toLowerCase();
@@ -268,19 +437,47 @@ function dedupeRegistrations(matched, service, options = {}) {
       service.cert === 'Mail'
         ? `${tokenLc}|${mailboxPathForKey}`
         : `${tokenLc}|${row.key || ''}`;
-    if (!seen.has(dedupeKey)) seen.set(dedupeKey, row);
+
+    if (seen.has(dedupeKey)) {
+      console.log(
+        `[send-apn] dedupeRegistrations: dropping duplicate registration dedupeKey=${dedupeKey} device=${row.device_token}`
+      );
+    } else {
+      seen.set(dedupeKey, row);
+    }
   }
 
   return [...seen.values()];
 }
 
 async function sendApnForService(serviceName, client, id, options = {}) {
+  console.log(
+    `[send-apn] sendApnForService: START service=${serviceName} alias_id=${id} options=${JSON.stringify(
+      options
+    )}`
+  );
+
   const service = SERVICES[serviceName];
   if (!service) throw new TypeError(`Unsupported APN service: ${serviceName}`);
 
   const alias = await Aliases.findOne({ id }).lean().select('+aps').exec();
+  if (!alias) {
+    console.log(
+      `[send-apn] sendApnForService: alias not found for id=${id}, skipping`
+    );
+    return;
+  }
 
-  if (!alias || !Array.isArray(alias.aps) || alias.aps.length === 0) return;
+  if (!Array.isArray(alias.aps) || alias.aps.length === 0) {
+    console.log(
+      `[send-apn] sendApnForService: alias id=${id} has no aps[] registrations, skipping`
+    );
+    return;
+  }
+
+  console.log(
+    `[send-apn] sendApnForService: alias id=${id} has ${alias.aps.length} total aps[] entries`
+  );
 
   //
   // Filter to the registrations that belong to this service.
@@ -304,7 +501,16 @@ async function sendApnForService(serviceName, client, id, options = {}) {
       : a.subtopic === service.subtopic
   );
 
-  if (matched.length === 0) return;
+  console.log(
+    `[send-apn] sendApnForService: ${matched.length}/${alias.aps.length} entries match subtopic=${service.subtopic} (service=${serviceName})`
+  );
+
+  if (matched.length === 0) {
+    console.log(
+      `[send-apn] sendApnForService: no matching registrations for service=${serviceName}, skipping`
+    );
+    return;
+  }
 
   //
   // In-memory uniqueness pre-filter.
@@ -348,6 +554,9 @@ async function sendApnForService(serviceName, client, id, options = {}) {
   const registrations = dedupeRegistrations(matched, service, options);
 
   if (matched.length !== registrations.length) {
+    console.log(
+      `[send-apn] sendApnForService: deduped ${matched.length} -> ${registrations.length} registrations (service=${serviceName} alias_id=${id})`
+    );
     logger.debug('sendApnForService deduped registrations', {
       service: serviceName,
       alias_id: id,
@@ -360,19 +569,27 @@ async function sendApnForService(serviceName, client, id, options = {}) {
   // Long-lived cached provider (one per service).  We never call
   // `provider.shutdown(fn)` because we keep the HTTP/2 connection alive.
   //
-  if (!isProviderAlive(providers[serviceName])) {
+  if (providers[serviceName]) {
+    console.log(
+      `[send-apn] sendApnForService: reusing cached ApnsClient for service=${serviceName}`
+    );
+  } else {
+    console.log(
+      `[send-apn] sendApnForService: no cached provider for service=${serviceName}, fetching certs and creating ApnsClient`
+    );
     certs = await getApnCerts(client);
     ensureTopic(certs, service.cert);
-    providers[serviceName] = new apn.Provider({
-      logger,
-      cert: certs[service.cert].certificate,
-      key: certs[service.cert].privateKey,
-      // <https://github.com/freswa/dovecot-xaps-daemon/blob/abce2f14cf1b5afa56329ebb4d923c9c2aebdfe3/internal/apns.go#L26>
-      // ca: GEO_TRUST_CA,
-      // rejectUnauthorized: false, // only needed if GEO_TRUST_CA passed
-      requestTimeout: ms('15s'),
-      production: true // always required
-    });
+    console.log(
+      `[send-apn] sendApnForService: cert topic for ${service.cert}=${
+        certs[service.cert].topic
+      }`
+    );
+
+    providers[serviceName] = new ApnsClient(
+      certs[service.cert].certificate,
+      certs[service.cert].privateKey,
+      serviceName
+    );
   }
 
   const provider = providers[serviceName];
@@ -394,8 +611,22 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         revHash(obj.key || obj.account_id || '')
       ];
       const key = cacheTokens.join(':');
+
+      console.log(
+        `[send-apn] sendApnForService: checking coalesce cache key=${key} device=${obj.device_token}`
+      );
       const cache = await client.get(key);
-      if (cache) return;
+
+      if (cache) {
+        console.log(
+          `[send-apn] sendApnForService: coalesce cache HIT, skipping push for device=${obj.device_token} (service=${serviceName})`
+        );
+        return;
+      }
+
+      console.log(
+        `[send-apn] sendApnForService: coalesce cache MISS, setting lock and waiting 10s before push (device=${obj.device_token})`
+      );
       await client.set(key, true, 'PX', ms('1m'));
 
       // Artificial 10s delay so multiple back-to-back mutations coalesce
@@ -404,6 +635,8 @@ async function sendApnForService(serviceName, client, id, options = {}) {
 
       const note = createNote(certs, service, obj, options);
 
+      // note they have commented out code at this below link for setting priority in note
+      // <https://github.com/freswa/dovecot-xaps-daemon/blob/abce2f14cf1b5afa56329ebb4d923c9c2aebdfe3/internal/apns.go#L162-L163>
       logger.debug('sendApnForService dispatching', {
         service: serviceName,
         topic: note.topic,
@@ -414,8 +647,15 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         push_type: note.pushType
       });
 
-      // <https://github.com/parse-community/node-apn/issues/114>
       const result = await provider.send(note, obj.device_token);
+
+      console.log(
+        `[send-apn] sendApnForService: send result service=${serviceName} device=${
+          obj.device_token
+        } sent=${Array.isArray(result.sent) ? result.sent.length : 0} failed=${
+          Array.isArray(result.failed) ? result.failed.length : 0
+        }`
+      );
 
       logger.debug('sendApnForService result', {
         service: serviceName,
@@ -424,12 +664,14 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         result
       });
 
-      // note they have commented out code at this below link for setting priority in note
-      // <https://github.com/freswa/dovecot-xaps-daemon/blob/abce2f14cf1b5afa56329ebb4d923c9c2aebdfe3/internal/apns.go#L162-L163>
-
       // NOTE: if device returns 410 then unsubscribe on our side too
       // If the device returns 410 we unsubscribe on our side too.
       if (Array.isArray(result.failed) && result.failed.length > 0) {
+        console.warn(
+          `[send-apn] sendApnForService: ${result.failed.length} failed push(es) for service=${serviceName}:`,
+          JSON.stringify(result.failed)
+        );
+
         //
         // Handle 429 TooManyRequests -- APNs rate limit, not a bug.
         // The device will receive the next successful push and sync then.
@@ -441,6 +683,9 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         );
 
         if (rateLimited.length > 0) {
+          console.warn(
+            `[send-apn] sendApnForService: APNs rate limited (429) for device=${obj.device_token}, extending backoff to 5m`
+          );
           logger.warn('APNs rate limited (429 TooManyRequests)', {
             service: serviceName,
             device: obj.device_token,
@@ -455,6 +700,10 @@ async function sendApnForService(serviceName, client, id, options = {}) {
           .map((r) => r.device);
 
         if (unregisteredDeviceTokens.length === 0) {
+          console.error(
+            `[send-apn] sendApnForService: unexpected failure (not 410/429) for service=${serviceName}:`,
+            JSON.stringify(result.failed)
+          );
           const err = new TypeError(service.errorLabel);
           err.isCodeBug = true;
           err.result = result;
@@ -462,64 +711,91 @@ async function sendApnForService(serviceName, client, id, options = {}) {
           return;
         }
 
+        console.log(
+          `[send-apn] sendApnForService: device token(s) returned 410 Gone (unregistered): ${unregisteredDeviceTokens.join(
+            ', '
+          )}, removing from alias`
+        );
+
         if (
-          unregisteredDeviceTokens.length !== 1 ||
-          unregisteredDeviceTokens[0] !== obj.device_token
-        )
+          unregisteredDeviceTokens.length === 1 &&
+          unregisteredDeviceTokens[0] === obj.device_token
+        ) {
+          const aliases = await Aliases.find({
+            // We are unsure of the likelihood of Apple issuing two identical
+            // device tokens; the pair-match filter below is the safeguard.
+            'aps.device_token': obj.device_token
+          })
+            .select('+aps')
+            .lean()
+            .exec();
+
+          console.log(
+            `[send-apn] sendApnForService: found ${aliases.length} alias(es) with device_token=${obj.device_token} to clean up`
+          );
+
+          await pMap(
+            aliases,
+            async (alias) => {
+              //
+              // Remove the (device_token, key) pair that returned 410.
+              // Match strictly on the pair: a single physical device may
+              // hold multiple subscriptions on this alias (one per
+              // calendar/addressbook), so we must not unsubscribe siblings
+              // that share the device_token but identify a different
+              // collection.  account_id is optional and not always present.
+              //
+              const before = alias.aps.length;
+              const filtered = alias.aps.filter(
+                (a) =>
+                  !(a.device_token === obj.device_token && a.key === obj.key)
+              );
+              console.log(
+                `[send-apn] sendApnForService: unsubscribing alias._id=${alias._id} aps ${before} -> ${filtered.length} entries`
+              );
+              await Aliases.findByIdAndUpdate(alias._id, {
+                $set: { aps: filtered }
+              });
+            },
+            { concurrency: config.concurrency }
+          );
+        } else {
           throw new TypeError(
             `Device token mismatch ${
               obj.device_token
             } vs. ${unregisteredDeviceTokens.join(', ')}`
           );
-
-        const aliases = await Aliases.find({
-          // We are unsure of the likelihood of Apple issuing two identical
-          // device tokens; the pair-match filter below is the safeguard.
-          'aps.device_token': obj.device_token
-        })
-          .select('+aps')
-          .lean()
-          .exec();
-
-        await pMap(
-          aliases,
-          async (alias) => {
-            //
-            // Remove the (device_token, key) pair that returned 410.
-            // Match strictly on the pair: a single physical device may
-            // hold multiple subscriptions on this alias (one per
-            // calendar/addressbook), so we must not unsubscribe siblings
-            // that share the device_token but identify a different
-            // collection.  account_id is optional and not always present.
-            //
-            await Aliases.findByIdAndUpdate(alias._id, {
-              $set: {
-                aps: alias.aps.filter(
-                  (a) =>
-                    !(a.device_token === obj.device_token && a.key === obj.key)
-                )
-              }
-            });
-          },
-          { concurrency: config.concurrency }
-        );
+        }
       }
     } catch (err) {
+      console.error(
+        `[send-apn] sendApnForService: caught error for device=${obj.device_token} service=${serviceName}:`,
+        err
+      );
       logger.fatal(err, { obj });
     }
   });
+
+  console.log(
+    `[send-apn] sendApnForService: DONE service=${serviceName} alias_id=${id}`
+  );
 }
 
 // Backward-compatible default export: Mail push with optional mailboxPath.
 async function sendApn(client, id, mailboxPath = 'INBOX') {
+  console.log(
+    `[send-apn] sendApn (Mail): alias_id=${id} mailboxPath=${mailboxPath}`
+  );
   return sendApnForService('Mail', client, id, { mailboxPath });
 }
 
 async function sendApnCalendar(client, id) {
+  console.log(`[send-apn] sendApnCalendar: alias_id=${id}`);
   return sendApnForService('Calendar', client, id);
 }
 
 async function sendApnContacts(client, id) {
+  console.log(`[send-apn] sendApnContacts: alias_id=${id}`);
   return sendApnForService('Contact', client, id);
 }
 
