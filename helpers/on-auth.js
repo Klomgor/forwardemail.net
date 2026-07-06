@@ -267,7 +267,10 @@ async function onAuth(auth, session, fn) {
           typeof user === 'object' &&
           user.id &&
           user.domain_id &&
-          user.domain_name
+          user.domain_name &&
+          // IMAP/POP3 sessions require alias_id; SMTP catch-all logins
+          // cache a user object without one — skip cache for those.
+          (!isIMAPorPOP3 || user.alias_id)
         ) {
           // Re-encrypt the current request's password (same password since
           // the cache key includes the password hash) so the session has
