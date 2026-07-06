@@ -356,33 +356,32 @@ function createNote(certBundle, service, obj, options) {
 
   if (service.cert === 'Mail') {
     //
-    // Mail: explicitly set priority 5 for background pushes.
-    // Apple APNs documentation states: "For the background push type, always
-    // use priority 5. Using priority 10 is an error."
-    // Omitting the header causes APNs to default to priority 10 internally,
-    // which results in iOS power management aggressively throttling or silently
-    // dropping the push on the device side even though APNs returns HTTP 200.
+    // Mail: omit apns-priority to match dovecot-xaps-daemon behaviour.
+    // sideshow/apns2 (used by dovecot-xaps-daemon) leaves Priority at zero
+    // and skips the apns-priority header when Priority <= 0.  APNs then
+    // applies its own default delivery policy for the background push type.
+    // <https://github.com/freswa/dovecot-xaps-daemon/blob/main/internal/apns.go>
+    // note.priority intentionally left undefined -- ApnsClient.send() omits
+    // the apns-priority header when priority is undefined.
     //
-    note.priority = 5;
-
     const aps = {};
     if (obj.account_id) aps['account-id'] = obj.account_id;
-    // aps.m carries an array of md5(mailboxPath) hashes that tell iOS Mail
-    // which specific mailbox changed, avoiding a full-account sync.  Commented
-    // out while debugging iOS wakeup -- the minimal payload is just account-id.
-    // Re-enable once basic wakeup is confirmed working.
-    // aps.m = [
-    //   crypto
-    //     .createHash('md5')
-    //     .update(options.mailboxPath || 'INBOX')
-    //     .digest('hex')
-    // ];
+    //
+    // aps.m is an array containing one md5 hex string identifying the mailbox
+    // that changed.  iOS Mail uses it to refresh only that mailbox instead of
+    // doing a full-account sync.  Format confirmed from argon/push_notify
+    // (the original Apple employee reference implementation):
+    //   new Notification({aps: {"account-id": accountId, m: [mailboxHash]}})
+    // <https://github.com/argon/push_notify/blob/master/lib/controller.js>
+    //
+    aps.m = [
+      crypto
+        .createHash('md5')
+        .update(options.mailboxPath || 'INBOX')
+        .digest('hex')
+    ];
     note.payload.aps = aps;
-    console.log(
-      `[send-apn] createNote: Mail aps=${JSON.stringify(
-        aps
-      )} (aps.m commented out for debugging)`
-    );
+    console.log(`[send-apn] createNote: Mail aps=${JSON.stringify(aps)}`);
   } else {
     //
     // Calendar / Contact: priority 5 (background batched delivery is fine).
@@ -641,14 +640,38 @@ async function sendApnForService(serviceName, client, id, options = {}) {
       }
 
       console.log(
-        `[send-apn] sendApnForService: coalesce cache MISS, setting lock and waiting 10s before push (device=${obj.device_token})`
+        `[send-apn] sendApnForService: coalesce cache MISS, checking mailbox subscription filter (device=${obj.device_token})`
       );
-      await client.set(key, true, 'PX', ms('1m'));
+      //
+      // Mailbox subscription filter (matches argon/push_notify behaviour).
+      // iOS Mail registers with a list of mailboxes it wants push for.
+      // Only send the push if the changed mailbox is in that list.
+      // If mailboxes is empty or absent we send unconditionally (legacy
+      // registrations that pre-date per-mailbox subscription support).
+      //
+      if (
+        service.cert === 'Mail' &&
+        Array.isArray(obj.mailboxes) &&
+        obj.mailboxes.length > 0 &&
+        !obj.mailboxes.includes(options.mailboxPath || 'INBOX')
+      ) {
+        console.log(
+          `[send-apn] sendApnForService: mailbox ${
+            options.mailboxPath || 'INBOX'
+          } not in device subscriptions [${obj.mailboxes.join(
+            ', '
+          )}], skipping device=${obj.device_token}`
+        );
+        // Release the coalesce lock so a future push for a subscribed mailbox
+        // is not blocked by this skipped send.
+        await client.del(key);
+        return;
+      }
 
+      await client.set(key, true, 'PX', ms('1m'));
       // Artificial 10s delay so multiple back-to-back mutations coalesce
       // into a single push (matches the pre-unification behaviour).
       await setTimeout(ms('10s'));
-
       const note = createNote(certs, service, obj, options);
 
       // note they have commented out code at this below link for setting priority in note
