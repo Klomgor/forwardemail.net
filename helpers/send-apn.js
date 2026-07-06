@@ -88,12 +88,10 @@ let certs;
 const providers = Object.create(null);
 
 function ensureTopic(certBundle, certKey) {
-  console.log(
-    `[send-apn] ensureTopic: certKey=${certKey} existing topic=${
-      certBundle[certKey].topic || '(none)'
-    }`
-  );
-  if (certBundle[certKey].topic) return certBundle[certKey].topic;
+  if (certBundle[certKey].topic) {
+    return certBundle[certKey].topic;
+  }
+
   const cert = new crypto.X509Certificate(certBundle[certKey].certificate);
   const parsedCert = new (require('@peculiar/x509').X509Certificate)(
     certBundle[certKey].certificate
@@ -106,9 +104,6 @@ function ensureTopic(certBundle, certKey) {
     const match = value.match(/com\.apple\.[a-zA-Z\d.-]+/);
     if (match) {
       certBundle[certKey].topic = match[0];
-      console.log(
-        `[send-apn] ensureTopic: resolved from OID extension: ${match[0]}`
-      );
       return match[0];
     }
   }
@@ -117,9 +112,6 @@ function ensureTopic(certBundle, certKey) {
   const uidLine = lines.find((l) => l.includes('UID='));
   if (uidLine) {
     certBundle[certKey].topic = uidLine.split('UID=')[1].trim();
-    console.log(
-      `[send-apn] ensureTopic: resolved from Subject UID: ${certBundle[certKey].topic}`
-    );
     return certBundle[certKey].topic;
   }
 
@@ -153,29 +145,16 @@ class ApnsClient {
     this.host = 'api.push.apple.com';
     this.client = null;
     this.connectPromise = null;
-    console.log(
-      `[send-apn] ApnsClient constructed: service=${serviceName} host=${this.host}`
-    );
   }
 
   async connect() {
     if (this.client && !this.client.closed && !this.client.destroyed) {
-      console.log(
-        `[send-apn] ApnsClient.connect: reusing existing HTTP/2 session (service=${this.serviceName})`
-      );
       return this.client;
     }
 
     if (this.connectPromise) {
-      console.log(
-        `[send-apn] ApnsClient.connect: connection already in progress, awaiting (service=${this.serviceName})`
-      );
       return this.connectPromise;
     }
-
-    console.log(
-      `[send-apn] ApnsClient.connect: opening new HTTP/2 session to ${this.host} (service=${this.serviceName})`
-    );
 
     this.connectPromise = new Promise((resolve, reject) => {
       const client = http2.connect(`https://${this.host}`, {
@@ -186,18 +165,12 @@ class ApnsClient {
       });
 
       client.on('connect', () => {
-        console.log(
-          `[send-apn] ApnsClient: HTTP/2 session connected to ${this.host} (service=${this.serviceName})`
-        );
         this.client = client;
         this.connectPromise = null;
         resolve(client);
       });
 
       client.on('error', (err) => {
-        console.error(
-          `[send-apn] ApnsClient: HTTP/2 session error (service=${this.serviceName}): ${err.message}`
-        );
         logger.error(`APNs HTTP/2 connection error: ${err.message}`);
         this.client = null;
         this.connectPromise = null;
@@ -205,17 +178,11 @@ class ApnsClient {
       });
 
       client.on('close', () => {
-        console.log(
-          `[send-apn] ApnsClient: HTTP/2 session closed (service=${this.serviceName})`
-        );
         this.client = null;
         this.connectPromise = null;
       });
 
-      client.on('goaway', (errorCode, lastStreamId, opaqueData) => {
-        console.warn(
-          `[send-apn] ApnsClient: GOAWAY received (service=${this.serviceName}) errorCode=${errorCode} lastStreamId=${lastStreamId} opaqueData=${opaqueData}`
-        );
+      client.on('goaway', (_errorCode, _lastStreamId, _opaqueData) => {
         this.client = null;
         this.connectPromise = null;
       });
@@ -225,19 +192,6 @@ class ApnsClient {
   }
 
   async send(note, deviceToken) {
-    console.log(
-      `[send-apn] ApnsClient.send: service=${
-        this.serviceName
-      } device=${deviceToken} topic=${note.topic} pushType=${
-        note.pushType
-      } priority=${
-        note.priority === undefined ? '(omitted)' : note.priority
-      } expiry=${note.expiry}`
-    );
-    console.log(
-      `[send-apn] ApnsClient.send: payload=${JSON.stringify(note.payload)}`
-    );
-
     const client = await this.connect();
 
     return new Promise((resolve) => {
@@ -254,12 +208,6 @@ class ApnsClient {
         headers['apns-priority'] = note.priority;
       }
 
-      console.log(
-        `[send-apn] ApnsClient.send: HTTP/2 request headers=${JSON.stringify(
-          headers
-        )}`
-      );
-
       const req = client.request(headers);
 
       req.setEncoding('utf8');
@@ -267,11 +215,6 @@ class ApnsClient {
       let status;
       req.on('response', (resHeaders) => {
         status = resHeaders[':status'];
-        console.log(
-          `[send-apn] ApnsClient.send: HTTP/2 response status=${status} apns-id=${
-            resHeaders['apns-id'] || '(none)'
-          } (device=${deviceToken})`
-        );
       });
 
       let data = '';
@@ -280,29 +223,16 @@ class ApnsClient {
       });
 
       req.on('end', () => {
-        console.log(
-          `[send-apn] ApnsClient.send: response ended status=${status} body=${
-            data || '(empty)'
-          } (device=${deviceToken})`
-        );
         if (status === 200) {
-          console.log(
-            `[send-apn] ApnsClient.send: SUCCESS device=${deviceToken}`
-          );
           resolve({ sent: [{ device: deviceToken }], failed: [] });
         } else {
           let reason = 'UnknownError';
           try {
-            if (data) reason = JSON.parse(data).reason;
-          } catch (err) {
-            console.error(
-              `[send-apn] ApnsClient.send: failed to parse error body: ${err.message}`
-            );
-          }
+            if (data) {
+              reason = JSON.parse(data).reason;
+            }
+          } catch {}
 
-          console.error(
-            `[send-apn] ApnsClient.send: FAILED device=${deviceToken} status=${status} reason=${reason}`
-          );
           resolve({
             sent: [],
             failed: [{ device: deviceToken, status, response: { reason } }]
@@ -311,9 +241,6 @@ class ApnsClient {
       });
 
       req.on('error', (err) => {
-        console.error(
-          `[send-apn] ApnsClient.send: request error device=${deviceToken}: ${err.message}`
-        );
         resolve({
           sent: [],
           failed: [
@@ -327,11 +254,6 @@ class ApnsClient {
       });
 
       const body = JSON.stringify(note.payload);
-      console.log(
-        `[send-apn] ApnsClient.send: writing body (${Buffer.byteLength(
-          body
-        )} bytes): ${body}`
-      );
       req.write(body);
       req.end();
     });
@@ -339,14 +261,6 @@ class ApnsClient {
 }
 
 function createNote(certBundle, service, obj, options) {
-  console.log(
-    `[send-apn] createNote: service=${service.cert} device=${
-      obj.device_token
-    } account_id=${obj.account_id || '(none)'} key=${
-      obj.key || '(none)'
-    } mailboxPath=${options.mailboxPath || '(none)'}`
-  );
-
   const note = {
     topic: certBundle[service.cert].topic,
     pushType: service.pushType,
@@ -365,7 +279,10 @@ function createNote(certBundle, service, obj, options) {
     // the apns-priority header when priority is undefined.
     //
     const aps = {};
-    if (obj.account_id) aps['account-id'] = obj.account_id;
+    if (obj.account_id) {
+      aps['account-id'] = obj.account_id;
+    }
+
     //
     // aps.m is an array containing one md5 hex string identifying the mailbox
     // that changed.  iOS Mail uses it to refresh only that mailbox instead of
@@ -381,7 +298,6 @@ function createNote(certBundle, service, obj, options) {
         .digest('hex')
     ];
     note.payload.aps = aps;
-    console.log(`[send-apn] createNote: Mail aps=${JSON.stringify(aps)}`);
   } else {
     //
     // Calendar / Contact: priority 5 (background batched delivery is fine).
@@ -398,20 +314,8 @@ function createNote(certBundle, service, obj, options) {
       dataChangedTimestamp: now,
       pushRequestSubmittedTimestamp: now
     };
-    console.log(
-      `[send-apn] createNote: ${service.cert} payload=${JSON.stringify(
-        note.payload
-      )}`
-    );
   }
 
-  console.log(
-    `[send-apn] createNote: topic=${note.topic} pushType=${
-      note.pushType
-    } priority=${
-      note.priority === undefined ? '(omitted)' : note.priority
-    } expiry=${note.expiry}`
-  );
   return note;
 }
 
@@ -446,18 +350,17 @@ function dedupeRegistrations(matched, service, options = {}) {
   });
   const seen = new Map();
   for (const row of sorted) {
-    if (!row || !row.device_token) continue;
+    if (!row || !row.device_token) {
+      continue;
+    }
+
     const tokenLc = row.device_token.toLowerCase();
     const dedupeKey =
       service.cert === 'Mail'
         ? `${tokenLc}|${mailboxPathForKey}`
         : `${tokenLc}|${row.key || ''}`;
 
-    if (seen.has(dedupeKey)) {
-      console.log(
-        `[send-apn] dedupeRegistrations: dropping duplicate registration dedupeKey=${dedupeKey} device=${row.device_token}`
-      );
-    } else {
+    if (!seen.has(dedupeKey)) {
       seen.set(dedupeKey, row);
     }
   }
@@ -466,33 +369,19 @@ function dedupeRegistrations(matched, service, options = {}) {
 }
 
 async function sendApnForService(serviceName, client, id, options = {}) {
-  console.log(
-    `[send-apn] sendApnForService: START service=${serviceName} alias_id=${id} options=${JSON.stringify(
-      options
-    )}`
-  );
-
   const service = SERVICES[serviceName];
-  if (!service) throw new TypeError(`Unsupported APN service: ${serviceName}`);
+  if (!service) {
+    throw new TypeError(`Unsupported APN service: ${serviceName}`);
+  }
 
   const alias = await Aliases.findOne({ id }).lean().select('+aps').exec();
   if (!alias) {
-    console.log(
-      `[send-apn] sendApnForService: alias not found for id=${id}, skipping`
-    );
     return;
   }
 
   if (!Array.isArray(alias.aps) || alias.aps.length === 0) {
-    console.log(
-      `[send-apn] sendApnForService: alias id=${id} has no aps[] registrations, skipping`
-    );
     return;
   }
-
-  console.log(
-    `[send-apn] sendApnForService: alias id=${id} has ${alias.aps.length} total aps[] entries`
-  );
 
   //
   // Filter to the registrations that belong to this service.
@@ -516,14 +405,7 @@ async function sendApnForService(serviceName, client, id, options = {}) {
       : a.subtopic === service.subtopic
   );
 
-  console.log(
-    `[send-apn] sendApnForService: ${matched.length}/${alias.aps.length} entries match subtopic=${service.subtopic} (service=${serviceName})`
-  );
-
   if (matched.length === 0) {
-    console.log(
-      `[send-apn] sendApnForService: no matching registrations for service=${serviceName}, skipping`
-    );
     return;
   }
 
@@ -569,12 +451,9 @@ async function sendApnForService(serviceName, client, id, options = {}) {
   const registrations = dedupeRegistrations(matched, service, options);
 
   if (matched.length !== registrations.length) {
-    console.log(
-      `[send-apn] sendApnForService: deduped ${matched.length} -> ${registrations.length} registrations (service=${serviceName} alias_id=${id})`
-    );
     logger.debug('sendApnForService deduped registrations', {
       service: serviceName,
-      alias_id: id,
+      aliasId: id,
       before: matched.length,
       after: registrations.length
     });
@@ -584,21 +463,9 @@ async function sendApnForService(serviceName, client, id, options = {}) {
   // Long-lived cached provider (one per service).  We never call
   // `provider.shutdown(fn)` because we keep the HTTP/2 connection alive.
   //
-  if (providers[serviceName]) {
-    console.log(
-      `[send-apn] sendApnForService: reusing cached ApnsClient for service=${serviceName}`
-    );
-  } else {
-    console.log(
-      `[send-apn] sendApnForService: no cached provider for service=${serviceName}, fetching certs and creating ApnsClient`
-    );
+  if (!providers[serviceName]) {
     certs = await getApnCerts(client);
     ensureTopic(certs, service.cert);
-    console.log(
-      `[send-apn] sendApnForService: cert topic for ${service.cert}=${
-        certs[service.cert].topic
-      }`
-    );
 
     providers[serviceName] = new ApnsClient(
       certs[service.cert].certificate,
@@ -627,21 +494,12 @@ async function sendApnForService(serviceName, client, id, options = {}) {
       ];
       const key = cacheTokens.join(':');
 
-      console.log(
-        `[send-apn] sendApnForService: checking coalesce cache key=${key} device=${obj.device_token}`
-      );
       const cache = await client.get(key);
 
       if (cache) {
-        console.log(
-          `[send-apn] sendApnForService: coalesce cache HIT, skipping push for device=${obj.device_token} (service=${serviceName})`
-        );
         return;
       }
 
-      console.log(
-        `[send-apn] sendApnForService: coalesce cache MISS, checking mailbox subscription filter (device=${obj.device_token})`
-      );
       //
       // Mailbox subscription filter (matches argon/push_notify behaviour).
       // iOS Mail registers with a list of mailboxes it wants push for.
@@ -655,13 +513,6 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         obj.mailboxes.length > 0 &&
         !obj.mailboxes.includes(options.mailboxPath || 'INBOX')
       ) {
-        console.log(
-          `[send-apn] sendApnForService: mailbox ${
-            options.mailboxPath || 'INBOX'
-          } not in device subscriptions [${obj.mailboxes.join(
-            ', '
-          )}], skipping device=${obj.device_token}`
-        );
         // Release the coalesce lock so a future push for a subscribed mailbox
         // is not blocked by this skipped send.
         await client.del(key);
@@ -674,27 +525,19 @@ async function sendApnForService(serviceName, client, id, options = {}) {
       await setTimeout(ms('10s'));
       const note = createNote(certs, service, obj, options);
 
-      // note they have commented out code at this below link for setting priority in note
+      // Note they have commented out code at this below link for setting priority in note
       // <https://github.com/freswa/dovecot-xaps-daemon/blob/abce2f14cf1b5afa56329ebb4d923c9c2aebdfe3/internal/apns.go#L162-L163>
       logger.debug('sendApnForService dispatching', {
         service: serviceName,
         topic: note.topic,
-        device_token: obj.device_token,
+        deviceToken: obj.device_token,
         key: obj.key,
         subtopic: obj.subtopic,
         priority: note.priority === undefined ? '(omitted)' : note.priority,
-        push_type: note.pushType
+        pushType: note.pushType
       });
 
       const result = await provider.send(note, obj.device_token);
-
-      console.log(
-        `[send-apn] sendApnForService: send result service=${serviceName} device=${
-          obj.device_token
-        } sent=${Array.isArray(result.sent) ? result.sent.length : 0} failed=${
-          Array.isArray(result.failed) ? result.failed.length : 0
-        }`
-      );
 
       logger.debug('sendApnForService result', {
         service: serviceName,
@@ -706,11 +549,6 @@ async function sendApnForService(serviceName, client, id, options = {}) {
       // NOTE: if device returns 410 then unsubscribe on our side too
       // If the device returns 410 we unsubscribe on our side too.
       if (Array.isArray(result.failed) && result.failed.length > 0) {
-        console.warn(
-          `[send-apn] sendApnForService: ${result.failed.length} failed push(es) for service=${serviceName}:`,
-          JSON.stringify(result.failed)
-        );
-
         //
         // Handle 429 TooManyRequests -- APNs rate limit, not a bug.
         // The device will receive the next successful push and sync then.
@@ -722,9 +560,6 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         );
 
         if (rateLimited.length > 0) {
-          console.warn(
-            `[send-apn] sendApnForService: APNs rate limited (429) for device=${obj.device_token}, extending backoff to 5m`
-          );
           logger.warn('APNs rate limited (429 TooManyRequests)', {
             service: serviceName,
             device: obj.device_token,
@@ -739,22 +574,12 @@ async function sendApnForService(serviceName, client, id, options = {}) {
           .map((r) => r.device);
 
         if (unregisteredDeviceTokens.length === 0) {
-          console.error(
-            `[send-apn] sendApnForService: unexpected failure (not 410/429) for service=${serviceName}:`,
-            JSON.stringify(result.failed)
-          );
           const err = new TypeError(service.errorLabel);
           err.isCodeBug = true;
           err.result = result;
           logger.fatal(err);
           return;
         }
-
-        console.log(
-          `[send-apn] sendApnForService: device token(s) returned 410 Gone (unregistered): ${unregisteredDeviceTokens.join(
-            ', '
-          )}, removing from alias`
-        );
 
         if (
           unregisteredDeviceTokens.length === 1 &&
@@ -769,10 +594,6 @@ async function sendApnForService(serviceName, client, id, options = {}) {
             .lean()
             .exec();
 
-          console.log(
-            `[send-apn] sendApnForService: found ${aliases.length} alias(es) with device_token=${obj.device_token} to clean up`
-          );
-
           await pMap(
             aliases,
             async (alias) => {
@@ -784,13 +605,9 @@ async function sendApnForService(serviceName, client, id, options = {}) {
               // that share the device_token but identify a different
               // collection.  account_id is optional and not always present.
               //
-              const before = alias.aps.length;
               const filtered = alias.aps.filter(
                 (a) =>
                   !(a.device_token === obj.device_token && a.key === obj.key)
-              );
-              console.log(
-                `[send-apn] sendApnForService: unsubscribing alias._id=${alias._id} aps ${before} -> ${filtered.length} entries`
               );
               await Aliases.findByIdAndUpdate(alias._id, {
                 $set: { aps: filtered }
@@ -807,34 +624,21 @@ async function sendApnForService(serviceName, client, id, options = {}) {
         }
       }
     } catch (err) {
-      console.error(
-        `[send-apn] sendApnForService: caught error for device=${obj.device_token} service=${serviceName}:`,
-        err
-      );
       logger.fatal(err, { obj });
     }
   });
-
-  console.log(
-    `[send-apn] sendApnForService: DONE service=${serviceName} alias_id=${id}`
-  );
 }
 
 // Backward-compatible default export: Mail push with optional mailboxPath.
 async function sendApn(client, id, mailboxPath = 'INBOX') {
-  console.log(
-    `[send-apn] sendApn (Mail): alias_id=${id} mailboxPath=${mailboxPath}`
-  );
   return sendApnForService('Mail', client, id, { mailboxPath });
 }
 
 async function sendApnCalendar(client, id) {
-  console.log(`[send-apn] sendApnCalendar: alias_id=${id}`);
   return sendApnForService('Calendar', client, id);
 }
 
 async function sendApnContacts(client, id) {
-  console.log(`[send-apn] sendApnContacts: alias_id=${id}`);
   return sendApnForService('Contact', client, id);
 }
 
