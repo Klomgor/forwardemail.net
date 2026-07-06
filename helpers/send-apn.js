@@ -356,28 +356,32 @@ function createNote(certBundle, service, obj, options) {
 
   if (service.cert === 'Mail') {
     //
-    // Mail: omit apns-priority header entirely.
-    // dovecot-xaps-daemon never sets Priority on the Go apns2.Notification
-    // struct; sideshow/apns2 only emits the header when Priority > 0.
-    // Omitting the header causes APNs to default to priority 10 internally
-    // without triggering the validation rule that rejects an explicit
-    // `apns-priority: 10` when push-type is background.
+    // Mail: explicitly set priority 5 for background pushes.
+    // Apple APNs documentation states: "For the background push type, always
+    // use priority 5. Using priority 10 is an error."
+    // Omitting the header causes APNs to default to priority 10 internally,
+    // which results in iOS power management aggressively throttling or silently
+    // dropping the push on the device side even though APNs returns HTTP 200.
     //
-    note.priority = undefined;
+    note.priority = 5;
 
     const aps = {};
     if (obj.account_id) aps['account-id'] = obj.account_id;
-    aps.m = [
-      crypto
-        .createHash('md5')
-        .update(options.mailboxPath || 'INBOX')
-        .digest('hex')
-    ];
+    // aps.m carries an array of md5(mailboxPath) hashes that tell iOS Mail
+    // which specific mailbox changed, avoiding a full-account sync.  Commented
+    // out while debugging iOS wakeup -- the minimal payload is just account-id.
+    // Re-enable once basic wakeup is confirmed working.
+    // aps.m = [
+    //   crypto
+    //     .createHash('md5')
+    //     .update(options.mailboxPath || 'INBOX')
+    //     .digest('hex')
+    // ];
     note.payload.aps = aps;
     console.log(
-      `[send-apn] createNote: Mail aps=${JSON.stringify(aps)} (md5 of "${
-        options.mailboxPath || 'INBOX'
-      }")`
+      `[send-apn] createNote: Mail aps=${JSON.stringify(
+        aps
+      )} (aps.m commented out for debugging)`
     );
   } else {
     //
