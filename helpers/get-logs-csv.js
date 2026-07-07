@@ -315,10 +315,17 @@ async function getLogsCsv(
           log?.meta?.session?.hadAlignedAndPassingDKIM ? 'true' : 'false',
           // Delivered To
           log?.meta?.info?.envelope?.to &&
-          Array.isArray(log.meta.info.envelope.to)
+          Array.isArray(log.meta.info.envelope.to) &&
+          log.meta.info.envelope.to.length > 0
             ? log.meta.info.envelope.to.join(' ')
-            : log?.meta?.info?.accepted && Array.isArray(log.meta.info.accepted)
+            : log?.meta?.info?.accepted &&
+              Array.isArray(log.meta.info.accepted) &&
+              log.meta.info.accepted.length > 0
             ? log.meta.info.accepted.join(' ')
+            : log?.message === 'delivered' &&
+              log?.meta?.session?.envelope?.rcptTo &&
+              Array.isArray(log.meta.session.envelope.rcptTo)
+            ? log.meta.session.envelope.rcptTo.map((to) => to.address).join(' ')
             : '',
           // Delivery Time (ms)
           log?.meta?.info?.envelopeTime || log?.meta?.info?.messageTime

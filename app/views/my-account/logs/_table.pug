@@ -43,11 +43,13 @@ include ../../_pagination
           - const deliveryMs = log.meta && log.meta.info ? (log.meta.info.envelopeTime || 0) + (log.meta.info.messageTime || 0) : 0;
           - const msgSize = log.meta && log.meta.info && log.meta.info.messageSize ? log.meta.info.messageSize : 0;
           -
-            const destAddrs = log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to) ? log.meta.info.envelope.to : (log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted) ? log.meta.info.accepted : []);
-          -
             const rcptAddrs = log.meta && log.meta.session && log.meta.session.envelope && log.meta.session.envelope.rcptTo && _.isArray(log.meta.session.envelope.rcptTo) ? log.meta.session.envelope.rcptTo.map(r => r.address) : [];
           -
-            const isForwarded = destAddrs.length > 0 && rcptAddrs.length > 0 && !destAddrs.every(d => rcptAddrs.includes(d));
+            const infoDestAddrs = log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to) ? log.meta.info.envelope.to : (log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted) ? log.meta.info.accepted : []);
+          -
+            const destAddrs = infoDestAddrs.length > 0 ? infoDestAddrs : (log.message === 'delivered' && rcptAddrs.length > 0 ? rcptAddrs : []);
+          -
+            const isForwarded = infoDestAddrs.length > 0 && rcptAddrs.length > 0 && !infoDestAddrs.every(d => rcptAddrs.includes(d));
           - const destLabel = isForwarded ? "Forwarded To" : "Delivered To";
           tr
             //- Date column

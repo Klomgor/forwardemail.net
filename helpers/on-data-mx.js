@@ -479,6 +479,7 @@ async function imap(alias, headers, session, body) {
     });
 
     // <https://github.com/websockets/ws/issues/1959>
+    const startTime = Date.now();
     const response = await this.wsp.request({
       action: 'tmp',
       aliases: [alias],
@@ -498,6 +499,7 @@ async function imap(alias, headers, session, body) {
       raw: Buffer.concat([sealHeaders, unsealed]),
       timeout: ms('1m')
     });
+    const messageTime = Date.now() - startTime;
 
     if (response[alias.address]) {
       // convert response object error into an Error
@@ -509,17 +511,23 @@ async function imap(alias, headers, session, body) {
         host: env.SQLITE_HOST
       });
     } else {
+      const messageSize = sealHeaders.length + unsealed.length;
+      // envelopeTime = total time from arrival to delivery completion
+      // messageTime = time spent on the actual IMAP append (wsp.request)
+      const envelopeTime = session.arrivalTime
+        ? Date.now() - session.arrivalTime - messageTime
+        : 0;
       logger.info('delivered', {
-        // spoofing nodemailer info object
         info: {
-          // TODO: improve this message in the future
-          response: `Appended to INBOX of ${alias.address}`
-          // TODO: we might want to spoof these in future too
-          // `messageId`
-          // `envelope`
-          // `accepted`
-          // `rejected`
-          // `pending`
+          response: `Appended to INBOX of ${alias.address}`,
+          accepted: [alias.address],
+          envelope: {
+            from: session.envelope.mailFrom.address,
+            to: [alias.address]
+          },
+          envelopeTime,
+          messageTime,
+          messageSize
         },
         ignore_hook: false,
         resolver: this.resolver,
@@ -1043,6 +1051,7 @@ async function forward(recipient, headers, session, body) {
           );
       }
 
+      const startTime = Date.now();
       const response = await retryRequest(
         // dummyproofing
         recipient.webhook
@@ -1071,6 +1080,7 @@ async function forward(recipient, headers, session, body) {
           resolver: this.resolver
         }
       );
+      const messageTime = Date.now() - startTime;
 
       let text = 'OK';
       if (response.statusCode === 200) {
@@ -1085,18 +1095,24 @@ async function forward(recipient, headers, session, body) {
       // Log webhook delivery with request/response details
       // for debugging and verification purposes
       //
+      const messageSize = raw.length;
+      // envelopeTime = total time from arrival to delivery completion
+      // messageTime = time spent on the actual webhook HTTP request
+      const envelopeTime = session.arrivalTime
+        ? Date.now() - session.arrivalTime - messageTime
+        : 0;
       logger.info('delivered', {
-        // spoofing nodemailer info object
         info: {
-          response: text
-          // TODO: we might want to spoof these in future too
-          // `messageId`
-          // `envelope`
-          // `accepted`
-          // `rejected`
-          // `pending`
+          response: text,
+          accepted: Object.keys(recipient.replacements),
+          envelope: {
+            from: session.envelope.mailFrom.address,
+            to: Object.keys(recipient.replacements)
+          },
+          envelopeTime,
+          messageTime,
+          messageSize
         },
-        // TODO: use `is_webhook` later in the future
         is_webhook: true,
         // Webhook logging details for debugging
         webhook_log: {

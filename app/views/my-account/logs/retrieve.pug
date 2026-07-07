@@ -46,11 +46,13 @@ block body
                 each rcpt in log.meta.session.envelope.rcptTo
                   li.list-inline-item= rcpt.address
           -
-            const detailDestAddrs = log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to) ? log.meta.info.envelope.to : (log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted) ? log.meta.info.accepted : []);
-          -
             const detailRcptAddrs = log.meta && log.meta.session && log.meta.session.envelope && log.meta.session.envelope.rcptTo && _.isArray(log.meta.session.envelope.rcptTo) ? log.meta.session.envelope.rcptTo.map(r => r.address) : [];
           -
-            const detailIsForwarded = detailDestAddrs.length > 0 && detailRcptAddrs.length > 0 && !detailDestAddrs.every(d => detailRcptAddrs.includes(d));
+            const detailInfoDestAddrs = log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to) ? log.meta.info.envelope.to : (log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted) ? log.meta.info.accepted : []);
+          -
+            const detailDestAddrs = detailInfoDestAddrs.length > 0 ? detailInfoDestAddrs : (log.message === 'delivered' && detailRcptAddrs.length > 0 ? detailRcptAddrs : []);
+          -
+            const detailIsForwarded = detailInfoDestAddrs.length > 0 && detailRcptAddrs.length > 0 && !detailInfoDestAddrs.every(d => detailRcptAddrs.includes(d));
           if detailDestAddrs.length > 0
             tr
               th= detailIsForwarded ? t("Forwarded To") : t("Delivered To")
