@@ -367,36 +367,24 @@ async function onAuth(auth, session, fn) {
 
             // daily backup (run in background)
             // skip if sqlite-worker is busy (Redis counter set by sqlite-worker)
-            // rate-limited to once per alias per day to avoid flooding workers
-            const backupDedupKey = `backup_dedup:${user.alias_id}`;
             this.client
-              .set(backupDedupKey, '1', 'PX', ms('1d'), 'NX')
-              .then((locked) => {
-                if (!locked) return;
-                return this.client
-                  .get(`sqlite_worker_busy:${config.env}`)
-                  .then((count) => {
-                    if (count && Number(count) > 0) {
-                      // worker is busy, clear dedup so we retry next auth
-                      this.client.del(backupDedupKey).catch(() => {});
-                      return;
-                    }
-
-                    return this.wsp
-                      .request(
-                        {
-                          action: 'backup',
-                          backup_at: new Date().toISOString(),
-                          session: { user }
-                        },
-                        0
-                      )
-                      .then((backup) => {
-                        this.logger.debug('backup complete', {
-                          backup,
-                          session
-                        });
-                      });
+              .get(`sqlite_worker_busy:${config.env}`)
+              .then((count) => {
+                if (count && Number(count) > 0) return;
+                return this.wsp
+                  .request(
+                    {
+                      action: 'backup',
+                      backup_at: new Date().toISOString(),
+                      session: { user }
+                    },
+                    0
+                  )
+                  .then((backup) => {
+                    this.logger.debug('backup complete', {
+                      backup,
+                      session
+                    });
                   });
               })
               .catch((err) => this.logger.debug(err, { session }));

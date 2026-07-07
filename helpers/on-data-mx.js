@@ -481,7 +481,6 @@ async function imap(alias, headers, session, body) {
     // <https://github.com/websockets/ws/issues/1959>
     const response = await this.wsp.request({
       action: 'tmp',
-      sent_at: Date.now(),
       aliases: [alias],
       remoteAddress: session.remoteAddress,
       resolvedRootClientHostname: session.resolvedRootClientHostname,

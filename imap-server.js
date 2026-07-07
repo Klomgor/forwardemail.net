@@ -233,36 +233,6 @@ class IMAP {
       this.backupConnections();
     }, ms('1h'));
 
-    //
-    // Periodically send a lightweight 'touch' action to the SQLite worker
-    // for all connected aliases. This prevents their databases from being
-    // evicted from the databaseMap due to idle TTL, ensuring that incoming
-    // messages always use the fast direct-write path instead of tmp storage.
-    //
-    this._keepaliveInterval = setInterval(() => {
-      if (!this?.server?.connections || this.server.connections.size === 0)
-        return;
-      const aliasIds = new Set();
-      for (const connection of this.server.connections) {
-        if (connection?.session?.user?.alias_id)
-          aliasIds.add(connection.session.user.alias_id);
-      }
-
-      if (aliasIds.size === 0) return;
-      this.wsp
-        .request(
-          {
-            action: 'touch',
-            alias_ids: [...aliasIds]
-          },
-          0 // no retries
-        )
-        .catch((err) => {
-          this.logger.debug('keepalive touch failed', { err });
-        });
-    }, ms('4m'));
-    this._keepaliveInterval.unref();
-
     // listen for websocket write stream
     this.wsp.onUnpackedMessage.addListener(async (data) => {
       try {
@@ -479,7 +449,6 @@ class IMAP {
   async close() {
     // this.subscriber.unsubscribe('sqlite_auth_request');
     this.subscriber.unsubscribe('sqlite_auth_reset');
-    if (this._keepaliveInterval) clearInterval(this._keepaliveInterval);
     await pify(this.server.close).bind(this.server)();
   }
 }
