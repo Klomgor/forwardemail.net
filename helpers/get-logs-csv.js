@@ -82,7 +82,10 @@ async function getLogsCsv(
         'MX Hostname',
         'MX IP',
         'SPF',
-        'DKIM'
+        'DKIM',
+        'Forwarded To',
+        'Delivery Time (ms)',
+        'Message Size (bytes)'
       ]) + '\n'
     );
 
@@ -309,7 +312,23 @@ async function getLogsCsv(
           // SPF
           log?.meta?.session?.spf?.status?.result || '',
           // DKIM
-          log?.meta?.session?.hadAlignedAndPassingDKIM ? 'true' : 'false'
+          log?.meta?.session?.hadAlignedAndPassingDKIM ? 'true' : 'false',
+          // Forwarded To
+          log?.meta?.info?.envelope?.to &&
+          Array.isArray(log.meta.info.envelope.to)
+            ? log.meta.info.envelope.to.join(' ')
+            : log?.meta?.info?.accepted && Array.isArray(log.meta.info.accepted)
+            ? log.meta.info.accepted.join(' ')
+            : '',
+          // Delivery Time (ms)
+          log?.meta?.info?.envelopeTime || log?.meta?.info?.messageTime
+            ? String(
+                (log.meta.info.envelopeTime || 0) +
+                  (log.meta.info.messageTime || 0)
+              )
+            : '',
+          // Message Size (bytes)
+          log?.meta?.info?.messageSize ? String(log.meta.info.messageSize) : ''
         ]) + '\n'
       );
 

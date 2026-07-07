@@ -1,15 +1,21 @@
 include ../../_sort-header
 include ../../_pagination
 
-table.table.table-hover.table-bordered.table-sm
-  thead.thead-dark
-    tr
-      th.text-center.align-middle(scope="col")!= t("Log")
-      th.text-center.align-middle(scope="col")= t("Actions")
+.table-responsive
+  table#table-logs.table.table-hover.table-bordered.table-sm
+    thead.thead-dark
+      tr
+        th.text-center.align-middle(scope="col")
+          +sortHeader("created_at", "Date", "#table-logs")
+        th.text-center.align-middle(scope="col")= t("Log")
+        th.text-center.align-middle.d-none.d-md-table-cell(scope="col")
+          +sortHeader("meta.info.messageSize", "Size", "#table-logs")
+        th.text-center.align-middle.d-none.d-lg-table-cell(scope="col")= t("Delivery Time")
+        th.text-center.align-middle(scope="col")= t("Actions")
     tbody
       if logs.length === 0
         tr
-          td.alert.alert-info(colspan="2")
+          td.alert.alert-info(colspan="5")
             //- FIX: Context-aware empty state messages
             //- Show specific messages based on which filters are active
             if activeFilters && activeFilters.hasSearch
@@ -33,55 +39,93 @@ table.table.table-hover.table-bordered.table-sm
               = t("No error logs have been stored yet. Please check back later.")
       else
         each log in logs
+          - const deliveryMs = log.meta && log.meta.info ? (log.meta.info.envelopeTime || 0) + (log.meta.info.messageTime || 0) : 0;
+          - const msgSize = log.meta && log.meta.info && log.meta.info.messageSize ? log.meta.info.messageSize : 0;
           tr
+            //- Date column
+            td.align-middle.text-nowrap
+              small.text-monospace
+                if log.meta && log.meta.session && log.meta.session.arrivalDate
+                  span.dayjs(
+                    data-time=new Date(log.meta.session.arrivalDate).getTime()
+                  )= dayjs(log.meta.session.arrivalDate).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
+                else
+                  span.dayjs(data-time=new Date(log.created_at).getTime())= dayjs(log.created_at).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
+            //- Log details column
             td.align-middle
               ul.list-unstyled.mb-0
                 li
-                  span.badge.badge-pill.badge-dark= "ID"
+                  span.badge.badge-pill.badge-dark= t("ID")
                   = " "
                   span.small: code= log.id
-                li
-                  span.badge.badge-pill.badge-dark= "DATE"
-                  = " "
-                  span.small.text-monospace
-                    if log.meta && log.meta.session && log.meta.session.arrivalDate
-                      span.dayjs(
-                        data-time=new Date(log.meta.session.arrivalDate).getTime()
-                      )= dayjs(log.meta.session.arrivalDate).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
-                    else
-                      span.dayjs(data-time=new Date(log.created_at).getTime())= dayjs(log.created_at).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
                 //- MAIL FROM
                 if log.meta && log.meta.session && log.meta.session.envelope && log.meta.session.envelope.mailFrom && log.meta.session.envelope.mailFrom.address
                   li
-                    span.badge.badge-pill.badge-dark= "MAIL FROM"
+                    span.badge.badge-pill.badge-dark= t("MAIL FROM")
                     = " "
                     span.small: code= log.meta.session.envelope.mailFrom.address
                 //- RCPT TO
                 if log.meta && log.meta.session && log.meta.session.envelope && log.meta.session.envelope.rcptTo && _.isArray(log.meta.session.envelope.rcptTo) && !_.isEmpty(log.meta.session.envelope.rcptTo)
                   li
-                    span.badge.badge-pill.badge-dark= "RCPT TO"
+                    span.badge.badge-pill.badge-dark= t("RCPT TO")
                     = " "
                     ul.list-inline.d-inline-block.mb-0
                       each rcpt in log.meta.session.envelope.rcptTo
                         li.list-inline-item
                           small: code= rcpt.address
+                //- Forwarded To (destination)
+                if log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to)
+                  li
+                    span.badge.badge-pill.badge-success= t("Forwarded To")
+                    = " "
+                    ul.list-inline.d-inline-block.mb-0
+                      each recipient in log.meta.info.envelope.to
+                        li.list-inline-item
+                          small: code= recipient
+                else if log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted)
+                  li
+                    span.badge.badge-pill.badge-success= t("Forwarded To")
+                    = " "
+                    ul.list-inline.d-inline-block.mb-0
+                      each recipient in log.meta.info.accepted
+                        li.list-inline-item
+                          small: code= recipient
                 //- From Header
                 if log.meta && log.meta.session && log.meta.session.originalFromAddress
                   li
-                    span.badge.badge-pill.badge-primary= "FROM"
+                    span.badge.badge-pill.badge-primary= t("From")
                     = " "
                     span.small: code= log.meta.session.originalFromAddress
                 else if log.meta && log.meta.session && log.meta.session.headers && log.meta.session.headers.From
                   li
-                    span.badge.badge-pill.badge-primary= "FROM"
+                    span.badge.badge-pill.badge-primary= t("From")
                     = " "
                     span.small: code= log.meta.session.headers.From
                 //- Subject Header
                 if log.meta && log.meta.session && log.meta.session.headers && log.meta.session.headers.Subject
                   li
-                    span.badge.badge-pill.badge-primary= "SUBJECT"
+                    span.badge.badge-pill.badge-primary= t("Subject")
                     = " "
                     span.small: code= log.meta.session.headers.Subject
+                //- Delivery Time and Message Size (visible on mobile as inline badges)
+                li.d-md-none
+                  if msgSize > 0
+                    span.badge.badge-pill.badge-secondary
+                      i.fa.fa-file.mr-1
+                      if msgSize >= 1048576
+                        | #{ (msgSize / 1048576).toFixed(1) } MB
+                      else if msgSize >= 1024
+                        | #{ (msgSize / 1024).toFixed(0) } KB
+                      else
+                        | #{ msgSize } B
+                    = " "
+                  if deliveryMs > 0
+                    span.badge.badge-pill.badge-info
+                      i.fa.fa-clock.mr-1
+                      if deliveryMs >= 1000
+                        | #{ (deliveryMs / 1000).toFixed(1) }s
+                      else
+                        | #{ deliveryMs }ms
                 //- Response
                 li
                   ul.list-inline.mb-0
@@ -117,7 +161,7 @@ table.table.table-hover.table-bordered.table-sm
                           = ")"
                           = " "
                         if log.err && log.err.isCodeBug === true
-                          = "An unexpected internal server error has occurred"
+                          = t("An unexpected internal server error has occurred")
                         else if log.message === "delivered"
                           if log.meta && log.meta.info && log.meta.info.pgp === true
                             = "("
@@ -174,7 +218,7 @@ table.table.table-hover.table-bordered.table-sm
                             if log.err.webhook_log.error_code
                               span.badge.badge-danger= log.err.webhook_log.error_code
                         //- Show bounce reason if available
-                        if log.err.bounceInfo && log.err.bounceInfo.message && log.err.bounceInfo.message !== 'Unknown'
+                        if log.err && log.err.bounceInfo && log.err.bounceInfo.message && log.err.bounceInfo.message !== 'Unknown'
                           br
                           small.text-muted
                             i.fa.fa-info-circle.mr-1
@@ -220,6 +264,33 @@ table.table.table-hover.table-bordered.table-sm
                               //- message
                               if bounce.err && bounce.err.original_message
                                 span.text-monospace.mr-1= bounce.err.original_message
+            //- Message Size column (hidden on small screens)
+            td.align-middle.text-center.text-nowrap.d-none.d-md-table-cell
+              if msgSize > 0
+                small.text-monospace
+                  if msgSize >= 1048576
+                    | #{ (msgSize / 1048576).toFixed(1) } MB
+                  else if msgSize >= 1024
+                    | #{ (msgSize / 1024).toFixed(0) } KB
+                  else
+                    | #{ msgSize } B
+              else
+                small.text-muted= "—"
+            //- Delivery Time column (hidden on small/medium screens)
+            td.align-middle.text-center.text-nowrap.d-none.d-lg-table-cell
+              if deliveryMs > 0
+                small.text-monospace
+                  if deliveryMs >= 60000
+                    span.text-danger #{ (deliveryMs / 1000).toFixed(1) }s
+                  else if deliveryMs >= 10000
+                    span.text-warning #{ (deliveryMs / 1000).toFixed(1) }s
+                  else if deliveryMs >= 1000
+                    span.text-info #{ (deliveryMs / 1000).toFixed(1) }s
+                  else
+                    span.text-success #{ deliveryMs }ms
+              else
+                small.text-muted= "—"
+            //- Actions column
             td.align-middle.text-center
               ul.list-inline.mb-0
                 li.list-inline-item

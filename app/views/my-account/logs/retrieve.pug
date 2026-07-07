@@ -36,15 +36,49 @@ block body
                 span.dayjs(data-time=log.created_at)= dayjs(log.created_at).tz(user.timezone === 'Etc/Unknown' ? 'UTC' : user.timezone).format("M/D/YY h:mm A z")
           if log.meta.session.envelope.mailFrom && log.meta.session.envelope.mailFrom.address && isSANB(log.meta.session.envelope.mailFrom.address)
             tr
-              th= "MAIL FROM"
+              th= t("MAIL FROM")
               td
                 = log.meta.session.envelope.mailFrom.address
           tr
-            th= "RCPT TO"
+            th= t("RCPT TO")
             td
               ul.list-inline.mb-0
                 each rcpt in log.meta.session.envelope.rcptTo
                   li.list-inline-item= rcpt.address
+          if log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to)
+            tr
+              th= t("Forwarded To")
+              td
+                ul.list-inline.mb-0
+                  each recipient in log.meta.info.envelope.to
+                    li.list-inline-item
+                      code= recipient
+          else if log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted)
+            tr
+              th= t("Forwarded To")
+              td
+                ul.list-inline.mb-0
+                  each recipient in log.meta.info.accepted
+                    li.list-inline-item
+                      code= recipient
+          if log.meta && log.meta.info && (log.meta.info.envelopeTime || log.meta.info.messageTime)
+            tr
+              th= t("Delivery Time")
+              td
+                if log.meta.info.envelopeTime && log.meta.info.messageTime
+                  | #{ log.meta.info.envelopeTime + log.meta.info.messageTime } ms
+                  small.text-muted
+                    |
+                    | (SMTP envelope: #{ log.meta.info.envelopeTime } ms, message transfer: #{ log.meta.info.messageTime } ms)
+                else if log.meta.info.envelopeTime
+                  | #{ log.meta.info.envelopeTime } ms
+                else
+                  | #{ log.meta.info.messageTime } ms
+          if log.meta && log.meta.info && log.meta.info.messageSize
+            tr
+              th= t("Message Size")
+              td
+                | #{ (log.meta.info.messageSize / 1024).toFixed(1) } KB
         h3.h5
           if log.err && log.err.response && isSANB(log.response)
             = t("SMTP Response")
@@ -98,7 +132,7 @@ block body
                 = ")"
                 = " "
               if log.err && log.err.isCodeBug === true
-                = "An unexpected internal server error has occurred"
+                = t("An unexpected internal server error has occurred")
               else if log.message === "delivered"
                 if log.meta && log.meta.info && log.meta.info.pgp === true
                   = "("

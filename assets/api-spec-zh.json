@@ -4982,7 +4982,7 @@
     "/v1/logs/download": {
       "get": {
         "summary": "下载日志",
-        "description": "**下载日志**\n\n说明：我们的 API 允许您通过编程方式下载帐户日志。向此接口提交请求后，系统将处理您帐户的所有日志，并在处理完成后以附件形式（Gzip 压缩的 CSV 电子表格文件）通过电子邮件发送给您。\n\n这样，您可以使用 Cron 作业或 Node.js 作业调度软件 Bree 创建后台作业，随时接收日志。请注意，此接口每天最多只能发送 10 次请求。\n\n附件文件名为 `email-deliverability-logs-YYYY-MM-DD-h-mm-A-z.csv.gz`（小写），邮件正文包含已检索日志的简要摘要。",
+        "description": "**下载日志**\n\n说明：我们的 API 允许您通过编程方式下载帐户日志。向此接口提交请求后，系统将处理您帐户的所有日志，并在处理完成后以附件形式（Gzip 压缩的 CSV 电子表格文件）通过电子邮件发送给您。\n\n这样，您可以使用 Cron 作业或 Node.js 作业调度软件 Bree 创建后台作业，随时接收日志。请注意，此接口每天最多只能发送 10 次请求。\n\n附件文件名为 `email-deliverability-logs-YYYY-MM-DD-h-mm-A-z.csv.gz`（小写），邮件正文包含已检索日志的简要摘要。\n\n\nCSV 电子表格包含以下列：日志 ID、会话 ID、日期、级别、退信类别、退信操作、真实来源、SMTP 响应、SMTP 代码、发件人、发件人已列入允许列表、收件人、主题、Message-ID、MAIL FROM、RCPT TO、客户端 IP、客户端主机名、客户端已列入允许列表、目标主机、目标 MX 主机名、目标 MX IP、目标类型、机会性 TLS、要求 TLS、MX 主机名、MX IP、SPF、DKIM、转发至、投递时间 (ms) 和消息大小 (字节)。",
         "tags": [
           "日志"
         ],
