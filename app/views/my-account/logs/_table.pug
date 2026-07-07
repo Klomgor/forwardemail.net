@@ -10,7 +10,8 @@ include ../../_pagination
         th.text-center.align-middle(scope="col")= t("Log")
         th.text-center.align-middle.d-none.d-md-table-cell(scope="col")
           +sortHeader("meta.info.messageSize", "Size", "#table-logs")
-        th.text-center.align-middle.d-none.d-lg-table-cell(scope="col")= t("Delivery Time")
+        th.text-center.align-middle.d-none.d-lg-table-cell(scope="col")
+          +sortHeader("meta.info.deliveryTime", "Delivery Time", "#table-logs")
         th.text-center.align-middle(scope="col")= t("Actions")
     tbody
       if logs.length === 0

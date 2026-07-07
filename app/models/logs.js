@@ -437,6 +437,24 @@ Logs.index(
   }
 );
 
+// Indexes for my-account logs list sorting by message size and delivery time
+Logs.index(
+  { 'meta.info.messageSize': 1 },
+  {
+    partialFilterExpression: {
+      'meta.info.messageSize': { $exists: true }
+    }
+  }
+);
+Logs.index(
+  { 'meta.info.deliveryTime': 1 },
+  {
+    partialFilterExpression: {
+      'meta.info.deliveryTime': { $exists: true }
+    }
+  }
+);
+
 //
 // if we're saving a "delivered" message
 // then ensure that `resolver` is set
@@ -1175,6 +1193,22 @@ Logs.pre('save', function (next) {
 
     next(err);
   }
+});
+
+//
+// Materialize total delivery time (envelopeTime + messageTime) for efficient
+// index-backed sorting on the my-account logs list page.
+//
+Logs.pre('save', function (next) {
+  if (
+    this?.meta?.info &&
+    (this.meta.info.envelopeTime || this.meta.info.messageTime)
+  ) {
+    this.meta.info.deliveryTime =
+      (this.meta.info.envelopeTime || 0) + (this.meta.info.messageTime || 0);
+  }
+
+  next();
 });
 
 //
