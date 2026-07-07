@@ -45,20 +45,18 @@ block body
               ul.list-inline.mb-0
                 each rcpt in log.meta.session.envelope.rcptTo
                   li.list-inline-item= rcpt.address
-          if log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to)
+          -
+            const detailDestAddrs = log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to) ? log.meta.info.envelope.to : (log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted) ? log.meta.info.accepted : []);
+          -
+            const detailRcptAddrs = log.meta && log.meta.session && log.meta.session.envelope && log.meta.session.envelope.rcptTo && _.isArray(log.meta.session.envelope.rcptTo) ? log.meta.session.envelope.rcptTo.map(r => r.address) : [];
+          -
+            const detailIsForwarded = detailDestAddrs.length > 0 && detailRcptAddrs.length > 0 && !detailDestAddrs.every(d => detailRcptAddrs.includes(d));
+          if detailDestAddrs.length > 0
             tr
-              th= t("Forwarded To")
+              th= detailIsForwarded ? t("Forwarded To") : t("Delivered To")
               td
                 ul.list-inline.mb-0
-                  each recipient in log.meta.info.envelope.to
-                    li.list-inline-item
-                      code= recipient
-          else if log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted)
-            tr
-              th= t("Forwarded To")
-              td
-                ul.list-inline.mb-0
-                  each recipient in log.meta.info.accepted
+                  each recipient in detailDestAddrs
                     li.list-inline-item
                       code= recipient
           if log.meta && log.meta.info && (log.meta.info.envelopeTime || log.meta.info.messageTime)

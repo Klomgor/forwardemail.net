@@ -42,6 +42,13 @@ include ../../_pagination
         each log in logs
           - const deliveryMs = log.meta && log.meta.info ? (log.meta.info.envelopeTime || 0) + (log.meta.info.messageTime || 0) : 0;
           - const msgSize = log.meta && log.meta.info && log.meta.info.messageSize ? log.meta.info.messageSize : 0;
+          -
+            const destAddrs = log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to) ? log.meta.info.envelope.to : (log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted) ? log.meta.info.accepted : []);
+          -
+            const rcptAddrs = log.meta && log.meta.session && log.meta.session.envelope && log.meta.session.envelope.rcptTo && _.isArray(log.meta.session.envelope.rcptTo) ? log.meta.session.envelope.rcptTo.map(r => r.address) : [];
+          -
+            const isForwarded = destAddrs.length > 0 && rcptAddrs.length > 0 && !destAddrs.every(d => rcptAddrs.includes(d));
+          - const destLabel = isForwarded ? "Forwarded To" : "Delivered To";
           tr
             //- Date column
             td.align-middle.text-nowrap
@@ -74,21 +81,13 @@ include ../../_pagination
                       each rcpt in log.meta.session.envelope.rcptTo
                         li.list-inline-item
                           small: code= rcpt.address
-                //- Forwarded To (destination)
-                if log.meta && log.meta.info && log.meta.info.envelope && log.meta.info.envelope.to && _.isArray(log.meta.info.envelope.to) && !_.isEmpty(log.meta.info.envelope.to)
+                //- Delivered To / Forwarded To (destination)
+                if destAddrs.length > 0
                   li
-                    span.badge.badge-pill.badge-success= t("Forwarded To")
+                    span.badge.badge-pill.badge-success= t(destLabel)
                     = " "
                     ul.list-inline.d-inline-block.mb-0
-                      each recipient in log.meta.info.envelope.to
-                        li.list-inline-item
-                          small: code= recipient
-                else if log.meta && log.meta.info && log.meta.info.accepted && _.isArray(log.meta.info.accepted) && !_.isEmpty(log.meta.info.accepted)
-                  li
-                    span.badge.badge-pill.badge-success= t("Forwarded To")
-                    = " "
-                    ul.list-inline.d-inline-block.mb-0
-                      each recipient in log.meta.info.accepted
+                      each recipient in destAddrs
                         li.list-inline-item
                           small: code= recipient
                 //- From Header

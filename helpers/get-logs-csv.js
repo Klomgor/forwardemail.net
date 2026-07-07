@@ -83,7 +83,7 @@ async function getLogsCsv(
         'MX IP',
         'SPF',
         'DKIM',
-        'Forwarded To',
+        'Delivered To',
         'Delivery Time (ms)',
         'Message Size (bytes)'
       ]) + '\n'
@@ -313,7 +313,7 @@ async function getLogsCsv(
           log?.meta?.session?.spf?.status?.result || '',
           // DKIM
           log?.meta?.session?.hadAlignedAndPassingDKIM ? 'true' : 'false',
-          // Forwarded To
+          // Delivered To
           log?.meta?.info?.envelope?.to &&
           Array.isArray(log.meta.info.envelope.to)
             ? log.meta.info.envelope.to.join(' ')
