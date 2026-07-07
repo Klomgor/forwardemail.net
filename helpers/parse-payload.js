@@ -124,6 +124,7 @@ const PAYLOAD_ACTIONS = new Set([
   'backup', // no db
   'rekey', // no db
   'reset', // no db
+  'touch', // no db
 
   // db required
   'copy_messages',
