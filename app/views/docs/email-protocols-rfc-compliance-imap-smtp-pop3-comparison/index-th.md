@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | คัดลอกข้อความขณะเปลี่ยนเส้นทาง           | ธง `:copy` บน fileinto/redirect          |
 | `editheader`                 | เพิ่มหรือลบหัวข้อข้อความ                | หัวข้อถูกแก้ไขก่อนการเก็บ                  |
 | `date`                       | ทดสอบค่าของวันที่/เวลา                   | การทดสอบ `currentdate` และวันที่ในหัวข้อ    |
-| `index`                      | เข้าถึงการเกิดขึ้นของหัวข้อเฉพาะ         | `:index` สำหรับหัวข้อที่มีหลายค่า           |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | การจับคู่ด้วยนิพจน์ปกติ                  | รองรับนิพจน์ปกติเต็มรูปแบบในการทดสอบ       |
 | `enotify`                    | ส่งการแจ้งเตือน                        | การแจ้งเตือน `mailto:` ผ่าน Emails.queue   |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

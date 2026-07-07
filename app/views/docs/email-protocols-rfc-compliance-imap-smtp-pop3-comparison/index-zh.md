@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | 重定向时复制邮件                         | 在 fileinto/redirect 上使用 `:copy` 标志      |
 | `editheader`                 | 添加或删除邮件头                         | 存储前修改邮件头                             |
 | `date`                       | 测试日期/时间值                         | `currentdate` 和邮件头日期测试                 |
-| `index`                      | 访问特定邮件头出现次数                     | 多值邮件头使用 `:index`                      |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | 正则表达式匹配                          | 测试中支持完整正则表达式                       |
 | `enotify`                    | 发送通知                               | 通过 Emails.queue 发送 `mailto:` 通知          |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

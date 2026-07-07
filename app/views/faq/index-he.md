@@ -2802,7 +2802,7 @@ Tasks.org הוא מנהל משימות קוד פתוח פופולרי שעובד
 | `copy`                     | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                              | העתקת הודעות תוך הפניה מחדש                        |
 | `editheader`               | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                              | הוספה או מחיקה של כותרות הודעה                      |
 | `date`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | בדיקת ערכי תאריך/שעה                              |
-| `index`                    | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | גישה להופעות ספציפיות בכותרת                       |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                    | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | התאמת ביטוי רגולרי                                |
 | `enotify`                  | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | שליחת התראות (למשל, mailto:)                       |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

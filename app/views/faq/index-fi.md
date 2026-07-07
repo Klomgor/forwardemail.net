@@ -2801,7 +2801,7 @@ Tuemme laajaa valikoimaa Sieve-laajennuksia:
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                               | Kopioi viestit uudelleenohjauksen aikana          |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                               | Lisää tai poista viestin otsikoita                 |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Testaa päivämäärä/aika-arvoja                      |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Pääsy tiettyihin otsikon esiintymiin               |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | Säännöllisten lausekkeiden vastaavuus             |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | Lähetä ilmoituksia (esim. mailto:)                 |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

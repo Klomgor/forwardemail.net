@@ -1144,7 +1144,7 @@ Aşağıdaki takvim uzantıları DESTEKLENMEMEKTEDİR:
 | `copy`                       | Yönlendirme sırasında mesajları kopyalama | fileinto/redirect üzerinde `:copy` bayrağı   |
 | `editheader`                 | Mesaj başlıklarını ekleme veya silme      | Saklamadan önce başlıklar değiştirilir       |
 | `date`                       | Tarih/saat değerlerini test etme           | `currentdate` ve başlık tarih testleri        |
-| `index`                      | Belirli başlık tekrarlarına erişim         | Çok değerli başlıklar için `:index`           |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Düzenli ifade eşleştirme                   | Testlerde tam regex desteği                    |
 | `enotify`                    | Bildirim gönderme                          | Emails.queue üzerinden `mailto:` bildirimleri |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

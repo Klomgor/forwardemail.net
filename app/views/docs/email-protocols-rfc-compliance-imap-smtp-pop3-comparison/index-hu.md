@@ -1144,7 +1144,7 @@ A [Sieve](https://en.wikipedia.org/wiki/Sieve_\(mail_filtering_language\)) egy s
 | `copy`                       | Üzenetek másolása átirányítás közben      | `:copy` jelző fileinto/redirect esetén        |
 | `editheader`                 | Üzenet fejléc hozzáadása vagy törlése     | Fejlécek módosítása tárolás előtt              |
 | `date`                       | Dátum/idő értékek tesztelése               | `currentdate` és fejléc dátum tesztek          |
-| `index`                      | Meghatározott fejléc előfordulások elérése | `:index` többértékű fejlécekhez                |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Reguláris kifejezés egyezés                | Teljes regex támogatás tesztekben               |
 | `enotify`                    | Értesítések küldése                        | `mailto:` értesítések az Emails.queue-n keresztül |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

@@ -1144,7 +1144,7 @@ Die folgenden Kalendererweiterungen werden NICHT unterstützt:
 | `copy`                       | Nachrichten beim Weiterleiten kopieren   | `:copy` Flag bei fileinto/redirect          |
 | `editheader`                 | Nachrichten-Header hinzufügen oder löschen | Header werden vor der Speicherung geändert  |
 | `date`                       | Datums-/Zeitwerte testen                  | `currentdate` und Header-Datumsprüfungen    |
-| `index`                      | Zugriff auf bestimmte Header-Vorkommen   | `:index` für mehrwertige Header              |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Reguläre Ausdrücke verwenden              | Vollständige Regex-Unterstützung bei Tests  |
 | `enotify`                    | Benachrichtigungen senden                 | `mailto:` Benachrichtigungen über Emails.queue |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

@@ -2802,7 +2802,7 @@ Kami mendukung serangkaian lengkap ekstensi Sieve:
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                               | Menyalin pesan saat mengalihkan                   |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                               | Menambah atau menghapus header pesan              |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Menguji nilai tanggal/waktu                        |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | Mengakses kemunculan header tertentu              |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | Pencocokan ekspresi reguler                        |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | Mengirim notifikasi (misalnya, mailto:)           |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

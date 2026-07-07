@@ -735,7 +735,21 @@ class SieveEngine {
         continue;
       }
 
-      const values = Array.isArray(headerValue) ? headerValue : [headerValue];
+      let values = Array.isArray(headerValue) ? headerValue : [headerValue];
+
+      // RFC 5260: :index selects a specific occurrence of the header
+      if (test.index) {
+        const idx = test.index;
+        if (test.last) {
+          // :last reverses the count (1 = last, 2 = second-to-last, etc.)
+          const pos = values.length - idx;
+          values = pos >= 0 ? [values[pos]] : [];
+        } else {
+          // Without :last, count from the beginning (1-based)
+          values = idx <= values.length ? [values[idx - 1]] : [];
+        }
+      }
+
       for (const value of values) {
         // Coerce value to string to prevent TypeError on non-string header values
         const stringValue =

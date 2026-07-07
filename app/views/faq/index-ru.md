@@ -2802,7 +2802,7 @@ Tasks.org — популярный менеджер задач с открыты
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                             | Копирование сообщений при переадресации           |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                             | Добавление или удаление заголовков сообщений      |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Проверка значений даты/времени                     |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Доступ к конкретным вхождениям заголовков         |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)| Сопоставление с регулярными выражениями           |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                             | Отправка уведомлений (например, mailto:)           |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

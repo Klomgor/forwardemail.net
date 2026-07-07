@@ -1144,7 +1144,7 @@ Seuraavia kalenterilaajennuksia EI tueta:
 | `copy`                       | Kopioi viestit uudelleenohjauksen yhteydessä | `:copy`-lippu fileinto/redirect-komentoihin |
 | `editheader`                 | Lisää tai poista viestin otsikoita       | Otsikoita muokataan ennen tallennusta       |
 | `date`                       | Testaa päivämäärä/aikaleima-arvoja       | `currentdate` ja otsikon päivämäärätestit   |
-| `index`                      | Pääsy tiettyihin otsikon esiintymiin     | `:index` moniarvoisille otsikoille           |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Säännöllisten lausekkeiden vastaavuus    | Täysi regex-tuki testeissä                   |
 | `enotify`                    | Lähetä ilmoituksia                       | `mailto:`-ilmoitukset Emails.queue-palvelun kautta |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

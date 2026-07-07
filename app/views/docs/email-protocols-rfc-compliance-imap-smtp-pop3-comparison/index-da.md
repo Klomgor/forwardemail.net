@@ -1144,7 +1144,7 @@ Følgende kalenderudvidelser understøttes IKKE:
 | `copy`                       | Kopiér beskeder ved videresendelse         | `:copy` flag på fileinto/redirect              |
 | `editheader`                 | Tilføj eller slet beskedhoveder             | Hoveder ændret før lagring                      |
 | `date`                       | Test af dato/tidsværdier                    | `currentdate` og header-dato tests              |
-| `index`                      | Adgang til specifikke header-forekomster    | `:index` for multi-værdi hoveder                 |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Regulære udtryk matchning                    | Fuld regex-understøttelse i tests                |
 | `enotify`                    | Send notifikationer                          | `mailto:` notifikationer via Emails.queue        |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

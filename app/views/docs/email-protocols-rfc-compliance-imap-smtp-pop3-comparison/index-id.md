@@ -1144,7 +1144,7 @@ Ekstensi kalender berikut TIDAK didukung:
 | `copy`                       | Menyalin pesan saat mengalihkan           | Flag `:copy` pada fileinto/redirect           |
 | `editheader`                 | Menambah atau menghapus header pesan      | Header dimodifikasi sebelum penyimpanan      |
 | `date`                       | Menguji nilai tanggal/waktu                | Tes `currentdate` dan tanggal header          |
-| `index`                      | Mengakses kejadian header tertentu         | `:index` untuk header multi-nilai              |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Pencocokan ekspresi reguler                | Dukungan regex penuh dalam pengujian           |
 | `enotify`                    | Mengirim notifikasi                        | Notifikasi `mailto:` melalui Emails.queue      |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

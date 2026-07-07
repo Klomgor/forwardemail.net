@@ -1144,7 +1144,7 @@ Các phần mở rộng lịch sau KHÔNG được hỗ trợ:
 | `copy`                       | Sao chép thư khi chuyển tiếp              | Cờ `:copy` trên fileinto/redirect             |
 | `editheader`                 | Thêm hoặc xóa tiêu đề thư                  | Tiêu đề được chỉnh sửa trước khi lưu          |
 | `date`                       | Kiểm tra giá trị ngày/giờ                  | Kiểm tra `currentdate` và ngày tiêu đề        |
-| `index`                      | Truy cập các lần xuất hiện tiêu đề cụ thể | `:index` cho tiêu đề đa giá trị                |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | So khớp biểu thức chính quy               | Hỗ trợ đầy đủ regex trong kiểm tra             |
 | `enotify`                    | Gửi thông báo                            | Thông báo `mailto:` qua Emails.queue           |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

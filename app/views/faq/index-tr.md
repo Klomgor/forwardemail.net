@@ -2802,7 +2802,7 @@ Kapsamlı bir Sieve uzantıları setini destekliyoruz:
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                             | Yönlendirirken mesajları kopyalama               |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                             | Mesaj başlıklarını ekleme veya silme              |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Tarih/saat değerlerini test etme                  |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Belirli başlık tekrarlarına erişim                |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)| Düzenli ifade eşleştirme                          |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                             | Bildirim gönderme (örneğin, mailto:)             |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

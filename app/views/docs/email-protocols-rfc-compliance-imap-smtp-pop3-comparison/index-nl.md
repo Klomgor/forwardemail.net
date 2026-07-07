@@ -1144,7 +1144,7 @@ De volgende agenda-uitbreidingen worden NIET ondersteund:
 | `copy`                       | Kopieer berichten tijdens doorsturen          | `:copy` vlag bij fileinto/redirect          |
 | `editheader`                 | Voeg headers toe of verwijder ze            | Headers aangepast vóór opslag            |
 | `date`                       | Test datum/tijd waarden                    | `currentdate` en header datum tests        |
-| `index`                      | Toegang tot specifieke header-voorkomens       | `:index` voor headers met meerdere waarden           |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Regular expression matching              | Volledige regex-ondersteuning in tests                |
 | `enotify`                    | Verstuur notificaties                       | `mailto:` notificaties via Emails.queue   |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

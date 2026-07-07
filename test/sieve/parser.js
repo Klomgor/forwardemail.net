@@ -604,4 +604,32 @@ describe('Sieve Parser - MIME Commands (RFC 5703)', () => {
     assert.strictEqual(cmd.method, 'mailto:a@b.com');
     assert.strictEqual(cmd.message, 'hi');
   });
+
+  it('should parse header test with :index tag', () => {
+    const script =
+      'require "index"; if header :index 3 :contains "Received" "mx" { discard; }';
+    const ast = parse(script);
+    const ifCmd = ast.commands.find((c) => c.type === 'If');
+    assert.strictEqual(ifCmd.test.index, 3);
+    assert.strictEqual(ifCmd.test.last, false);
+  });
+
+  it('should parse header test with :index and :last tags', () => {
+    const script =
+      'require "index"; if header :index 1 :last :contains "ARC-Authentication-Results" "dmarc=pass" { keep; }';
+    const ast = parse(script);
+    const ifCmd = ast.commands.find((c) => c.type === 'If');
+    assert.strictEqual(ifCmd.test.index, 1);
+    assert.strictEqual(ifCmd.test.last, true);
+    assert.strictEqual(ifCmd.test.matchType, 'contains');
+  });
+
+  it('should parse header test with :last before :index', () => {
+    const script =
+      'require "index"; if header :last :index 2 :is "Received" "test" { discard; }';
+    const ast = parse(script);
+    const ifCmd = ast.commands.find((c) => c.type === 'If');
+    assert.strictEqual(ifCmd.test.index, 2);
+    assert.strictEqual(ifCmd.test.last, true);
+  });
 });

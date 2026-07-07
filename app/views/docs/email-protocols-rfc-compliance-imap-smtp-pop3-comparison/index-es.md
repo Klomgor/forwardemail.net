@@ -1144,7 +1144,7 @@ Las siguientes extensiones de calendario NO están soportadas:
 | `copy`                       | Copiar mensajes mientras se redirigen    | Flag `:copy` en fileinto/redirect            |
 | `editheader`                 | Añadir o eliminar encabezados de mensajes | Encabezados modificados antes del almacenamiento |
 | `date`                       | Probar valores de fecha/hora              | Pruebas con `currentdate` y fecha de encabezado |
-| `index`                      | Acceder a ocurrencias específicas de encabezados | `:index` para encabezados con múltiples valores |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Coincidencia con expresiones regulares   | Soporte completo de regex en pruebas          |
 | `enotify`                    | Enviar notificaciones                     | Notificaciones `mailto:` vía Emails.queue     |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | העתקת הודעות תוך הפניה מחדש              | דגל `:copy` ב-fileinto/redirect              |
 | `editheader`                 | הוספה או מחיקה של כותרות הודעה            | כותרות משתנות לפני אחסון                     |
 | `date`                       | בדיקת ערכי תאריך/שעה                     | בדיקות currentdate ותאריך בכותרת            |
-| `index`                      | גישה להתרחשויות ספציפיות של כותרות       | `:index` לכותרות עם ערכים מרובים             |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | התאמת ביטוי רגולרי                       | תמיכה מלאה בביטויים רגולריים בבדיקות         |
 | `enotify`                    | שליחת התראות                            | התראות `mailto:` דרך Emails.queue            |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

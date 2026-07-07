@@ -2802,7 +2802,7 @@ Podporujeme rozsáhlou sadu rozšíření Sieve:
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                              | Kopírovat zprávy při přesměrování                  |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                              | Přidávat nebo mazat hlavičky zpráv                 |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Testovat datum/časové hodnoty                      |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Přistupovat ke konkrétním výskytům hlaviček        |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | Porovnávání pomocí regulárních výrazů              |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Odesílat oznámení (např. mailto:)                  |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

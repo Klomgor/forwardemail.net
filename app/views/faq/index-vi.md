@@ -2801,7 +2801,7 @@ Chúng tôi hỗ trợ một bộ phần mở rộng Sieve toàn diện:
 | `copy`                     | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                                | Sao chép tin nhắn khi chuyển tiếp                  |
 | `editheader`               | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                                | Thêm hoặc xóa tiêu đề tin nhắn                      |
 | `date`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                                | Kiểm tra giá trị ngày/giờ                           |
-| `index`                    | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                                | Truy cập các lần xuất hiện tiêu đề cụ thể          |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                    | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)   | So khớp biểu thức chính quy                         |
 | `enotify`                  | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                                | Gửi thông báo (ví dụ: mailto:)                      |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

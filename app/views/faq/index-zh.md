@@ -2799,7 +2799,7 @@ Tasks.org 是一个流行的开源任务管理器，与 Forward Email 的 CalDAV
 | `copy`                     | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                               | 重定向时复制邮件                                  |
 | `editheader`               | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                               | 添加或删除邮件头                                  |
 | `date`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | 测试日期/时间值                                  |
-| `index`                    | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                               | 访问特定邮件头出现次数                            |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                    | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)  | 正则表达式匹配                                   |
 | `enotify`                  | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                               | 发送通知（例如 mailto:）                          |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

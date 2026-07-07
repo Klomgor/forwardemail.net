@@ -1144,7 +1144,7 @@ Následující rozšíření kalendáře nejsou podporována:
 | `copy`                       | Kopírování zpráv při přesměrování        | Příznak `:copy` u fileinto/redirect           |
 | `editheader`                 | Přidání nebo odstranění hlaviček zprávy  | Hlavičky upraveny před uložením                |
 | `date`                       | Test hodnot data/času                      | Testy `currentdate` a data v hlavičce          |
-| `index`                      | Přístup ke konkrétním výskytům hlaviček   | `:index` pro vícenásobné hodnoty hlaviček      |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Porovnání pomocí regulárních výrazů       | Plná podpora regexů v testech                   |
 | `enotify`                    | Odesílání notifikací                      | Notifikace `mailto:` přes Emails.queue          |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

@@ -1144,7 +1144,7 @@ Följande kalenderförlängningar stöds INTE:
 | `copy`                       | Kopiera meddelanden vid omdirigering     | `:copy`-flagga på fileinto/redirect         |
 | `editheader`                 | Lägg till eller ta bort meddelandehuvuden | Huvuden modifieras före lagring             |
 | `date`                       | Testa datum-/tidvärden                     | `currentdate` och datumtest i huvuden       |
-| `index`                      | Åtkomst till specifika förekomster av huvud | `:index` för flervärda huvuden               |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Reguljära uttrycksmatchningar              | Fullt regex-stöd i tester                    |
 | `enotify`                    | Skicka aviseringar                         | `mailto:`-aviseringar via Emails.queue       |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

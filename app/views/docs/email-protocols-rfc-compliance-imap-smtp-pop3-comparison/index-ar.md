@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | نسخ الرسائل أثناء إعادة التوجيه            | علامة `:copy` على fileinto/redirect          |
 | `editheader`                 | إضافة أو حذف رؤوس الرسائل                  | تعديل الرؤوس قبل التخزين                      |
 | `date`                       | اختبار قيم التاريخ/الوقت                   | اختبارات `currentdate` وتاريخ الرأس           |
-| `index`                      | الوصول إلى تكرارات رأس محددة                | `:index` للرؤوس متعددة القيم                   |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | مطابقة التعبيرات النمطية                   | دعم كامل للتعبيرات النمطية في الاختبارات      |
 | `enotify`                    | إرسال الإشعارات                            | إشعارات `mailto:` عبر Emails.queue            |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

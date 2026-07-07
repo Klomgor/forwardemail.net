@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | Копировать сообщения при переадресации    | Флаг `:copy` для fileinto/redirect              |
 | `editheader`                 | Добавлять или удалять заголовки сообщений | Заголовки изменяются перед сохранением          |
 | `date`                       | Проверять значения даты/времени            | Тесты `currentdate` и даты заголовка             |
-| `index`                      | Доступ к конкретным вхождениям заголовков | `:index` для заголовков с несколькими значениями |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | Сопоставление с регулярными выражениями    | Полная поддержка регулярных выражений в тестах  |
 | `enotify`                    | Отправлять уведомления                     | Уведомления `mailto:` через Emails.queue         |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

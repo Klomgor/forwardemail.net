@@ -2803,7 +2803,7 @@ Vi støtter et omfattende sett med Sieve-utvidelser:
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                              | Kopier meldinger ved videresending                |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                              | Legg til eller slett meldingsoverskrifter         |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Test dato-/tidsverdier                            |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Tilgang til spesifikke forekomster av overskrifter |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | Regulære uttrykk-matching                         |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send varsler (f.eks. mailto:)                     |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

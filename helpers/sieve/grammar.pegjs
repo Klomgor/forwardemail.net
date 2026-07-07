@@ -438,6 +438,8 @@ HeaderTest
       return node('HeaderTest', {
         matchType: opts.matchType || 'is',
         comparator: opts.comparator || 'i;ascii-casemap',
+        index: opts.index || null,
+        last: opts.last || false,
         mime: opts.mime || false,
         mimeType: opts.mimeType || null,
         mimeParam: opts.mimeParam || null,
@@ -449,7 +451,7 @@ HeaderTest
 
 HeaderTestOptions
   = opts:(HeaderTestOption _)* {
-      const result = { matchType: null, comparator: null, mime: false, mimeType: null, mimeParam: null, anychild: false };
+      const result = { matchType: null, comparator: null, index: null, last: false, mime: false, mimeType: null, mimeParam: null, anychild: false };
       for (const [opt] of opts) {
         Object.assign(result, opt);
       }
@@ -459,6 +461,8 @@ HeaderTestOptions
 HeaderTestOption
   = m:MatchType { return { matchType: m }; }
   / c:Comparator { return { comparator: c }; }
+  / ":index"i _ n:Number { return { index: n }; }
+  / ":last"i { return { last: true }; }
   / ":mime"i { return { mime: true }; }
   / ":type"i { return { mime: true, mimeType: 'type' }; }
   / ":subtype"i { return { mime: true, mimeType: 'subtype' }; }

@@ -2802,7 +2802,7 @@ Igen! Támogatjuk a [Sieve](https://en.wikipedia.org/wiki/Sieve_\(mail_filtering
 | `copy`                      | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                             | Üzenetek másolása átirányítás közben               |
 | `editheader`                | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                             | Üzenet fejléc hozzáadása vagy törlése              |
 | `date`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Dátum/idő értékek tesztelése                       |
-| `index`                     | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                             | Meghatározott fejléc előfordulások elérése        |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                     | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex)| Reguláris kifejezés egyezés                        |
 | `enotify`                   | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                             | Értesítések küldése (pl. mailto:)                  |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

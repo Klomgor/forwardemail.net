@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | 리디렉션 시 메시지 복사                      | fileinto/redirect에 `:copy` 플래그 사용         |
 | `editheader`                 | 메시지 헤더 추가 또는 삭제                   | 저장 전 헤더 수정                              |
 | `date`                       | 날짜/시간 값 테스트                         | `currentdate` 및 헤더 날짜 테스트               |
-| `index`                      | 특정 헤더 발생 횟수 접근                     | 다중 값 헤더에 `:index` 사용                    |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | 정규 표현식 매칭                            | 테스트에서 전체 정규식 지원                      |
 | `enotify`                    | 알림 전송                                 | Emails.queue를 통한 `mailto:` 알림               |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

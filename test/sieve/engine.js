@@ -199,6 +199,131 @@ describe('Sieve Engine', () => {
       const result = await executeScript(script, createMessage());
       assert.ok(result.actions.some((a) => a.type === 'discard'));
     });
+    it('should select first header with :index 1', async () => {
+      const script = `
+        require "index";
+        if header :index 1 :contains "Received" "server1" {
+          discard;
+        }
+      `;
+      const message = createMessage({
+        headers: {
+          received: [
+            'from server1 by mx1',
+            'from server2 by mx2',
+            'from server3 by mx3'
+          ]
+        }
+      });
+      const result = await executeScript(script, message);
+      assert.ok(result.actions.some((a) => a.type === 'discard'));
+    });
+    it('should select last header with :index 1 :last', async () => {
+      const script = `
+        require "index";
+        if header :index 1 :last :contains "Received" "server3" {
+          discard;
+        }
+      `;
+      const message = createMessage({
+        headers: {
+          received: [
+            'from server1 by mx1',
+            'from server2 by mx2',
+            'from server3 by mx3'
+          ]
+        }
+      });
+      const result = await executeScript(script, message);
+      assert.ok(result.actions.some((a) => a.type === 'discard'));
+    });
+    it('should NOT match when :index 1 :last does not contain value', async () => {
+      const script = `
+        require "index";
+        if header :index 1 :last :contains "Received" "server1" {
+          discard;
+        }
+      `;
+      const message = createMessage({
+        headers: {
+          received: [
+            'from server1 by mx1',
+            'from server2 by mx2',
+            'from server3 by mx3'
+          ]
+        }
+      });
+      const result = await executeScript(script, message);
+      assert.ok(!result.actions.some((a) => a.type === 'discard'));
+    });
+    it('should select second-to-last with :index 2 :last', async () => {
+      const script = `
+        require "index";
+        if header :index 2 :last :contains "Received" "server2" {
+          discard;
+        }
+      `;
+      const message = createMessage({
+        headers: {
+          received: [
+            'from server1 by mx1',
+            'from server2 by mx2',
+            'from server3 by mx3'
+          ]
+        }
+      });
+      const result = await executeScript(script, message);
+      assert.ok(result.actions.some((a) => a.type === 'discard'));
+    });
+    it('should return false when :index is out of range', async () => {
+      const script = `
+        require "index";
+        if header :index 10 :contains "Received" "server" {
+          discard;
+        }
+      `;
+      const message = createMessage({
+        headers: {
+          received: ['from server1 by mx1', 'from server2 by mx2']
+        }
+      });
+      const result = await executeScript(script, message);
+      assert.ok(!result.actions.some((a) => a.type === 'discard'));
+    });
+    it('should work with ARC-Authentication-Results and :index :last', async () => {
+      const script = `
+        require "index";
+        if header :index 1 :last :contains "ARC-Authentication-Results" "dmarc=pass" {
+          keep;
+          stop;
+        }
+        if header :index 1 :contains "ARC-Authentication-Results" "dmarc=fail" {
+          fileinto "Junk";
+        }
+      `;
+      const message = createMessage({
+        headers: {
+          'arc-authentication-results': [
+            'i=1; mx.microsoft.com; dmarc=fail action=none',
+            'i=2; mx.forwardemail.net; dmarc=pass action=none'
+          ]
+        }
+      });
+      const result = await executeScript(script, message);
+      // Last ARC header has dmarc=pass so keep+stop should trigger
+      assert.ok(result.actions.some((a) => a.type === 'keep'));
+      assert.ok(!result.actions.some((a) => a.type === 'fileinto'));
+    });
+    it('should work with single-value header and :index 1', async () => {
+      const script = `
+        require "index";
+        if header :index 1 :contains "subject" "Test" {
+          discard;
+        }
+      `;
+      const result = await executeScript(script, createMessage());
+      assert.ok(result.actions.some((a) => a.type === 'discard'));
+    });
   });
 
   describe('Address tests', () => {

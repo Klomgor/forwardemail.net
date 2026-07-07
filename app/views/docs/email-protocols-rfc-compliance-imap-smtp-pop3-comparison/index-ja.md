@@ -1144,7 +1144,7 @@ sequenceDiagram
 | `copy`                       | リダイレクト時にメッセージをコピー           | fileinto/redirectでの`:copy`フラグ           |
 | `editheader`                 | メッセージヘッダーの追加・削除               | 保存前にヘッダーを修正                      |
 | `date`                       | 日付/時刻の値をテスト                      | `currentdate`およびヘッダーの日付テスト      |
-| `index`                      | 特定のヘッダーの出現回数にアクセス            | 複数値ヘッダーに対する`:index`               |
+| `index`                      | Access specific header occurrences       | `:index` and `:last` for multi-value headers in header tests and deleteheader |
 | `regex`                      | 正規表現マッチング                         | テストでの完全な正規表現サポート             |
 | `enotify`                    | 通知の送信                               | Emails.queue経由の`mailto:`通知              |
 | `notify`                     | Send notifications (alias for enotify)   | Deprecated [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435) alias; rate-limited (10/hr per alias) |

@@ -2801,7 +2801,7 @@ It supports both IPv4 and IPv6 and is available over port `443` (HTTPS).
 | `copy`                       | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                              | คัดลอกข้อความในขณะเปลี่ยนเส้นทาง                 |
 | `editheader`                 | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                              | เพิ่มหรือลบหัวข้อข้อความ                        |
 | `date`                       | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | ทดสอบค่าวันที่/เวลา                              |
-| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | เข้าถึงการเกิดขึ้นของหัวข้อเฉพาะ                 |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                      | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | การจับคู่ด้วยนิพจน์ปกติ                          |
 | `enotify`                    | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | ส่งการแจ้งเตือน (เช่น mailto:)                   |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

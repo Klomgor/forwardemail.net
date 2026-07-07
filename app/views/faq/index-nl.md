@@ -2802,7 +2802,7 @@ Wij ondersteunen een uitgebreide set Sieve-extensies:
 | `copy`                       | [RFC 3894](https://datatracker.ietf.org/doc/html/rfc3894)                              | Kopieer berichten tijdens het doorsturen          |
 | `editheader`                 | [RFC 5293](https://datatracker.ietf.org/doc/html/rfc5293)                              | Voeg berichtkoppen toe of verwijder ze            |
 | `date`                       | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Test datum/tijd waarden                            |
-| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Toegang tot specifieke header-voorkomens          |
+| `index`                      | [RFC 5260](https://datatracker.ietf.org/doc/html/rfc5260)                              | Access specific header occurrences (`:index` and `:last` for header tests)   |
 | `regex`                      | [draft-ietf-sieve-regex](https://datatracker.ietf.org/doc/html/draft-ietf-sieve-regex) | Reguliere expressie matching                       |
 | `enotify`                    | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Verstuur notificaties (bijv. mailto:)              |
 | `notify`                     | [RFC 5435](https://datatracker.ietf.org/doc/html/rfc5435)                              | Send notifications (deprecated alias for enotify; rate-limited 10/hr per alias) |

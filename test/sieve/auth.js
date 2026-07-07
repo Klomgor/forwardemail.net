@@ -94,7 +94,9 @@ test.beforeEach(async (t) => {
       members: [{ user: user._id, group: 'admin' }],
       plan: user.plan,
       resolver: managesieve.resolver,
-      has_smtp: true
+      has_smtp: true,
+      has_txt_record: true,
+      skip_verification: true
     })
     .create();
 
