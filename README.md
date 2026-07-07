@@ -423,6 +423,69 @@ Follow the [Deployment](#deployment) guide below for automatic provisioning and 
 
 19. Create a SSL certificate at [Namecheap][] (we recommend a 5 year wildcard certificate), set up the certificate, and download and extract the ZIP file with the certificate (emailed to you) to your computer. We do not recommend using tools like [LetsEncrypt][] and `certbot` due to complexity when you have (or scale to) a cluster of servers set up behind load balancers. In other words, we've tried approaches like `lsyncd` in combination with `crontab` for `certbot` renewals and automatic checking. Furthermore, using this exposes the server(s) to downtime as ports `80` and `443` may need to be shut down so that `certbot` can use them for certificate generation. This is not a reliable approach, and simply renewing certificates once a year is vastly simpler and also makes using load balancers trivial. Instead you can use a provider like [Namecheap][] to get a cheap SSL certificate, then run a few commands as we've documented below. This command will prompt you for an absolute file path to the certificates you downloaded. Renewed your certificate after 1 year? Simply follow this step again. Do not set a password on the certificate files. When using the `openssl` command (see Namecheap instructions), you need to use `*.example.com` with an asterisk followed by a period if you are registering a wildcard certificate.
 
+    > **CRITICAL — Update DANE/TLSA DNS records BEFORE deploying new certificates:**
+    >
+    > If your MX servers publish TLSA records (DANE), you **must** update the TLSA DNS records
+    > to include the new certificate's public key hash **before** deploying the new certificate
+    > to the servers. Failure to do so will cause DANE-aware senders (including your own SMTP
+    > outbound) to reject connections with:
+    >
+    > ```
+    > DANE verification failed: Certificate did not match any TLSA record
+    > ```
+    >
+    > This will result in **all email delivery failing** to your MX servers until the TLSA
+    > records are corrected.
+    >
+    > **Step 1: Generate the TLSA hash from the NEW certificate (before deploying it):**
+    >
+    > ```sh
+    > # Extract the SPKI SHA-256 hash (TLSA usage 3, selector 1, matching type 1)
+    > openssl x509 -in /path/to/new/.ssl-cert -pubkey -noout \
+    >   | openssl pkey -pubin -outform DER \
+    >   | openssl dgst -sha256 -binary \
+    >   | xxd -p -c 32
+    > ```
+    >
+    > **Step 2: Update TLSA DNS records for all MX hostnames:**
+    >
+    > Add or update the following DNS records with the hash from Step 1:
+    >
+    > | Record Name                | Type | Content                    |
+    > | -------------------------- | ---- | -------------------------- |
+    > | `_25._tcp.mx1.example.com` | TLSA | `3 1 1 <hash-from-step-1>` |
+    > | `_25._tcp.mx2.example.com` | TLSA | `3 1 1 <hash-from-step-1>` |
+    >
+    > Replace `example.com` with your domain (e.g. `forwardemail.net`).
+    >
+    > **Step 3: Wait for DNS propagation:**
+    >
+    > ```sh
+    > # Verify the new TLSA record is visible
+    > dig +short TLSA _25._tcp.mx1.example.com
+    > dig +short TLSA _25._tcp.mx2.example.com
+    > ```
+    >
+    > Wait until the new hash appears in DNS responses. If your TTL is high, you may want to
+    > lower it in advance or publish both the old and new TLSA records simultaneously during
+    > the transition window.
+    >
+    > **Step 4: (Optional) Publish both old and new TLSA records during rollover:**
+    >
+    > To avoid any downtime window, publish **both** the current and new TLSA records before
+    > deploying. After deployment and verification, remove the old record:
+    >
+    > ```sh
+    > # Verify the deployed certificate matches the new TLSA record
+    > echo | openssl s_client -starttls smtp -connect mx1.example.com:25 2>/dev/null \
+    >   | openssl x509 -pubkey -noout \
+    >   | openssl pkey -pubin -outform DER \
+    >   | openssl dgst -sha256 -binary \
+    >   | xxd -p -c 32
+    > ```
+    >
+    > **Step 5: Only AFTER TLSA records are propagated, deploy the certificate:**
+
     ```sh
     node ansible-playbook ansible/playbooks/certificates.yml --user deploy
     ```
@@ -444,6 +507,14 @@ Follow the [Deployment](#deployment) guide below for automatic provisioning and 
     pm2 deploy ecosystem-carddav.json production exec "pm2 reload all"
     pm2 deploy ecosystem-mx.json production exec "pm2 reload all"
     ```
+
+    > **Post-deployment verification:**
+    >
+    > ```sh
+    > # Confirm DANE verification passes for your MX servers
+    > echo | openssl s_client -starttls smtp -connect mx1.example.com:25 -dane_tlsa_domain mx1.example.com \
+    >   -dane_tlsa_rrdata "3 1 1 <hash-from-step-1>" 2>&1 | grep -i "verification"
+    > ```
 
 20. Create a DKIM key for your domain name (must match `WEB_HOST` environment variable) with a default selector of `default` (must match `DKIM_KEY_SELECTOR` environment variable). Then upload it to the servers:
 
