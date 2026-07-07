@@ -366,25 +366,32 @@ async function onAuth(auth, session, fn) {
               );
 
             // daily backup (run in background)
+            // Rate-limited: only fire backup once per alias per day
             // skip if sqlite-worker is busy (Redis counter set by sqlite-worker)
+            const backupKey = `backup_dedup:${user.alias_id}`;
             this.client
-              .get(`sqlite_worker_busy:${config.env}`)
-              .then((count) => {
-                if (count && Number(count) > 0) return;
-                return this.wsp
-                  .request(
-                    {
-                      action: 'backup',
-                      backup_at: new Date().toISOString(),
-                      session: { user }
-                    },
-                    0
-                  )
-                  .then((backup) => {
-                    this.logger.debug('backup complete', {
-                      backup,
-                      session
-                    });
+              .set(backupKey, '1', 'PX', ms('1d'), 'NX')
+              .then((locked) => {
+                if (!locked) return;
+                return this.client
+                  .get(`sqlite_worker_busy:${config.env}`)
+                  .then((count) => {
+                    if (count && Number(count) > 0) return;
+                    return this.wsp
+                      .request(
+                        {
+                          action: 'backup',
+                          backup_at: new Date().toISOString(),
+                          session: { user }
+                        },
+                        0
+                      )
+                      .then((backup) => {
+                        this.logger.debug('backup complete', {
+                          backup,
+                          session
+                        });
+                      });
                   });
               })
               .catch((err) => this.logger.debug(err, { session }));
@@ -1164,22 +1171,29 @@ async function onAuth(auth, session, fn) {
         );
 
       // daily backup (run in background)
+      // Rate-limited: only fire backup once per alias per day
       // skip if sqlite-worker is busy (Redis counter set by sqlite-worker)
+      const backupKey2 = `backup_dedup:${user.alias_id}`;
       this.client
-        .get(`sqlite_worker_busy:${config.env}`)
-        .then((count) => {
-          if (count && Number(count) > 0) return;
-          return this.wsp
-            .request(
-              {
-                action: 'backup',
-                backup_at: new Date().toISOString(),
-                session: { user }
-              },
-              0
-            )
-            .then((backup) => {
-              this.logger.debug('backup complete', { backup, session });
+        .set(backupKey2, '1', 'PX', ms('1d'), 'NX')
+        .then((locked) => {
+          if (!locked) return;
+          return this.client
+            .get(`sqlite_worker_busy:${config.env}`)
+            .then((count) => {
+              if (count && Number(count) > 0) return;
+              return this.wsp
+                .request(
+                  {
+                    action: 'backup',
+                    backup_at: new Date().toISOString(),
+                    session: { user }
+                  },
+                  0
+                )
+                .then((backup) => {
+                  this.logger.debug('backup complete', { backup, session });
+                });
             });
         })
         .catch((err) => this.logger.debug(err, { session }));

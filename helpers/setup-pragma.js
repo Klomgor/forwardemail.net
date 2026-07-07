@@ -99,9 +99,8 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   // Reduced from 8 MB to limit aggregate memory with 200 open DBs per worker.
   db.pragma('cache_size=-4096');
 
-  // Limit WAL file growth to 64 MB
-  // Reduced from 256 MB to limit page cache pressure from large WAL files
-  db.pragma('journal_size_limit=67108864');
+  // Limit WAL file growth to 256 MB
+  db.pragma('journal_size_limit=268435456');
 
   // NOTE: mmap disabled to prevent virtual memory accumulation
   // when opening/closing hundreds of unique databases per minute.

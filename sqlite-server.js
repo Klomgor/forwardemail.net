@@ -71,7 +71,6 @@ class SQLite {
     // (uses LRU eviction to prevent unbounded memory growth)
     //
     this.databaseMap = new DatabaseLRUMap();
-    this.temporaryDatabaseMap = new DatabaseLRUMap();
 
     //
     // bind helpers so we can re-use IMAP helper commands
@@ -168,8 +167,8 @@ class SQLite {
           }
         },
         {
-          timeout: ms('5m'),
-          interval: ms('5s')
+          timeout: ms('15s'),
+          interval: ms('3s')
         }
       );
 

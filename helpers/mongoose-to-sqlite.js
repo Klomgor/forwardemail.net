@@ -1103,12 +1103,34 @@ function wrapWithRetry(fn, model) {
       minTimeout: config.busyTimeout / 2,
       maxTimeout: config.busyTimeout,
       factor: 1,
-      onFailedAttempt(error) {
+      async onFailedAttempt(error) {
         error.isCodeBug = true;
         error.args = JSON.parse(safeStringify(args));
         logger.error(error);
 
-        if (isRetryableError(error)) return;
+        if (isRetryableError(error)) {
+          // If the database was evicted mid-operation, re-open it via getDatabase
+          if (
+            error.message &&
+            error.message.includes('database connection is not open') &&
+            args[1] &&
+            args[1].user &&
+            args[1].user.alias_id &&
+            args[1].instance
+          ) {
+            // lazy-require to avoid circular dependency
+            // (mongoose-to-sqlite -> get-database -> models -> mongoose-to-sqlite)
+            const getDatabase = require('#helpers/get-database');
+            const freshDb = await getDatabase(
+              args[1].instance,
+              args[1],
+              args[1].user.storage_location
+            );
+            if (freshDb) args[1].db = freshDb;
+          }
+
+          return;
+        }
 
         throw error;
       }

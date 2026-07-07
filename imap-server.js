@@ -25,7 +25,7 @@ const pRetry = require('p-retry');
 const pWaitFor = require('p-wait-for');
 const pify = require('pify');
 const ms = require('ms');
-const safeStringify = require('fast-safe-stringify');
+// const safeStringify = require('fast-safe-stringify');
 const { IMAPServer } = require('@zone-eu/wildduck/imap-core');
 
 const Aliases = require('#models/aliases');
@@ -312,7 +312,7 @@ class IMAP {
 
     this.subscriber.on('message', async (channel, id) => {
       if (
-        channel !== 'sqlite_auth_request' &&
+        // channel !== 'sqlite_auth_request' &&
         channel !== 'sqlite_auth_reset' &&
         channel !== 'pgp_reload' &&
         channel !== 'smime_reload'
@@ -339,20 +339,19 @@ class IMAP {
           return;
         }
 
-        if (channel === 'sqlite_auth_request') {
-          for (const connection of this.server.connections) {
-            if (connection?.session?.user?.alias_id === id) {
-              // find the most recent connection if any and broadcast that
-              this.client.publish(
-                'sqlite_auth_response',
-                safeStringify(connection.session.user)
-              );
-              break;
-            }
-          }
-
-          return;
-        }
+        // sqlite_auth_request disabled — auth is handled directly
+        // if (channel === 'sqlite_auth_request') {
+        //   for (const connection of this.server.connections) {
+        //     if (connection?.session?.user?.alias_id === id) {
+        //       this.client.publish(
+        //         'sqlite_auth_response',
+        //         safeStringify(connection.session.user)
+        //       );
+        //       break;
+        //     }
+        //   }
+        //   return;
+        // }
 
         if (channel === 'pgp_reload') {
           const alias = await Aliases.findOne({ id })
@@ -440,13 +439,36 @@ class IMAP {
   }
 
   async listen(port = env.IMAP_PORT, host = '::', ...args) {
-    this.subscriber.subscribe('sqlite_auth_request');
+    // this.subscriber.subscribe('sqlite_auth_request');
     this.subscriber.subscribe('sqlite_auth_reset');
+
+    //
+    // Keepalive: periodically touch all connected users' databases
+    // to prevent LRU eviction while they have active IMAP sessions.
+    //
+    this._keepaliveInterval = setInterval(() => {
+      if (!this?.server?.connections || this.server.connections.size === 0)
+        return;
+      const touched = new Set();
+      for (const connection of this.server.connections) {
+        const aliasId = connection?.session?.user?.alias_id;
+        if (!aliasId || touched.has(aliasId)) continue;
+        touched.add(aliasId);
+        this.wsp
+          .request({
+            action: 'touch',
+            session: { user: connection.session.user }
+          })
+          .catch(() => {});
+      }
+    }, ms('4m'));
+    this._keepaliveInterval.unref();
     await pify(this.server.listen).bind(this.server)(port, host, ...args);
   }
 
   async close() {
-    this.subscriber.unsubscribe('sqlite_auth_request');
+    if (this._keepaliveInterval) clearInterval(this._keepaliveInterval);
+    // this.subscriber.unsubscribe('sqlite_auth_request');
     this.subscriber.unsubscribe('sqlite_auth_reset');
     await pify(this.server.close).bind(this.server)();
   }

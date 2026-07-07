@@ -199,6 +199,13 @@ function isRetryableError(err) {
 
   if (err.responseCode === 421) return true;
 
+  // Database was evicted from LRU cache mid-operation; caller should re-acquire
+  if (
+    typeof err.message === 'string' &&
+    err.message.includes('database connection is not open')
+  )
+    return true;
+
   if (
     err.isBoom &&
     err?.output?.statusCode &&

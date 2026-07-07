@@ -48,7 +48,7 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
     const cacheKey = `folder_check:${session.user.alias_id}`;
     if (!purgeCache) {
       const cached = await instance.client.get(cacheKey);
-      if (cached) return;
+      if (cached) return false;
     }
 
     // Set cache to prevent redundant checks
@@ -71,7 +71,7 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
       }
     }
 
-    if (required.length === 0) return;
+    if (required.length === 0) return isInitialSetup;
 
     // NOTE: we don't invoke `onCreate` here or re-use it since it calls `refreshSession`
     //       (and that would lead to unnecessary recursion)
@@ -115,8 +115,11 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
         }
       })
     );
+
+    return isInitialSetup;
   } catch (err) {
     logger.fatal(err, { session, resolver: instance.resolver });
+    return false;
   }
 }
 

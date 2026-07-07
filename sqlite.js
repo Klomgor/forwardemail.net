@@ -57,21 +57,8 @@ const graceful = new Graceful({
         })
       );
     },
-    // temporary databases (no-op when temporaryDatabaseMap is null / disabled)
-    async () => {
-      if (
-        !sqlite.temporaryDatabaseMap ||
-        sqlite.temporaryDatabaseMap.size === 0
-      )
-        return;
-      await Promise.all(
-        [...sqlite.temporaryDatabaseMap.keys()].map(async (key) => {
-          const db = sqlite.temporaryDatabaseMap.get(key);
-          if (db) await closeDatabase(db);
-          sqlite.temporaryDatabaseMap.delete(key);
-        })
-      );
-    }
+    // temporary databases are now opened/closed per request (no map to clean up)
+    async () => {}
   ]
 });
 graceful.listen();

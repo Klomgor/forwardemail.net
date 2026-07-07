@@ -482,6 +482,7 @@ async function imap(alias, headers, session, body) {
     const startTime = Date.now();
     const response = await this.wsp.request({
       action: 'tmp',
+      sent_at: Date.now(),
       aliases: [alias],
       remoteAddress: session.remoteAddress,
       resolvedRootClientHostname: session.resolvedRootClientHostname,

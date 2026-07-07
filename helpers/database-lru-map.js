@@ -17,16 +17,21 @@ const logger = require('#helpers/logger');
 // IMAP user's database was opened and never closed until process restart.
 //
 // This class provides:
-// - Max size limit (configurable, default 200 per worker)
+// - Max size limit (configurable, default 3000 per worker)
 // - Idle TTL (close databases not accessed for 5 minutes)
-// - LRU eviction (when max size reached, close least recently used)
+// - Throttled LRU sweep (max N evictions per cycle to avoid I/O storms)
+// - Reference counting (don't evict databases with active operations)
 // - Safe async close with transaction awareness
 //
 class DatabaseLRUMap {
   constructor(options = {}) {
-    this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 200;
+    this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 3000;
+    this.maxEvictionsPerSweep =
+      options.maxEvictionsPerSweep ||
+      Number(env.DATABASE_MAP_MAX_EVICTIONS_PER_SWEEP) ||
+      10;
     this.idleTTL = options.idleTTL || ms('5m');
-    this._map = new Map(); // alias_id -> { db, lastAccess }
+    this._map = new Map(); // alias_id -> { db, lastAccess, refs }
     this._closing = new Set(); // alias_ids currently being closed
 
     // Periodic sweep to close idle databases
@@ -52,6 +57,18 @@ class DatabaseLRUMap {
     return entry.db;
   }
 
+  // Increment reference count (call when starting an operation)
+  ref(key) {
+    const entry = this._map.get(key);
+    if (entry) entry.refs++;
+  }
+
+  // Decrement reference count (call when operation completes)
+  unref(key) {
+    const entry = this._map.get(key);
+    if (entry && entry.refs > 0) entry.refs--;
+  }
+
   set(key, db) {
     // If already exists, just update
     if (this._map.has(key)) {
@@ -68,7 +85,8 @@ class DatabaseLRUMap {
 
     this._map.set(key, {
       db,
-      lastAccess: Date.now()
+      lastAccess: Date.now(),
+      refs: 0
     });
     return this;
   }
@@ -98,15 +116,16 @@ class DatabaseLRUMap {
     return entry ? entry.db : undefined;
   }
 
-  // Evict the least recently used entry
+  // Evict the least recently used entry (single entry, called on capacity overflow)
   _evictLRU() {
     let oldestKey = null;
     let oldestTime = Number.POSITIVE_INFINITY;
     for (const [key, entry] of this._map) {
-      // Skip entries currently being closed or in transaction
+      // Skip entries currently being closed, in transaction, or with active refs
       if (this._closing.has(key)) continue;
       if (entry.db && entry.db.inTransaction) continue;
-      if (entry.lastAccess < oldestTime) {
+      if (entry.refs > 0) continue;
+      if (entry.db && entry.db.open && entry.lastAccess < oldestTime) {
         oldestTime = entry.lastAccess;
         oldestKey = key;
       }
@@ -129,6 +148,7 @@ class DatabaseLRUMap {
   }
 
   // Sweep idle databases that haven't been accessed within TTL
+  // Throttled: close at most maxEvictionsPerSweep per cycle
   _sweepIdle() {
     const now = Date.now();
     const toEvict = [];
@@ -138,7 +158,13 @@ class DatabaseLRUMap {
         if (entry.db && entry.db.inTransaction) continue;
         // Skip entries currently being closed
         if (this._closing.has(key)) continue;
+        // Skip entries with active references (open operations)
+        if (entry.refs > 0) continue;
+        // Skip entries whose db is not open (already closed externally)
+        if (!entry.db || !entry.db.open) continue;
         toEvict.push(key);
+        // Throttle: only evict up to maxEvictionsPerSweep per cycle
+        if (toEvict.length >= this.maxEvictionsPerSweep) break;
       }
     }
 

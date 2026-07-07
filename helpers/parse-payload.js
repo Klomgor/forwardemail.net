@@ -22,7 +22,7 @@ const isFQDN = require('is-fqdn');
 const isSANB = require('is-string-and-not-blank');
 const mongoose = require('mongoose');
 const ms = require('ms');
-const pEvent = require('p-event');
+// const pEvent = require('p-event');
 const pMap = require('p-map');
 const parseErr = require('parse-err');
 const pify = require('pify');
@@ -1273,83 +1273,9 @@ async function parsePayload(data, ws) {
               }
 
               //
-              // attempt to get in-memory password from IMAP servers
+              // sqlite_auth_request disabled — auth is handled directly
               //
-              let fallback = true;
-              try {
-                this.client.publish('sqlite_auth_request', alias.id);
-                const [, response] = await pEvent(this.subscriber, 'message', {
-                  filter(args) {
-                    const [channel, data] = args;
-                    if (channel !== 'sqlite_auth_response' || !data) return;
-                    try {
-                      const parsed = JSON.parse(data);
-                      return parsed.alias_id === alias.id;
-                    } catch {}
-                  },
-                  multiArgs: true,
-                  timeout: ms('3s')
-                });
-
-                const user = JSON.parse(response);
-
-                // since we use onAppend it re-uses addEntries
-                // which notifies all connected imap users via EXISTS
-                await onAppendPromise.call(
-                  this,
-                  targetFolder,
-                  targetFlags,
-                  _.isDate(payload.date)
-                    ? payload.date
-                    : new Date(payload.date),
-                  messageRaw,
-                  {
-                    user: {
-                      ...session.user,
-                      password: user.password
-                    },
-                    remoteAddress: payload.remoteAddress,
-                    resolvedRootClientHostname:
-                      payload.resolvedRootClientHostname,
-                    resolvedClientHostname: payload.resolvedClientHostname,
-                    allowlistValue: payload.allowlistValue,
-
-                    // don't emit wss.broadcast
-                    selected: false,
-
-                    // don't append duplicate messages
-                    checkForExisting: true
-                  }
-                );
-
-                // store that we don't need fallback
-                fallback = false;
-
-                //
-                // increase rate limiting size and count
-                //
-                try {
-                  await increaseRateLimiting(
-                    this.client,
-                    date,
-                    sender,
-                    root,
-                    byteLength
-                  );
-                } catch (err) {
-                  err.isCodeBug = true;
-                  err.payload = _.omit(payload, 'raw');
-                  logger.fatal(err);
-                }
-              } catch (_err) {
-                const err = Array.isArray(_err) ? _err[0] : _err;
-                // TimeoutError is expected when no IMAP connection is active
-                if (err && err.name !== 'TimeoutError') {
-                  err.isCodeBug = true;
-                  err.payload = _.omit(payload, 'raw');
-                  logger.error(err);
-                }
-              }
+              const fallback = true;
 
               //
               // fallback to writing to temporary database storage
@@ -1731,8 +1657,7 @@ async function parsePayload(data, ws) {
                   logger.fatal(err);
                 }
 
-                if (tmpDb && !this.temporaryDatabaseMap)
-                  await closeDatabase(tmpDb);
+                if (tmpDb) await closeDatabase(tmpDb);
 
                 if (err) throw err;
               }
@@ -1873,6 +1798,19 @@ async function parsePayload(data, ws) {
           id: payload.id,
           data: errors
         };
+
+        break;
+      }
+
+      //
+      // Touch: refresh LRU lastAccess for a database to prevent eviction
+      // (called by IMAP keepalive interval for connected sessions)
+      //
+      case 'touch': {
+        const touchKey = payload.session.user.alias_id;
+        if (touchKey && this.databaseMap) {
+          this.databaseMap.get(touchKey); // .get() updates lastAccess
+        }
 
         break;
       }

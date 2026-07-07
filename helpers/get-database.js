@@ -12,6 +12,7 @@ const dayjs = require('dayjs-with-plugins');
 const isSANB = require('is-string-and-not-blank');
 const mongoose = require('mongoose');
 const ms = require('ms');
+const pify = require('pify');
 const pMapSeries = require('p-map-series');
 const pRetry = require('p-retry');
 const parseErr = require('parse-err');
@@ -37,6 +38,8 @@ const ensureDefaultMailboxes = require('#helpers/ensure-default-mailboxes');
 const env = require('#config/env');
 const getAttachments = require('#helpers/get-attachments');
 const getPathToDatabase = require('#helpers/get-path-to-database');
+const getWelcomeEmail = require('#helpers/get-welcome-email');
+const onAppend = require('#helpers/imap/on-append');
 const isRetryableError = require('#helpers/is-retryable-error');
 const isValidPassword = require('#helpers/is-valid-password');
 const logger = require('#helpers/logger');
@@ -656,7 +659,33 @@ async function getDatabase(
     //
     if (!folderCheck) {
       try {
-        await ensureDefaultMailboxes(instance, session);
+        const isInitialSetup = await ensureDefaultMailboxes(instance, session);
+
+        // Insert welcome email on first-time mailbox setup
+        if (isInitialSetup && config.env !== 'test') {
+          try {
+            const onAppendPromise = pify(onAppend, { multiArgs: true });
+            const welcomeRaw = getWelcomeEmail(session);
+            // Ensure remoteAddress is set (on-append requires it for Messages table)
+            const welcomeSession = {
+              ...session,
+              remoteAddress: session.remoteAddress || '127.0.0.1'
+            };
+            await onAppendPromise.call(
+              instance,
+              'INBOX',
+              [],
+              null,
+              welcomeRaw,
+              welcomeSession
+            );
+          } catch (welcomeErr) {
+            logger.warn('Failed to insert welcome email', {
+              session,
+              error: welcomeErr.message
+            });
+          }
+        }
       } catch (err) {
         logger.fatal(err, { session, resolver: instance.resolver });
       }

@@ -1720,59 +1720,6 @@ test
   t.is(msg.subject, subject);
 });
 
-test('sqlite_auth_request bypasses tmpDb when IMAP connected', async (t) => {
-  // When an IMAP connection is active, the sqlite_auth_request/response
-  // pub/sub mechanism should allow the MX tmp action to write directly
-  // to the real database without needing an explicit sync.
-  const now = new Date();
-  const subject = randomUUID();
-  const raw = Buffer.from(
-    `
-Date: ${now.toISOString()}
-MIME-Version: 1.0
-Content-Language: en-US
-To: ${t.context.alias.name}@${t.context.domain.name}
-From: sender@example.com
-Subject: ${subject}
-Content-Type: text/plain; charset=UTF-8; format=flowed
-Content-Transfer-Encoding: 7bit
-
-test auth request bypass
-`.trim()
-  );
-
-  // Send tmp action (simulates MX delivery)
-  const result = await t.context.wsp.request(
-    {
-      action: 'tmp',
-      aliases: [
-        {
-          address: `${t.context.alias.name}@${t.context.domain.name}`,
-          id: t.context.alias.id
-        }
-      ],
-      remoteAddress: IP_ADDRESS,
-      date: now.toISOString(),
-      raw
-    },
-    0
-  );
-
-  // errors should be empty object
-  t.deepEqual(result, {});
-
-  // NO explicit sync needed — the sqlite_auth_request mechanism
-  // should have written directly to the real database
-  await t.context.imapFlow.mailboxOpen('INBOX');
-
-  const msg = await Messages.findOne(t.context.imap, t.context.session, {
-    subject
-  });
-
-  t.true(msg !== null);
-  t.is(msg.subject, subject);
-});
-
 test('large mailbox', async (t) => {
   const { imapFlow, alias, domain } = t.context;
 
