@@ -25,7 +25,7 @@ const logger = require('#helpers/logger');
 class DatabaseLRUMap {
   constructor(options = {}) {
     this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 200;
-    this.idleTTL = options.idleTTL || ms('5m');
+    this.idleTTL = options.idleTTL || ms('15m');
     this._map = new Map(); // alias_id -> { db, lastAccess }
     this._closing = new Set(); // alias_ids currently being closed
 
