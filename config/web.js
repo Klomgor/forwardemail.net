@@ -114,7 +114,7 @@ async function checkGitHubIssues() {
         owner: 'forwardemail',
         repo: 'status.forwardemail.net',
         state: 'open',
-        labels: 'status',
+        creator: 'titanism',
         headers: {
           'X-GitHub-Api-Version': '2022-11-28'
         }

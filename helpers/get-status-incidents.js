@@ -112,7 +112,7 @@ async function getStatusIncidents(options = {}) {
         owner: STATUS_OWNER,
         repo: STATUS_REPO,
         state,
-        labels: 'status',
+        creator: 'titanism',
         per_page: Math.min(count, 100),
         sort: 'created',
         direction: 'desc'
@@ -124,7 +124,7 @@ async function getStatusIncidents(options = {}) {
         `https://api.github.com/repos/${STATUS_OWNER}/${STATUS_REPO}/issues`
       );
       url.searchParams.set('state', state);
-      url.searchParams.set('labels', 'status');
+      url.searchParams.set('creator', 'titanism');
       url.searchParams.set('per_page', String(Math.min(count, 100)));
       url.searchParams.set('sort', 'created');
       url.searchParams.set('direction', 'desc');
