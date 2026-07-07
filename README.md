@@ -447,16 +447,94 @@ Follow the [Deployment](#deployment) guide below for automatic provisioning and 
     >   | xxd -p -c 32
     > ```
     >
-    > **Step 2: Update TLSA DNS records for all MX hostnames:**
+    > **Step 2: Update TLSA DNS records for ALL services:**
     >
-    > Add or update the following DNS records with the hash from Step 1:
+    > Add or update the following DNS records with the hash from Step 1. All records use
+    > DANE-EE (usage=3), SPKI (selector=1), SHA-256 (matching\_type=1):
     >
-    > | Record Name                | Type | Content                    |
-    > | -------------------------- | ---- | -------------------------- |
-    > | `_25._tcp.mx1.example.com` | TLSA | `3 1 1 <hash-from-step-1>` |
-    > | `_25._tcp.mx2.example.com` | TLSA | `3 1 1 <hash-from-step-1>` |
+    > | Record Name | Service |
+    > | --- | --- |
+    > | `_25._tcp.mx1.forwardemail.net` | MX1 inbound SMTP |
+    > | `_25._tcp.mx2.forwardemail.net` | MX2 inbound SMTP |
+    > | `_25._tcp.smtp.forwardemail.net` | SMTP port 25 |
+    > | `_465._tcp.smtp.forwardemail.net` | SMTPS (implicit TLS) |
+    > | `_587._tcp.smtp.forwardemail.net` | SMTP submission (STARTTLS) |
+    > | `_2465._tcp.smtp.forwardemail.net` | SMTPS alt port |
+    > | `_2525._tcp.smtp.forwardemail.net` | SMTP alt port |
+    > | `_2587._tcp.smtp.forwardemail.net` | Submission alt port |
+    > | `_3025._tcp.mx1.forwardemail.net` | MX1 alt port |
+    > | `_3025._tcp.mx2.forwardemail.net` | MX2 alt port |
+    > | `_993._tcp.imap.forwardemail.net` | IMAPS |
+    > | `_2993._tcp.imap.forwardemail.net` | IMAP alt port |
+    > | `_995._tcp.pop3.forwardemail.net` | POP3S |
+    > | `_2995._tcp.pop3.forwardemail.net` | POP3 alt port |
+    > | `_443._tcp.forwardemail.net` | Web HTTPS |
+    > | `_443._tcp.api.forwardemail.net` | API HTTPS |
+    > | `_443._tcp.caldav.forwardemail.net` | CalDAV HTTPS |
+    > | `_443._tcp.carddav.forwardemail.net` | CardDAV HTTPS |
+    > | `_80._tcp.forwardemail.net` | Web HTTP |
+    > | `_80._tcp.api.forwardemail.net` | API HTTP |
+    > | `_80._tcp.caldav.forwardemail.net` | CalDAV HTTP |
+    > | `_80._tcp.carddav.forwardemail.net` | CardDAV HTTP |
     >
-    > Replace `example.com` with your domain (e.g. `forwardemail.net`).
+    > **Cloudflare API one-liner to create all TLSA records with a new hash:**
+    >
+    > ```sh
+    > # Set your Cloudflare credentials and the new TLSA hash
+    > export CF_API_TOKEN="your-cloudflare-api-token"
+    > export CF_ZONE_ID="your-zone-id"
+    > export TLSA_HASH="<hash-from-step-1>"
+    >
+    > # Create all 22 TLSA records in one shot
+    > for name in \
+    >   _25._tcp.mx1.forwardemail.net \
+    >   _25._tcp.mx2.forwardemail.net \
+    >   _25._tcp.smtp.forwardemail.net \
+    >   _465._tcp.smtp.forwardemail.net \
+    >   _587._tcp.smtp.forwardemail.net \
+    >   _2465._tcp.smtp.forwardemail.net \
+    >   _2525._tcp.smtp.forwardemail.net \
+    >   _2587._tcp.smtp.forwardemail.net \
+    >   _3025._tcp.mx1.forwardemail.net \
+    >   _3025._tcp.mx2.forwardemail.net \
+    >   _993._tcp.imap.forwardemail.net \
+    >   _2993._tcp.imap.forwardemail.net \
+    >   _995._tcp.pop3.forwardemail.net \
+    >   _2995._tcp.pop3.forwardemail.net \
+    >   _443._tcp.forwardemail.net \
+    >   _443._tcp.api.forwardemail.net \
+    >   _443._tcp.caldav.forwardemail.net \
+    >   _443._tcp.carddav.forwardemail.net \
+    >   _80._tcp.forwardemail.net \
+    >   _80._tcp.api.forwardemail.net \
+    >   _80._tcp.caldav.forwardemail.net \
+    >   _80._tcp.carddav.forwardemail.net; do
+    >   curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
+    >     -H "Authorization: Bearer ${CF_API_TOKEN}" \
+    >     -H "Content-Type: application/json" \
+    >     -d "{\"type\":\"TLSA\",\"name\":\"${name}\",\"data\":{\"usage\":3,\"selector\":1,\"matching_type\":1,\"certificate\":\"${TLSA_HASH}\"},\"ttl\":1}" \
+    >     | jq -r '"[" + (if .success then "OK" else "FAIL" end) + "] " + .result.name // .errors[0].message'
+    > done
+    > ```
+    >
+    > **Cloudflare API one-liner to delete old TLSA records by hash (after grace period):**
+    >
+    > ```sh
+    > # Set your Cloudflare credentials and the OLD hash to remove
+    > export CF_API_TOKEN="your-cloudflare-api-token"
+    > export CF_ZONE_ID="your-zone-id"
+    > export OLD_HASH="<old-hash-to-remove>"
+    >
+    > # Find and delete all TLSA records matching the old hash
+    > curl -sS "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?type=TLSA&per_page=100" \
+    >   -H "Authorization: Bearer ${CF_API_TOKEN}" \
+    >   | jq -r ".result[] | select(.data.certificate == \"${OLD_HASH}\") | .id" \
+    >   | while read -r id; do
+    >       curl -sS -X DELETE "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${id}" \
+    >         -H "Authorization: Bearer ${CF_API_TOKEN}" \
+    >         | jq -r '"Deleted: " + .result.id'
+    >     done
+    > ```
     >
     > **Step 3: Wait for DNS propagation:**
     >
