@@ -74,15 +74,22 @@ const meta = new Meta(config.meta, logger);
 let STARS = 1000;
 async function checkGitHubStars() {
   try {
+    const reqHeaders = {
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'forwardemail.net',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+
+    // Use GitHub token if available for higher rate limits (5000 req/hr)
+    if (config.githubOctokitToken) {
+      reqHeaders.Authorization = `Bearer ${config.githubOctokitToken}`;
+    }
+
     const { statusCode, headers, body } = await undici.request(
       'https://api.github.com/repos/forwardemail/forwardemail.net',
       {
         method: 'GET',
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'forwardemail.net',
-          'X-GitHub-Api-Version': '2022-11-28'
-        },
+        headers: reqHeaders,
         bodyTimeout: 10_000,
         headersTimeout: 10_000
       }

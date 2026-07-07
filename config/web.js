@@ -113,18 +113,13 @@ async function checkGitHubIssues() {
       {
         owner: 'forwardemail',
         repo: 'status.forwardemail.net',
+        state: 'open',
+        labels: 'status',
         headers: {
           'X-GitHub-Api-Version': '2022-11-28'
         }
       }
     );
-    if (
-      typeof ACTIVE_GITHUB_ISSUES === 'object' &&
-      Array.isArray(ACTIVE_GITHUB_ISSUES.data)
-    )
-      ACTIVE_GITHUB_ISSUES.data = ACTIVE_GITHUB_ISSUES.data.filter(
-        (obj) => obj.user.login === 'titanism'
-      );
   } catch (err) {
     logger.fatal(err);
   }

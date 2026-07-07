@@ -6,15 +6,18 @@
 // eslint-disable-next-line import/no-unassigned-import
 require('#helpers/polyfill-towellformed');
 
+const { Buffer } = require('node:buffer');
+
 const ms = require('ms');
+const { Octokit } = require('@octokit/rest');
 const undici = require('undici');
 
 const env = require('#config/env');
 const logger = require('#helpers/logger');
 
-// GitHub API base URL for status page incidents
-const GITHUB_API_BASE =
-  'https://api.github.com/repos/forwardemail/status.forwardemail.net';
+// Status page repository
+const STATUS_OWNER = 'forwardemail';
+const STATUS_REPO = 'status.forwardemail.net';
 
 // Redis cache keys
 const CACHE_KEY_INCIDENTS = 'event_feed:status_incidents';
@@ -25,6 +28,11 @@ const CACHE_DURATION = env.X_API_CACHE_DURATION
   ? ms(env.X_API_CACHE_DURATION)
   : ms('5m');
 const CACHE_TTL_SECONDS = Math.ceil(CACHE_DURATION / 1000);
+
+// Authenticated Octokit instance (5000 req/hr vs 60 req/hr unauthenticated)
+const octokit = env.GITHUB_OCTOKIT_TOKEN
+  ? new Octokit({ auth: env.GITHUB_OCTOKIT_TOKEN })
+  : null;
 
 /**
  * Parse a GitHub issue into a status incident object
@@ -64,6 +72,8 @@ function parseIncident(issue) {
 
 /**
  * Fetch status page incidents from GitHub issues
+ * Uses authenticated Octokit to avoid rate limiting (5000 req/hr)
+ * Falls back to unauthenticated requests if no token is configured
  * Uses Redis for caching to share cache across all processes
  * @param {Object} options - Options for fetching
  * @param {Object} options.client - Redis client (required for caching)
@@ -94,32 +104,51 @@ async function getStatusIncidents(options = {}) {
   }
 
   try {
-    const url = new URL(`${GITHUB_API_BASE}/issues`);
-    url.searchParams.set('state', state);
-    url.searchParams.set('labels', 'status');
-    url.searchParams.set('per_page', String(Math.min(count, 100)));
-    url.searchParams.set('sort', 'created');
-    url.searchParams.set('direction', 'desc');
+    let issues;
 
-    const response = await undici.request(url.toString(), {
-      method: 'GET',
-      headers: {
-        accept: 'application/vnd.github+json',
-        'user-agent': 'ForwardEmail/1.0',
-        'x-github-api-version': '2022-11-28'
-      },
-      headersTimeout: ms('30s'),
-      bodyTimeout: ms('30s')
-    });
-
-    if (response.statusCode !== 200) {
-      const body = await response.body.text();
-      throw new Error(
-        `GitHub API returned status ${response.statusCode}: ${body}`
+    if (octokit) {
+      // Authenticated request via Octokit (5000 req/hr)
+      const response = await octokit.issues.listForRepo({
+        owner: STATUS_OWNER,
+        repo: STATUS_REPO,
+        state,
+        labels: 'status',
+        per_page: Math.min(count, 100),
+        sort: 'created',
+        direction: 'desc'
+      });
+      issues = response.data;
+    } else {
+      // Fallback to unauthenticated request (60 req/hr)
+      const url = new URL(
+        `https://api.github.com/repos/${STATUS_OWNER}/${STATUS_REPO}/issues`
       );
-    }
+      url.searchParams.set('state', state);
+      url.searchParams.set('labels', 'status');
+      url.searchParams.set('per_page', String(Math.min(count, 100)));
+      url.searchParams.set('sort', 'created');
+      url.searchParams.set('direction', 'desc');
 
-    const issues = await response.body.json();
+      const response = await undici.request(url.toString(), {
+        method: 'GET',
+        headers: {
+          accept: 'application/vnd.github+json',
+          'user-agent': 'ForwardEmail/1.0',
+          'x-github-api-version': '2022-11-28'
+        },
+        headersTimeout: ms('30s'),
+        bodyTimeout: ms('30s')
+      });
+
+      if (response.statusCode !== 200) {
+        const body = await response.body.text();
+        throw new Error(
+          `GitHub API returned status ${response.statusCode}: ${body}`
+        );
+      }
+
+      issues = await response.body.json();
+    }
 
     // Parse all issues into incidents
     const incidents = issues.map((issue) => parseIncident(issue));
@@ -157,6 +186,7 @@ async function getStatusIncidents(options = {}) {
 
 /**
  * Fetch the summary.json from the status page for uptime data
+ * Uses authenticated requests to avoid rate limiting on raw.githubusercontent.com
  * Uses Redis for caching to share cache across all processes
  * @param {Object} options - Options for fetching
  * @param {Object} options.client - Redis client (required for caching)
@@ -183,23 +213,45 @@ async function getStatusSummary(options = {}) {
   }
 
   try {
-    const url =
-      'https://raw.githubusercontent.com/forwardemail/status.forwardemail.net/master/history/summary.json';
+    let summary;
 
-    const response = await undici.request(url, {
-      method: 'GET',
-      headers: {
-        'user-agent': 'ForwardEmail/1.0'
-      },
-      headersTimeout: ms('30s'),
-      bodyTimeout: ms('30s')
-    });
+    if (octokit) {
+      // Authenticated request via Octokit repos.getContent
+      const response = await octokit.repos.getContent({
+        owner: STATUS_OWNER,
+        repo: STATUS_REPO,
+        path: 'history/summary.json',
+        ref: 'master'
+      });
 
-    if (response.statusCode !== 200) {
-      throw new Error(`Failed to fetch summary.json: ${response.statusCode}`);
+      if (response.data && response.data.content) {
+        const content = Buffer.from(response.data.content, 'base64').toString(
+          'utf8'
+        );
+        summary = JSON.parse(content);
+      } else {
+        throw new Error('summary.json response missing content field');
+      }
+    } else {
+      // Fallback to unauthenticated raw.githubusercontent.com
+      const url =
+        'https://raw.githubusercontent.com/forwardemail/status.forwardemail.net/master/history/summary.json';
+
+      const response = await undici.request(url, {
+        method: 'GET',
+        headers: {
+          'user-agent': 'ForwardEmail/1.0'
+        },
+        headersTimeout: ms('30s'),
+        bodyTimeout: ms('30s')
+      });
+
+      if (response.statusCode !== 200) {
+        throw new Error(`Failed to fetch summary.json: ${response.statusCode}`);
+      }
+
+      summary = await response.body.json();
     }
-
-    const summary = await response.body.json();
 
     // Store in Redis cache
     if (client) {

@@ -84,13 +84,20 @@ async function fetchReleasesFromRepo(repo, count) {
     100
   )}`;
 
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'ForwardEmail/1.0',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+
+  // Use GitHub token if available for higher rate limits (5000 req/hr)
+  if (env.GITHUB_OCTOKIT_TOKEN) {
+    headers.Authorization = `Bearer ${env.GITHUB_OCTOKIT_TOKEN}`;
+  }
+
   const response = await undici.fetch(url, {
     method: 'GET',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'ForwardEmail/1.0',
-      'X-GitHub-Api-Version': '2022-11-28'
-    }
+    headers
   });
 
   if (!response.ok) {

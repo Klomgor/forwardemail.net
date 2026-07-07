@@ -5,8 +5,6 @@
 
 // eslint-disable-next-line import/no-unassigned-import
 require('#helpers/polyfill-towellformed');
-// eslint-disable-next-line import/no-unassigned-import
-require('#config/env');
 
 const process = require('node:process');
 const { parentPort } = require('node:worker_threads');
@@ -22,6 +20,7 @@ const sharedConfig = require('@ladjs/shared-config');
 const Aliases = require('#models/aliases');
 const Domains = require('#models/domains');
 const Users = require('#models/users');
+const env = require('#config/env');
 const createTangerine = require('#helpers/create-tangerine');
 const logger = require('#helpers/logger');
 const retryRequest = require('#helpers/retry-request');
@@ -47,7 +46,15 @@ graceful.listen();
   try {
     const response = await retryRequest(
       'https://raw.githubusercontent.com/disposable/disposable-email-domains/master/domains.json',
-      { resolver }
+      {
+        resolver,
+        headers: {
+          'User-Agent': 'ForwardEmail/1.0',
+          ...(env.GITHUB_OCTOKIT_TOKEN
+            ? { Authorization: `Bearer ${env.GITHUB_OCTOKIT_TOKEN}` }
+            : {})
+        }
+      }
     );
 
     const json = await response.body.json();
