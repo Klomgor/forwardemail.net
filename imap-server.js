@@ -25,6 +25,7 @@ const pRetry = require('p-retry');
 const pWaitFor = require('p-wait-for');
 const pify = require('pify');
 const ms = require('ms');
+const safeStringify = require('fast-safe-stringify');
 const { IMAPServer } = require('@zone-eu/wildduck/imap-core');
 
 const Aliases = require('#models/aliases');
@@ -341,7 +342,7 @@ class IMAP {
 
     this.subscriber.on('message', async (channel, id) => {
       if (
-        // channel !== 'sqlite_auth_request' &&
+        channel !== 'sqlite_auth_request' &&
         channel !== 'sqlite_auth_reset' &&
         channel !== 'pgp_reload' &&
         channel !== 'smime_reload'
@@ -368,7 +369,6 @@ class IMAP {
           return;
         }
 
-        /*
         if (channel === 'sqlite_auth_request') {
           for (const connection of this.server.connections) {
             if (connection?.session?.user?.alias_id === id) {
@@ -383,7 +383,6 @@ class IMAP {
 
           return;
         }
-        */
 
         if (channel === 'pgp_reload') {
           const alias = await Aliases.findOne({ id })
@@ -471,13 +470,13 @@ class IMAP {
   }
 
   async listen(port = env.IMAP_PORT, host = '::', ...args) {
-    // this.subscriber.subscribe('sqlite_auth_request');
+    this.subscriber.subscribe('sqlite_auth_request');
     this.subscriber.subscribe('sqlite_auth_reset');
     await pify(this.server.listen).bind(this.server)(port, host, ...args);
   }
 
   async close() {
-    // this.subscriber.unsubscribe('sqlite_auth_request');
+    this.subscriber.unsubscribe('sqlite_auth_request');
     this.subscriber.unsubscribe('sqlite_auth_reset');
     if (this._keepaliveInterval) clearInterval(this._keepaliveInterval);
     await pify(this.server.close).bind(this.server)();

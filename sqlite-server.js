@@ -168,8 +168,8 @@ class SQLite {
           }
         },
         {
-          timeout: ms('15s'),
-          interval: ms('3s')
+          timeout: ms('5m'),
+          interval: ms('5s')
         }
       );
 

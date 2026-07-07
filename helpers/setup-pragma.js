@@ -95,13 +95,13 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   // Performance tuning PRAGMAs for high-concurrency WAL workloads
   //
 
-  // Page cache ~8 MB per database (negative = KiB).
-  // With thousands of open databases per worker, 64 MB was too aggressive.
-  db.pragma('cache_size=-8192');
+  // Page cache ~4 MB per database (negative = KiB).
+  // Reduced from 8 MB to limit aggregate memory with 200 open DBs per worker.
+  db.pragma('cache_size=-4096');
 
-  // Limit WAL file growth to 256 MB
-  // Prevents unbounded WAL growth when checkpointing is deferred
-  db.pragma('journal_size_limit=268435456');
+  // Limit WAL file growth to 64 MB
+  // Reduced from 256 MB to limit page cache pressure from large WAL files
+  db.pragma('journal_size_limit=67108864');
 
   // NOTE: mmap disabled to prevent virtual memory accumulation
   // when opening/closing hundreds of unique databases per minute.

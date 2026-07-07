@@ -22,7 +22,7 @@ const isFQDN = require('is-fqdn');
 const isSANB = require('is-string-and-not-blank');
 const mongoose = require('mongoose');
 const ms = require('ms');
-// const pEvent = require('p-event');
+const pEvent = require('p-event');
 const pMap = require('p-map');
 const parseErr = require('parse-err');
 const pify = require('pify');
@@ -1302,7 +1302,6 @@ async function parsePayload(data, ws) {
                 }
               }
 
-              /*
               //
               // attempt to get in-memory password from IMAP servers
               //
@@ -1314,12 +1313,12 @@ async function parsePayload(data, ws) {
                     const [channel, data] = args;
                     if (channel !== 'sqlite_auth_response' || !data) return;
                     try {
-                      const { id } = JSON.parse(data);
-                      return id === alias.id;
+                      const parsed = JSON.parse(data);
+                      return parsed.alias_id === alias.id;
                     } catch {}
                   },
                   multiArgs: true,
-                  timeout: ms('10s')
+                  timeout: ms('3s')
                 });
 
                 const user = JSON.parse(response);
@@ -1374,23 +1373,18 @@ async function parsePayload(data, ws) {
                 }
               } catch (_err) {
                 const err = Array.isArray(_err) ? _err[0] : _err;
-                if (isRetryableError(err)) {
-                  err.isCodeBug = true;
-                  err.payload = _.omit(payload, 'raw');
-                  logger.error(err);
-                } else {
+                // TimeoutError is expected when no IMAP connection is active
+                if (err && err.name !== 'TimeoutError') {
                   err.isCodeBug = true;
                   err.payload = _.omit(payload, 'raw');
                   logger.error(err);
                 }
               }
-              */
 
               //
               // fallback to writing to temporary database storage
               //
-              // if (fallback)
-              if (!session.db) {
+              if (fallback && !session.db) {
                 const tmpDb = await getTemporaryDatabase.call(this, session);
 
                 let err;
@@ -1770,42 +1764,35 @@ async function parsePayload(data, ws) {
                 if (tmpDb && !this.temporaryDatabaseMap)
                   await closeDatabase(tmpDb);
 
-                // send user push notification
-                if (!err)
-                  sendApn(this.client, alias.id, targetFolder || 'INBOX')
-                    .then()
-                    .catch((err) =>
-                      logger.fatal(err, { session, resolver: this.resolver })
-                    );
-
-                // send websocket push notification (enriched payload with eml)
-                if (!err)
-                  sendWebSocketNotification(
-                    this.client,
-                    alias.id,
-                    'newMessage',
-                    {
-                      mailbox: targetFolder || 'INBOX',
-                      message: {
-                        folder_path: targetFolder || 'INBOX',
-                        flags: targetFlags || [],
-                        is_unread: !(targetFlags || []).includes('\\Seen'),
-                        is_flagged: (targetFlags || []).includes('\\Flagged'),
-                        is_deleted: (targetFlags || []).includes('\\Deleted'),
-                        is_draft: (targetFlags || []).includes('\\Draft'),
-                        is_encrypted: false,
-                        eml: Buffer.isBuffer(messageRaw)
-                          ? messageRaw.toString()
-                          : typeof messageRaw === 'string'
-                          ? messageRaw
-                          : '',
-                        object: 'message'
-                      }
-                    }
-                  );
-
                 if (err) throw err;
               }
+
+              // send user push notification
+              sendApn(this.client, alias.id, targetFolder || 'INBOX')
+                .then()
+                .catch((err) =>
+                  logger.fatal(err, { session, resolver: this.resolver })
+                );
+
+              // send websocket push notification (enriched payload with eml)
+              sendWebSocketNotification(this.client, alias.id, 'newMessage', {
+                mailbox: targetFolder || 'INBOX',
+                message: {
+                  folder_path: targetFolder || 'INBOX',
+                  flags: targetFlags || [],
+                  is_unread: !(targetFlags || []).includes('\\Seen'),
+                  is_flagged: (targetFlags || []).includes('\\Flagged'),
+                  is_deleted: (targetFlags || []).includes('\\Deleted'),
+                  is_draft: (targetFlags || []).includes('\\Draft'),
+                  is_encrypted: false,
+                  eml: Buffer.isBuffer(messageRaw)
+                    ? messageRaw.toString()
+                    : typeof messageRaw === 'string'
+                    ? messageRaw
+                    : '',
+                  object: 'message'
+                }
+              });
 
               //
               // Process iMIP messages (calendar scheduling via email)
