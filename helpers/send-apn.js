@@ -66,7 +66,7 @@ const SERVICES = {
     subtopic: 'com.apple.mobilemail',
     cachePrefix: 'aps_check',
     errorLabel: 'APS failed',
-    pushType: undefined
+    pushType: 'background'
   },
   Calendar: {
     cert: 'Calendar',
@@ -253,7 +253,7 @@ class ApnsClient {
         });
       });
 
-      const body = JSON.stringify(note.payload);
+      const body = note.compile();
       req.write(body);
       req.end();
     });
@@ -265,7 +265,8 @@ function createNote(certBundle, service, obj, options) {
     topic: certBundle[service.cert].topic,
     pushType: service.pushType,
     expiry: Math.floor(dayjs().add(24, 'hour').toDate().getTime() / 1000),
-    payload: {}
+    payload: {},
+    aps: {}
   };
 
   if (service.cert === 'Mail') {
@@ -278,9 +279,8 @@ function createNote(certBundle, service, obj, options) {
     // note.priority intentionally left undefined -- ApnsClient.send() omits
     // the apns-priority header when priority is undefined.
     //
-    const aps = {};
     if (obj.account_id) {
-      aps['account-id'] = obj.account_id;
+      note.aps['account-id'] = obj.account_id;
     }
 
     //
@@ -291,20 +291,20 @@ function createNote(certBundle, service, obj, options) {
     //   new Notification({aps: {"account-id": accountId, m: [mailboxHash]}})
     // <https://github.com/argon/push_notify/blob/master/lib/controller.js>
     //
-    aps.m = [
+    note.aps.m = [
       crypto
         .createHash('md5')
         .update(options.mailboxPath || 'INBOX')
         .digest('hex')
     ];
-    note.payload.aps = aps;
+    note.payload.aps = note.aps;
   } else {
     //
     // Calendar / Contact: priority 5 (background batched delivery is fine).
     // Payload matches Apple's ccs-calendarserver reference implementation:
     //   { key, dataChangedTimestamp, pushRequestSubmittedTimestamp }
-    // No `aps` dictionary -- node-apn's apsPayload() returns undefined when
-    // all aps keys are undefined, so JSON.stringify omits the key entirely.
+    // No `aps` dictionary -- wire JSON omits aps entirely since note.aps
+    // is empty and compile() only includes it when non-empty.
     //
     note.priority = 5;
 
@@ -315,6 +315,13 @@ function createNote(certBundle, service, obj, options) {
       pushRequestSubmittedTimestamp: now
     };
   }
+
+  //
+  // compile() serializes the note payload to the APNs wire JSON format.
+  // For Mail, aps is already embedded in note.payload.aps above.
+  // For Calendar/Contact, aps is empty and omitted from the wire body.
+  //
+  note.compile = () => JSON.stringify(note.payload);
 
   return note;
 }
