@@ -452,30 +452,30 @@ Follow the [Deployment](#deployment) guide below for automatic provisioning and 
     > Add or update the following DNS records with the hash from Step 1. All records use
     > DANE-EE (usage=3), SPKI (selector=1), SHA-256 (matching\_type=1):
     >
-    > | Record Name | Service |
-    > | --- | --- |
-    > | `_25._tcp.mx1.forwardemail.net` | MX1 inbound SMTP |
-    > | `_25._tcp.mx2.forwardemail.net` | MX2 inbound SMTP |
-    > | `_25._tcp.smtp.forwardemail.net` | SMTP port 25 |
-    > | `_465._tcp.smtp.forwardemail.net` | SMTPS (implicit TLS) |
-    > | `_587._tcp.smtp.forwardemail.net` | SMTP submission (STARTTLS) |
-    > | `_2465._tcp.smtp.forwardemail.net` | SMTPS alt port |
-    > | `_2525._tcp.smtp.forwardemail.net` | SMTP alt port |
-    > | `_2587._tcp.smtp.forwardemail.net` | Submission alt port |
-    > | `_3025._tcp.mx1.forwardemail.net` | MX1 alt port |
-    > | `_3025._tcp.mx2.forwardemail.net` | MX2 alt port |
-    > | `_993._tcp.imap.forwardemail.net` | IMAPS |
-    > | `_2993._tcp.imap.forwardemail.net` | IMAP alt port |
-    > | `_995._tcp.pop3.forwardemail.net` | POP3S |
-    > | `_2995._tcp.pop3.forwardemail.net` | POP3 alt port |
-    > | `_443._tcp.forwardemail.net` | Web HTTPS |
-    > | `_443._tcp.api.forwardemail.net` | API HTTPS |
-    > | `_443._tcp.caldav.forwardemail.net` | CalDAV HTTPS |
-    > | `_443._tcp.carddav.forwardemail.net` | CardDAV HTTPS |
-    > | `_80._tcp.forwardemail.net` | Web HTTP |
-    > | `_80._tcp.api.forwardemail.net` | API HTTP |
-    > | `_80._tcp.caldav.forwardemail.net` | CalDAV HTTP |
-    > | `_80._tcp.carddav.forwardemail.net` | CardDAV HTTP |
+    > | Record Name                          | Service                    |
+    > | ------------------------------------ | -------------------------- |
+    > | `_25._tcp.mx1.forwardemail.net`      | MX1 inbound SMTP           |
+    > | `_25._tcp.mx2.forwardemail.net`      | MX2 inbound SMTP           |
+    > | `_25._tcp.smtp.forwardemail.net`     | SMTP port 25               |
+    > | `_465._tcp.smtp.forwardemail.net`    | SMTPS (implicit TLS)       |
+    > | `_587._tcp.smtp.forwardemail.net`    | SMTP submission (STARTTLS) |
+    > | `_2465._tcp.smtp.forwardemail.net`   | SMTPS alt port             |
+    > | `_2525._tcp.smtp.forwardemail.net`   | SMTP alt port              |
+    > | `_2587._tcp.smtp.forwardemail.net`   | Submission alt port        |
+    > | `_3025._tcp.mx1.forwardemail.net`    | MX1 alt port               |
+    > | `_3025._tcp.mx2.forwardemail.net`    | MX2 alt port               |
+    > | `_993._tcp.imap.forwardemail.net`    | IMAPS                      |
+    > | `_2993._tcp.imap.forwardemail.net`   | IMAP alt port              |
+    > | `_995._tcp.pop3.forwardemail.net`    | POP3S                      |
+    > | `_2995._tcp.pop3.forwardemail.net`   | POP3 alt port              |
+    > | `_443._tcp.forwardemail.net`         | Web HTTPS                  |
+    > | `_443._tcp.api.forwardemail.net`     | API HTTPS                  |
+    > | `_443._tcp.caldav.forwardemail.net`  | CalDAV HTTPS               |
+    > | `_443._tcp.carddav.forwardemail.net` | CardDAV HTTPS              |
+    > | `_80._tcp.forwardemail.net`          | Web HTTP                   |
+    > | `_80._tcp.api.forwardemail.net`      | API HTTP                   |
+    > | `_80._tcp.caldav.forwardemail.net`   | CalDAV HTTP                |
+    > | `_80._tcp.carddav.forwardemail.net`  | CardDAV HTTP               |
     >
     > **Cloudflare API one-liner to create all TLSA records with a new hash:**
     >
