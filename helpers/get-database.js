@@ -135,6 +135,12 @@ async function getDatabase(
     (session.db instanceof Database || instance.wsp) &&
     session.db.open === true
   ) {
+    if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+      console.debug('getDatabase session.db reuse', {
+        alias_id: alias?.id
+      });
+    }
+
     return session.db;
   }
 
@@ -496,7 +502,13 @@ async function getDatabase(
     ) {
       db = instance.databaseMap.get(alias.id);
       session.db = db;
+      if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+        console.debug('getDatabase cache hit', {
+          alias_id: alias.id
+        });
+      }
     } else {
+      const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
       db = new Database(dbFilePath, {
         readonly,
         fileMustExist: readonly,
@@ -513,6 +525,13 @@ async function getDatabase(
       // assigns to session so we can easily re-use
       // (also used in allocateConnection in IMAP notifier)
       session.db = db;
+      if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+        console.debug('getDatabase cache miss (opened)', {
+          duration_ms: Date.now() - t0,
+          alias_id: alias.id,
+          readonly
+        });
+      }
     }
 
     // if it is readonly then return early

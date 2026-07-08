@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
+const { boolean } = require('boolean');
 const ms = require('ms');
 
 const closeDatabase = require('#helpers/close-database');
@@ -178,8 +179,12 @@ class DatabaseLRUMap {
       }
     }
 
-    if (toEvict.length > 0) {
-      logger.debug(`DatabaseLRUMap: swept ${toEvict.length} idle databases`);
+    if (toEvict.length > 0 && boolean(env.SQLITE_DEBUG_TIMERS)) {
+      console.debug('DatabaseLRUMap sweep', {
+        evicted: toEvict.length,
+        duration_ms: Date.now() - now,
+        remaining: this._map.size
+      });
     }
   }
 

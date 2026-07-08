@@ -10,6 +10,7 @@ const { Buffer } = require('node:buffer');
 const { isIP } = require('node:net');
 const { randomUUID } = require('node:crypto');
 
+const { boolean } = require('boolean');
 const { Headers, Splitter, Joiner } = require('mailsplit');
 
 const MimeNode = require('nodemailer/lib/mime-node');
@@ -176,6 +177,7 @@ async function increaseRateLimiting(client, date, sender, root, byteLength) {
 
 async function parsePayload(data, ws) {
   const now = Date.now();
+  const debugTimers = boolean(env.SQLITE_DEBUG_TIMERS);
 
   let db;
   let payload;
@@ -295,6 +297,7 @@ async function parsePayload(data, ws) {
     switch (payload.action) {
       // append
       case 'append': {
+        const t0 = debugTimers ? Date.now() : 0;
         const data = await onAppendPromise.call(
           this,
           payload.path,
@@ -307,6 +310,13 @@ async function parsePayload(data, ws) {
           payload.raw,
           payload.session
         );
+        if (debugTimers) {
+          console.debug('parsePayload onAppend (append)', {
+            duration_ms: Date.now() - t0,
+            alias_id: payload.session?.user?.alias_id
+          });
+        }
+
         response = {
           id: payload.id,
           data
@@ -2122,15 +2132,24 @@ async function parsePayload(data, ws) {
         }
         */
 
-        db = await getDatabase(
-          this,
-          // alias
-          {
-            id: payload.session.user.alias_id,
-            storage_location: payload.session.user.storage_location
-          },
-          payload.session
-        );
+        {
+          const t0 = debugTimers ? Date.now() : 0;
+          db = await getDatabase(
+            this,
+            // alias
+            {
+              id: payload.session.user.alias_id,
+              storage_location: payload.session.user.storage_location
+            },
+            payload.session
+          );
+          if (debugTimers) {
+            console.debug('parsePayload getDatabase (stmt)', {
+              duration_ms: Date.now() - t0,
+              alias_id: payload.session.user.alias_id
+            });
+          }
+        }
 
         for (const op of payload.stmt) {
           // `op` must be an array with two keys

@@ -15,6 +15,7 @@
 
 const { EventEmitter } = require('node:events');
 
+const { boolean } = require('boolean');
 const Database = require('better-sqlite3-multiple-ciphers');
 const mongoose = require('mongoose');
 const safeStringify = require('fast-safe-stringify');
@@ -24,6 +25,7 @@ const IMAPError = require('#helpers/imap-error');
 const Mailboxes = require('#models/mailboxes');
 const _ = require('#helpers/lodash');
 const config = require('#config');
+const env = require('#config/env');
 const i18n = require('#helpers/i18n');
 const logger = require('#helpers/logger');
 
@@ -54,6 +56,14 @@ class IMAPNotifier extends EventEmitter {
       const fire = () => {
         clearTimeout(data.timeout);
         this.publishTimers.delete(ev);
+        if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+          console.debug('notifier scheduleDataEvent fire', {
+            ev,
+            debounce_ms: Date.now() - data.initial,
+            count: data.count
+          });
+        }
+
         this._listeners.emit(ev);
       };
 
@@ -146,6 +156,7 @@ class IMAPNotifier extends EventEmitter {
   }
 
   async addEntries(instance, session, mailboxId, entries) {
+    const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
     if (!instance.wsp && instance?.constructor?.name !== 'SQLite')
       throw new TypeError('WebSocketAsPromised instance required');
 
@@ -345,12 +356,21 @@ class IMAPNotifier extends EventEmitter {
 
     if (err) throw err;
 
+    if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+      console.debug('notifier addEntries', {
+        duration_ms: Date.now() - t0,
+        entries_count: entries.length,
+        alias_id: session?.user?.alias_id
+      });
+    }
+
     return entries.length;
   }
 
   fire(aliasId, payload) {
     if (!aliasId) throw new Error('Alias ID missing');
 
+    const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
     setImmediate(() => {
       this.publisher.publish(
         config.IMAP_REDIS_CHANNEL_NAME,
@@ -359,6 +379,12 @@ class IMAPNotifier extends EventEmitter {
           p: payload
         })
       );
+      if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+        console.debug('notifier fire', {
+          duration_ms: Date.now() - t0,
+          alias_id: aliasId
+        });
+      }
     });
   }
 

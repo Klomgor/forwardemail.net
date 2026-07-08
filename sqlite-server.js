@@ -11,6 +11,7 @@ const { promisify } = require('node:util');
 const Boom = require('@hapi/boom');
 const MessageHandler = require('@zone-eu/wildduck/lib/message-handler');
 
+const { boolean } = require('boolean');
 const auth = require('basic-auth');
 const isSANB = require('is-string-and-not-blank');
 const ms = require('ms');
@@ -122,16 +123,19 @@ class SQLite {
     // for a UUID ACK that might never arrive (disconnected IMAP client).
     //
     this.wss.broadcast = (session, payload) => {
+      const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
       const packed = encoder.pack({
         session_id: session.id,
         alias_id: session.user.alias_id,
         payload
       });
       // Send to all local WebSocket clients (fire-and-forget)
+      let localSent = 0;
       for (const client of this.wss.clients) {
         if (!client.isAlive) continue;
         try {
           client.send(packed);
+          localSent++;
         } catch (err) {
           logger.error(err);
         }
@@ -146,6 +150,15 @@ class SQLite {
         this.client.publish('wss_broadcast', envelope);
       } catch (err) {
         logger.error(err);
+      }
+
+      if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+        console.debug('broadcast', {
+          duration_ms: Date.now() - t0,
+          local_clients: localSent,
+          session_id: session.id,
+          alias_id: session.user.alias_id
+        });
       }
     };
 
@@ -246,9 +259,16 @@ class SQLite {
           return;
         }
 
+        const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
         parsePayload
           .call(this, data, ws)
-          .then()
+          .then(() => {
+            if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+              console.debug('parsePayload complete', {
+                duration_ms: Date.now() - t0
+              });
+            }
+          })
           .catch((err) => {
             // skip logging for timeout/transient errors (e.g. backup queue full)
             if (err.ignoreHook || isTimeoutError(err)) return;

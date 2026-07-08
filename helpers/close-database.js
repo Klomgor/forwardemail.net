@@ -3,13 +3,17 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
+const { boolean } = require('boolean');
 const ms = require('ms');
 const pWaitFor = require('p-wait-for');
 
+const env = require('#config/env');
 const logger = require('#helpers/logger');
 
 async function closeDatabase(db) {
   if (!db || !db.open) return;
+
+  const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
 
   if (db.inTransaction) {
     try {
@@ -50,6 +54,12 @@ async function closeDatabase(db) {
     db.close();
   } catch (err) {
     logger.error(err, { db });
+  }
+
+  if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+    console.debug('closeDatabase', {
+      duration_ms: Date.now() - t0
+    });
   }
 }
 

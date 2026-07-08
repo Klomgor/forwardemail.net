@@ -21,8 +21,7 @@ const MessageHandler = require('@zone-eu/wildduck/lib/message-handler');
 const RateLimiter = require('async-ratelimiter');
 const bytes = require('@forwardemail/bytes');
 const mongoose = require('mongoose');
-const pRetry = require('p-retry');
-const pWaitFor = require('p-wait-for');
+
 const pify = require('pify');
 const ms = require('ms');
 // const safeStringify = require('fast-safe-stringify');
@@ -45,7 +44,6 @@ if (env.IMAP_TLS_MIN_VERSION === 'TLSv1') {
   tls.DEFAULT_MIN_VERSION = 'TLSv1';
 }
 
-const isRetryableError = require('#helpers/is-retryable-error');
 const logger = require('#helpers/logger');
 const onAuth = require('#helpers/on-auth');
 const refreshSession = require('#helpers/refresh-session');
@@ -235,65 +233,36 @@ class IMAP {
     }, ms('1h'));
 
     // listen for websocket write stream
-    this.wsp.onUnpackedMessage.addListener(async (data) => {
+    // NOTE: the sqlite-server broadcasts { session_id, alias_id, payload }
+    // directly to all connected WebSocket clients (fire-and-forget, no ACK).
+    // This handler writes the payload to the matching IMAP connection's stream.
+    this.wsp.onUnpackedMessage.addListener((data) => {
       try {
         if (
-          typeof data === 'object' &&
-          typeof data.uuid === 'string' &&
-          typeof data.session_id === 'string' &&
-          typeof data.alias_id === 'string' &&
-          data.payload !== undefined
-        ) {
-          for (const connection of this.server.connections) {
-            // extra safeguard to use two sources of truth (session ID + alias ID)
-            if (
-              connection?.id !== data.session_id ||
-              connection?.session?.user?.alias_id !== data.alias_id
-            )
-              continue;
+          typeof data !== 'object' ||
+          typeof data.session_id !== 'string' ||
+          typeof data.alias_id !== 'string' ||
+          data.payload === undefined
+        )
+          return;
 
-            if (Array.isArray(data.payload)) {
-              for (const payload of data.payload) {
-                connection.session.writeStream.write(payload);
-              }
-            } else {
-              connection.session.writeStream.write(data.payload);
+        for (const connection of this.server.connections) {
+          // match on both session ID and alias ID for safety
+          if (
+            connection?.id !== data.session_id ||
+            connection?.session?.user?.alias_id !== data.alias_id
+          )
+            continue;
+
+          if (Array.isArray(data.payload)) {
+            for (const payload of data.payload) {
+              connection.session.writeStream.write(payload);
             }
-
-            // attempt to send the request 3x
-
-            await pRetry(
-              async () => {
-                await pWaitFor(
-                  async () => {
-                    try {
-                      await this.wsp.open();
-                      return true;
-                    } catch (err) {
-                      logger.debug(err);
-                      return false;
-                    }
-                  },
-                  { timeout: ms('15s') }
-                );
-
-                this.wsp.send(data.uuid);
-              },
-              {
-                retries: 2,
-                onFailedAttempt(err) {
-                  logger.error(err);
-
-                  if (isRetryableError(err)) {
-                    return;
-                  }
-
-                  throw err;
-                }
-              }
-            );
-            break;
+          } else {
+            connection.session.writeStream.write(data.payload);
           }
+
+          break;
         }
       } catch (err) {
         logger.fatal(err);
