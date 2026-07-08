@@ -905,8 +905,9 @@ async function parsePayload(data, ws) {
                 this.databaseMap &&
                 this.databaseMap.has(session.user.alias_id) &&
                 this.databaseMap.get(session.user.alias_id).open === true
-              )
+              ) {
                 session.db = this.databaseMap.get(session.user.alias_id);
+              }
 
               //
               // Sieve filtering - process message through user's Sieve script
@@ -1280,8 +1281,119 @@ async function parsePayload(data, ws) {
 
               //
               // fallback to writing to temporary database storage
+              // First re-check databaseMap in case an IMAP session opened
+              // the DB between the initial check and now (avoids unnecessary
+              // tmp DB writes and the sync-back overhead they cause).
               //
               if (fallback && !session.db) {
+                if (
+                  this.databaseMap &&
+                  this.databaseMap.has(session.user.alias_id) &&
+                  this.databaseMap.get(session.user.alias_id).open === true
+                ) {
+                  session.db = this.databaseMap.get(session.user.alias_id);
+                  try {
+                    await onAppendPromise.call(
+                      this,
+                      targetFolder,
+                      targetFlags,
+                      _.isDate(payload.date)
+                        ? payload.date
+                        : new Date(payload.date),
+                      messageRaw,
+                      {
+                        user: {
+                          ...session.user
+                        },
+                        db: session.db,
+                        remoteAddress: payload.remoteAddress,
+                        resolvedRootClientHostname:
+                          payload.resolvedRootClientHostname,
+                        resolvedClientHostname: payload.resolvedClientHostname,
+                        allowlistValue: payload.allowlistValue,
+                        selected: false,
+                        checkForExisting: true,
+                        retries: 0,
+                        createFolder: sieveResult.create || false
+                      }
+                    );
+                    try {
+                      await increaseRateLimiting(
+                        this.client,
+                        date,
+                        sender,
+                        root,
+                        byteLength
+                      );
+                    } catch (err) {
+                      err.payload = _.omit(payload, 'raw');
+                      logger.fatal(err);
+                    }
+
+                    // Successfully wrote to main DB, skip tmp fallback
+                    // send user push notification
+                    sendApn(this.client, alias.id, targetFolder || 'INBOX')
+                      .then()
+                      .catch((err) =>
+                        logger.fatal(err, { session, resolver: this.resolver })
+                      );
+                    // send websocket push notification
+                    sendWebSocketNotification(
+                      this.client,
+                      alias.id,
+                      'newMessage',
+                      {
+                        mailbox: targetFolder || 'INBOX',
+                        message: {
+                          folder_path: targetFolder || 'INBOX',
+                          flags: targetFlags || [],
+                          is_unread: !(targetFlags || []).includes('\\Seen'),
+                          is_flagged: (targetFlags || []).includes('\\Flagged'),
+                          is_deleted: (targetFlags || []).includes('\\Deleted'),
+                          is_draft: (targetFlags || []).includes('\\Draft'),
+                          is_encrypted: false,
+                          eml: Buffer.isBuffer(messageRaw)
+                            ? messageRaw.toString()
+                            : typeof messageRaw === 'string'
+                            ? messageRaw
+                            : '',
+                          object: 'message'
+                        }
+                      }
+                    );
+                    // process iMIP (calendar scheduling) if applicable
+                    try {
+                      const parsedEmail = await simpleParser(payload.raw, {
+                        skipHtmlToText: true,
+                        skipTextLinks: true,
+                        skipTextToHtml: true,
+                        skipImageLinks: true
+                      });
+                      await checkAndProcessImipMessage(parsedEmail, {
+                        messageId: parsedEmail.messageId,
+                        fromEmail: payload.sender,
+                        toEmail: session.user.username,
+                        client: this.client,
+                        remoteAddress: payload.remoteAddress
+                      });
+                    } catch (imipErr) {
+                      logger.warn('iMIP processing failed', {
+                        session,
+                        error: imipErr.message,
+                        sender: payload.sender,
+                        recipient: session.user.username
+                      });
+                    }
+
+                    return;
+                  } catch (_err) {
+                    // Failed to write to main DB, fall through to tmp
+                    delete session.db;
+                    const err = Array.isArray(_err) ? _err[0] : _err;
+                    logger.warn(err);
+                  }
+                }
+
                 const tmpDb = await getTemporaryDatabase.call(this, session);
 
                 let err;

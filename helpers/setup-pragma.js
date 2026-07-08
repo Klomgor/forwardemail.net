@@ -95,9 +95,9 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   // Performance tuning PRAGMAs for high-concurrency WAL workloads
   //
 
-  // Page cache ~4 MB per database (negative = KiB).
-  // Reduced from 8 MB to limit aggregate memory with 200 open DBs per worker.
-  db.pragma('cache_size=-4096');
+  // Page cache ~2 MB per database (negative = KiB).
+  // With maxSize=500 DBs per worker, this caps page cache at ~1 GB per worker.
+  db.pragma('cache_size=-2048');
 
   // Limit WAL file growth to 256 MB
   db.pragma('journal_size_limit=268435456');

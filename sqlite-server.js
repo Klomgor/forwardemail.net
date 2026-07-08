@@ -6,16 +6,14 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
+const process = require('node:process');
 const { promisify } = require('node:util');
-const { randomUUID } = require('node:crypto');
-
 const Boom = require('@hapi/boom');
 const MessageHandler = require('@zone-eu/wildduck/lib/message-handler');
 
 const auth = require('basic-auth');
 const isSANB = require('is-string-and-not-blank');
 const ms = require('ms');
-const pWaitFor = require('p-wait-for');
 const { WebSocketServer } = require('ws');
 const { mkdirp } = require('mkdirp');
 
@@ -32,7 +30,6 @@ const getTLSOptions = require('#helpers/get-tls-options');
 const i18n = require('#helpers/i18n');
 const isCodeBug = require('#helpers/is-code-bug');
 const isTimeoutError = require('#helpers/is-timeout-error');
-const isRetryableError = require('#helpers/is-retryable-error');
 const logger = require('#helpers/logger');
 const parsePayload = require('#helpers/parse-payload');
 const refreshSession = require('#helpers/refresh-session');
@@ -71,6 +68,10 @@ class SQLite {
     // (uses LRU eviction to prevent unbounded memory growth)
     //
     this.databaseMap = new DatabaseLRUMap();
+
+    // Unique worker ID for filtering self-published Redis broadcast messages
+    // (prevents local clients from receiving the same broadcast twice)
+    this.workerId = `${process.pid}:${Date.now()}`;
 
     //
     // bind helpers so we can re-use IMAP helper commands
@@ -111,70 +112,41 @@ class SQLite {
     // this.wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
     this.wss = new WebSocketServer({
       noServer: true,
-      maxPayload: 0 // disable max payload size
+      // Limit max payload to 256 MB to prevent OOM from malicious frames
+      maxPayload: 256 * 1024 * 1024
     });
-
-    this.wss.broadcast = async (session, payload) => {
-      const uuid = randomUUID();
+    //
+    // Non-blocking broadcast: fire-and-forget to all local WebSocket clients
+    // and publish to Redis for cross-worker delivery. This replaces the old
+    // pWaitFor loop that blocked the event loop for up to 5 minutes waiting
+    // for a UUID ACK that might never arrive (disconnected IMAP client).
+    //
+    this.wss.broadcast = (session, payload) => {
       const packed = encoder.pack({
-        uuid,
         session_id: session.id,
         alias_id: session.user.alias_id,
         payload
       });
-
-      //
-      // TODO: wss.broadcast should write to socket
-      //       of ALL connected clients where
-      //       selected mailbox and alias id are matching
-      //
-
-      //
-      // NOTE: redis pub/sub seemed to add +1-2ms overhead from testing
-      //
-      // NOTE: an existing websocket connection
-      //       (e.g. IMAP server could get restarted)
-      //       and so we can't just iterate over the current
-      //       we have to continously iterate over all clients
-      //       (sending the data every 5s until we get a response)
-      //
-      await pWaitFor(
-        async () => {
-          if (this.uuidsReceived.has(uuid)) return true;
-
-          for (const client of this.wss.clients) {
-            if (!client.isAlive) continue;
-            if (this.uuidsReceived.has(uuid)) break;
-
-            try {
-              client.send(packed);
-            } catch (err) {
-              err.client = client;
-              err.payload = payload;
-              logger.fatal(err);
-            }
-          }
-
-          try {
-            await pWaitFor(() => this.uuidsReceived.has(uuid), {
-              timeout: ms('10s'),
-              interval: 1
-            });
-            return true;
-          } catch (err) {
-            if (isRetryableError(err)) return false;
-            throw err;
-          }
-        },
-        {
-          timeout: ms('15s'),
-          interval: ms('3s')
+      // Send to all local WebSocket clients (fire-and-forget)
+      for (const client of this.wss.clients) {
+        if (!client.isAlive) continue;
+        try {
+          client.send(packed);
+        } catch (err) {
+          logger.error(err);
         }
-      );
+      }
 
-      this.uuidsReceived.delete(uuid);
-
-      // TODO: do interval cleanup
+      // Publish to Redis for cross-worker delivery in PM2 cluster
+      try {
+        const envelope = encoder.pack({
+          workerId: this.workerId,
+          data: packed
+        });
+        this.client.publish('wss_broadcast', envelope);
+      } catch (err) {
+        logger.error(err);
+      }
     };
 
     this.server = server;
@@ -242,12 +214,9 @@ class SQLite {
       });
     });
 
-    this.uuidsReceived = new Set();
-
     this.wss.on('connection', (ws, request) => {
       ws.isAlive = true;
       logger.debug('connection from %s', request.socket.remoteAddress);
-
       ws.on('error', (err) => {
         console.error(
           '[ERROR:sqlite-server] ws error',
@@ -260,33 +229,20 @@ class SQLite {
         );
         logger.error(err, { ws, request });
       });
-
       ws.on('ping', function () {
         // logger.debug('ping from %s', request.socket.remoteAddress);
         this.isAlive = true;
       });
-
       ws.on('pong', function () {
         // logger.debug('pong from %s', request.socket.remoteAddress);
         this.isAlive = true;
       });
-
       ws.on('message', (data) => {
-        this.isAlive = true;
-
+        ws.isAlive = true;
         if (!data) return;
-
         // return early for ping/pong
         if (data.length === 4 && data.toString() === 'ping') {
           logger.debug('ping from %s', request.socket.remoteAddress);
-          return;
-        }
-
-        // TODO: we could use redis instead
-        // return early for uuid from wss.broadcast
-        if (data.length === 36) {
-          const uuid = data.toString();
-          this.uuidsReceived.add(uuid);
           return;
         }
 
@@ -335,6 +291,29 @@ class SQLite {
     // TODO: all subscribe/unsubscribe calls need `await`'ed
     this.subscriber.subscribe('sqlite_auth_response');
 
+    // Subscribe to cross-worker broadcast channel for PM2 cluster
+    this.subscriber.subscribe('wss_broadcast');
+    this.subscriber.on('messageBuffer', (channel, message) => {
+      if (channel.toString() !== 'wss_broadcast') return;
+      // Decode envelope to check workerId — skip self-published messages
+      // (local clients already received the broadcast directly)
+      try {
+        const envelope = encoder.unpack(message);
+        if (envelope.workerId === this.workerId) return;
+        // Forward the inner packed payload to all local WebSocket clients
+        for (const client of this.wss.clients) {
+          if (!client.isAlive) continue;
+          try {
+            client.send(envelope.data);
+          } catch (err) {
+            logger.error(err);
+          }
+        }
+      } catch (err) {
+        logger.error(err);
+      }
+    });
+
     this.wsInterval = setInterval(() => {
       for (const ws of this.wss.clients) {
         /*
@@ -355,6 +334,7 @@ class SQLite {
 
   async close() {
     this.subscriber.unsubscribe('sqlite_auth_response');
+    this.subscriber.unsubscribe('wss_broadcast');
     clearInterval(this.wsInterval);
 
     // clear notifier timers
@@ -366,13 +346,10 @@ class SQLite {
       this.server.notifier.publishTimers.clear();
     }
 
-    // close websocket connections
-    // if (this.wss && this.wss.clients) {
-    //   for (const ws of this.wss.clients) {
-    //     ws.terminate();
-    //     ws.isAlive = false;
-    //   }
-    // }
+    // Gracefully close all cached database connections
+    if (this.databaseMap) {
+      await this.databaseMap.closeAll();
+    }
 
     // close server
     try {

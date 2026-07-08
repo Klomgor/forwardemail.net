@@ -9,7 +9,7 @@ const pWaitFor = require('p-wait-for');
 const logger = require('#helpers/logger');
 
 async function closeDatabase(db) {
-  if (!db.open) return;
+  if (!db || !db.open) return;
 
   if (db.inTransaction) {
     try {
@@ -18,20 +18,37 @@ async function closeDatabase(db) {
       });
     } catch (err) {
       err.message = `Shutdown could not cancel transaction: ${err.message}`;
-      // TODO: remove later
-      console.error(err);
       err.isCodeBug = true;
       logger.error(err, { db });
     }
   }
 
+  //
+  // NOTE: PRAGMA optimize is intentionally disabled here.
+  //
+  // It was the root cause of SQLITE_IOERR_SHORT_READ errors in production:
+  // optimize runs ANALYZE (full table scans to rebuild index statistics) which
+  // causes heavy disk reads. When another PM2 worker is mid-write on the same
+  // WAL file, the concurrent read produces IOERR_SHORT_READ. With 50 DBs being
+  // swept per cycle, this created I/O storms that blocked the event loop and
+  // caused WebSocket broadcast stalls.
+  //
+  // If query planner statistics are needed, run PRAGMA optimize on a scheduled
+  // worker (e.g. sqlite-worker.js) during low-traffic hours, or run it once on
+  // database open with: db.pragma('optimize(0x10002)') which only analyzes
+  // tables whose stats are >25% stale.
+  //
+  // try {
+  //   db.pragma('analysis_limit=400');
+  //   db.pragma('optimize');
+  // } catch (err) {
+  //   logger.error(err, { db });
+  // }
+  //
+
   try {
-    db.pragma('analysis_limit=400');
-    db.pragma('optimize');
     db.close();
   } catch (err) {
-    // TODO: remove later
-    console.error(err);
     logger.error(err, { db });
   }
 }
