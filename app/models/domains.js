@@ -2784,10 +2784,37 @@ Domains.statics.getToAndMajorityLocaleByDomain = getToAndMajorityLocaleByDomain;
 
 function splitString(string_) {
   if (string_.indexOf('/') === 0) {
-    // It can either be split by ",/" or ","
-    const index = string_.includes(',/')
-      ? string_.lastIndexOf('/:', string_.indexOf(',/'))
-      : string_.indexOf('/:');
+    // Find the end of the first regex entry by checking all flag endings.
+    // We look for the earliest (leftmost) occurrence of any ending so that
+    // we split at the first regex's boundary, not a later regex's ending.
+    const SPLIT_REGEX_FLAG_ENDINGS = ['/gi:', '/ig:', '/g:', '/i:', '/:'];
+    let index = -1;
+    if (string_.includes(',/')) {
+      // Multiple regex entries — find the closing slash-colon of the FIRST
+      const boundary = string_.indexOf(',/');
+      let earliest = -1;
+      for (const ending of SPLIT_REGEX_FLAG_ENDINGS) {
+        const pos = string_.indexOf(ending, 1);
+        if (pos !== -1 && pos < boundary && (earliest === -1 || pos < earliest))
+          earliest = pos + ending.length - 1;
+      }
+
+      index = earliest;
+    } else {
+      // Single regex entry — find the earliest ending
+      // (this avoids splitting on commas inside the regex pattern)
+      let earliest = -1;
+      for (const ending of SPLIT_REGEX_FLAG_ENDINGS) {
+        const pos = string_.indexOf(ending, 1);
+        if (pos !== -1 && (earliest === -1 || pos < earliest))
+          earliest = pos + ending.length - 1;
+      }
+
+      index = earliest;
+    }
+
+    // If no recognized ending found, treat entire string as one entry
+    if (index === -1) return [string_];
     const lastComma = string_.indexOf(',', index);
     if (lastComma === -1) {
       return [string_];

@@ -575,7 +575,7 @@ async function getForwardingConfiguration({
         );
 
         // add case insensitive flag since email addresses are case insensitive
-        if (lastIndex === '/g:' || lastIndex === '/:') parsedRegex += 'i';
+        if (lastIndex === '/g' || lastIndex === '/') parsedRegex += 'i';
         //
         // `forward-email=/^(support|info)$/:forwardemail+$1@gmail.com`
         // support@mydomain.com -> forwardemail+support@gmail.com
