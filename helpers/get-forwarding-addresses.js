@@ -479,10 +479,38 @@ async function getForwardingAddresses(
 
   function splitString(str) {
     if (str.indexOf('/') === 0) {
-      // it can either be split by ",/" or ","
-      const index = str.includes(',/')
-        ? str.lastIndexOf('/:', str.indexOf(',/'))
-        : str.indexOf('/:');
+      //
+      // find the regex terminator (the colon after the closing slash+flags)
+      // by checking all possible flag endings: /gi:, /ig:, /g:, /i:, /:
+      // this must handle regex patterns that contain commas (e.g. {0,1})
+      // and patterns that contain literal ",/" inside character classes
+      //
+      // we find the EARLIEST (leftmost) occurrence of any ending to ensure
+      // we split at the first regex's boundary, not a later regex's ending
+      //
+      const SPLIT_REGEX_FLAG_ENDINGS = ['/gi:', '/ig:', '/g:', '/i:', '/:'];
+      let index = -1;
+      let bestPos = Number.POSITIVE_INFINITY;
+      for (const ending of SPLIT_REGEX_FLAG_ENDINGS) {
+        const pos = str.indexOf(ending);
+        if (pos !== -1 && pos !== 0 && pos < bestPos) {
+          bestPos = pos;
+          index = pos + ending.length - 1; // point to the ':'
+        }
+      }
+
+      //
+      // if we found a valid regex ending, find the next comma AFTER
+      // the full regex entry (regex + colon + recipient address)
+      // if we did not find a valid ending, the entire str is one entry
+      // (this avoids splitting on commas inside the regex pattern)
+      //
+      if (index === -1) {
+        // no recognized ending found; treat entire string as one entry
+        // (this handles edge cases like commas inside character classes)
+        return [str];
+      }
+
       const lastComma = str.indexOf(',', index);
       if (lastComma === -1) return [str];
       if (lastComma === str.length - 1) return [str.slice(0, lastComma)];
