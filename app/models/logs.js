@@ -1233,6 +1233,15 @@ Logs.post('save', async (doc, next) => {
   //
   if (isTimeoutError(doc?.err)) return next();
 
+  // Suppress transient network errors from MongoDB persistence
+  if (
+    typeof doc?.err?.message === 'string' &&
+    (doc.err.message === 'read ETIMEDOUT' ||
+      doc.err.message === 'write ETIMEDOUT' ||
+      doc.err.message === 'Premature close')
+  )
+    return next();
+
   /*
   // send an SMS to admins of the error
   if (twilioClient) {

@@ -448,11 +448,7 @@ async function listAnalytics(ctx) {
       colors.push(yellow);
     }
 
-    const hardSeries = transformToSeries(
-      'Hard Bounce (5xx)',
-      dates,
-      outboundHard
-    );
+    const hardSeries = transformToSeries('Rejected (5xx)', dates, outboundHard);
     if (hardSeries) {
       series.push(hardSeries);
       colors.push(red);
@@ -506,11 +502,7 @@ async function listAnalytics(ctx) {
       colors.push(yellow);
     }
 
-    const hardSeries = transformToSeries(
-      'Hard Bounce (5xx)',
-      dates,
-      inboundHard
-    );
+    const hardSeries = transformToSeries('Rejected (5xx)', dates, inboundHard);
     if (hardSeries) {
       series.push(hardSeries);
       colors.push(red);

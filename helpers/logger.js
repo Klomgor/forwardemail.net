@@ -200,6 +200,13 @@ async function hook(err, message, meta) {
   // EPIPE
   if (err && err.message === 'write EPIPE') return;
 
+  // read/write ETIMEDOUT
+  if (err && err.message === 'read ETIMEDOUT') return;
+  if (err && err.message === 'write ETIMEDOUT') return;
+
+  // Premature close (client disconnected mid-stream)
+  if (err && err.message === 'Premature close') return;
+
   // unique hash (already exists)
   //
   // NOTE: `err` may be undefined here (e.g. a plain `logger.error(message)`

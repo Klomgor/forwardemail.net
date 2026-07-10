@@ -116,6 +116,14 @@ function refineAndLogError(err, session, isIMAP = false, instance) {
   ) {
     // IMAP client-side errors are not code bugs (e.g. mailbox does not exist, already exists, same source/target)
     logger.debug(err, { session, resolver: instance?.resolver });
+  } else if (
+    typeof err.message === 'string' &&
+    (err.message === 'read ETIMEDOUT' ||
+      err.message === 'write ETIMEDOUT' ||
+      err.message === 'Premature close')
+  ) {
+    // Transient network errors — downgrade to debug to reduce log noise
+    logger.debug(err, { session, resolver: instance?.resolver });
   } else {
     logger.error(err, { session, resolver: instance?.resolver });
   }

@@ -8,7 +8,6 @@ const pify = require('pify');
 const { Builder } = require('json-sql-enhanced');
 
 const checkDiskSpace = require('./check-disk-space');
-const closeDatabase = require('./close-database');
 const getPathToDatabase = require('./get-path-to-database');
 const getTemporaryDatabase = require('./get-temporary-database');
 const logger = require('./logger');
@@ -131,12 +130,9 @@ async function syncTemporaryMailbox(session) {
     logger.fatal(err, { session, resolver: this.resolver });
   }
 
-  // Close the temporary database since we no longer keep a persistent map
-  try {
-    await closeDatabase(tmpDb);
-  } catch (err) {
-    logger.fatal(err, { session, resolver: this.resolver });
-  }
+  // NOTE: tmpDb lifecycle is managed by temporaryDatabaseMap LRU cache.
+  // Do not close it here — the LRU will evict and close idle connections
+  // after the configured idleTTL (2 minutes).
 
   if (err) throw err;
 

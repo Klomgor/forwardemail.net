@@ -22,6 +22,19 @@ async function getTemporaryDatabase(session) {
   // if server is shutting down then don't bother getting database
   if (this.isClosing) throw new ServerShutdownError();
 
+  const cacheKey = session.user.alias_id;
+
+  //
+  // Check the LRU cache first — avoids re-opening the same temp DB file
+  // on every inbound message when the main DB is unavailable.
+  //
+  if (this.temporaryDatabaseMap && this.temporaryDatabaseMap.has(cacheKey)) {
+    const cached = this.temporaryDatabaseMap.get(cacheKey);
+    if (cached && cached.open) return cached;
+    // If the cached DB was closed externally, remove stale entry
+    this.temporaryDatabaseMap.delete(cacheKey);
+  }
+
   const storagePath = getPathToDatabase({
     id: session.user.alias_id,
     storage_location: session.user.storage_location
@@ -36,7 +49,7 @@ async function getTemporaryDatabase(session) {
     // fileMustExist: true,
     timeout: config.busyTimeout,
     // <https://github.com/WiseLibs/better-sqlite3/issues/217#issuecomment-456535384>
-    verbose: env.AXE_SILENT ? null : console.log
+    verbose: env.SQLITE_VERBOSE ? console.log : null
   });
 
   const tmpSession = {
@@ -50,6 +63,12 @@ async function getTemporaryDatabase(session) {
   };
 
   await setupPragma(tmpDb, tmpSession);
+
+  //
+  // Override cache_size for temporary databases (2MB instead of 64MB).
+  // Temp DBs are small and short-lived; 2MB is more than sufficient.
+  //
+  tmpDb.pragma('cache_size = -2048');
 
   // migrate schema
   const commands = await migrateSchema(this, tmpDb, tmpSession, {
@@ -87,6 +106,11 @@ async function getTemporaryDatabase(session) {
         }
       }
     }
+  }
+
+  // Store in the LRU cache so subsequent calls reuse this connection
+  if (this.temporaryDatabaseMap) {
+    this.temporaryDatabaseMap.set(cacheKey, tmpDb);
   }
 
   return tmpDb;

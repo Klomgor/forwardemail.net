@@ -514,7 +514,7 @@ async function getDatabase(
         fileMustExist: readonly,
         timeout: config.busyTimeout,
         // <https://github.com/WiseLibs/better-sqlite3/issues/217#issuecomment-456535384>
-        verbose: env.AXE_SILENT ? null : console.log
+        verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
       });
 
       // store in-memory open connection
@@ -586,6 +586,15 @@ async function getDatabase(
               'PX',
               ms('30d')
             )
+            .catch((err) => logger.warn(err));
+        }
+
+        // If Redis cache miss for vacuum, check MongoDB field as fallback
+        if (!vacuumCheck && alias.has_auto_vacuum_migration) {
+          vacuumCheck = true;
+          // Re-populate Redis cache from MongoDB
+          instance.client
+            .set(`vacuum_check:${session.user.alias_id}`, true, 'PX', ms('30d'))
             .catch((err) => logger.warn(err));
         }
       } catch (err) {
@@ -1144,8 +1153,19 @@ async function getDatabase(
     ) {
       try {
         //
-        // Ensure that auto vacuum is enabled
-        // (otherwise we email the user that this operation is taking place)
+        // Ensure that auto vacuum is enabled.
+        // Uses VACUUM INTO + atomic rename to avoid blocking readers.
+        //
+        // SAFETY: This operation replaces the database file on disk.
+        // Race condition prevention:
+        //  1. Redis distributed lock (NX) prevents concurrent VACUUM across workers
+        //  2. We remove the db from databaseMap BEFORE close+rename so no other
+        //     in-process request can obtain a stale handle
+        //  3. WAL checkpoint ensures all data is in the main file before VACUUM
+        //  4. We verify the new file is a valid encrypted DB before committing
+        //     the rename (open + setupPragma on tmpPath first)
+        //  5. Only after successful reopen do we store in databaseMap and
+        //     mark has_auto_vacuum_migration in MongoDB
         //
         const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
         if (!hasAutoVacuum) {
@@ -1169,18 +1189,111 @@ async function getDatabase(
             );
             if (acquired) {
               try {
-                // only once per week should we attempt this
+                // Rate-limit: only attempt once per week per alias
                 await instance.client.set(
                   `vacuum_check:${session.user.alias_id}`,
                   true,
                   'PX',
                   ms('7d')
                 );
+
+                const tmpPath = `${dbFilePath}.vacuum-tmp`;
+
+                // Clean up any stale tmp file from a previous failed attempt
+                try {
+                  fs.unlinkSync(tmpPath);
+                } catch {}
+
+                // Checkpoint WAL so all committed data is in the main DB file
+                db.pragma('wal_checkpoint(TRUNCATE)');
+
+                // Set auto_vacuum mode and VACUUM INTO the temp file
                 db.pragma('auto_vacuum=FULL');
-                db.prepare('VACUUM').run();
+                db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
+
+                //
+                // SAFETY: Verify the new file is a valid encrypted database
+                // BEFORE replacing the original. This prevents SQLITE_NOTADB
+                // if VACUUM produced a corrupt or incomplete file.
+                //
+                let verifyDb;
+                try {
+                  verifyDb = new Database(tmpPath, {
+                    timeout: config.busyTimeout,
+                    verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+                  });
+                  await setupPragma(verifyDb, session);
+                  // Quick integrity check — reads first page + schema
+                  const integrityResult = verifyDb.pragma('quick_check', {
+                    simple: true
+                  });
+                  if (integrityResult !== 'ok') {
+                    throw new Error(
+                      `VACUUM INTO integrity check failed: ${integrityResult}`
+                    );
+                  }
+                } finally {
+                  if (verifyDb && verifyDb.open) verifyDb.close();
+                }
+
+                //
+                // SAFETY: Remove from databaseMap BEFORE close+rename
+                // so no concurrent request can obtain a handle to the
+                // about-to-be-replaced file.
+                //
+                if (instance.databaseMap) instance.databaseMap.delete(alias.id);
+
+                // Close the current db handle
+                db.close();
+
+                // Atomic rename (same filesystem, so this is atomic on Linux)
+                fs.renameSync(tmpPath, dbFilePath);
+
+                // Reopen the database with the new file
+                db = new Database(dbFilePath, {
+                  timeout: config.busyTimeout,
+                  verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+                });
+
+                // Re-apply encryption and pragmas
+                await setupPragma(db, session);
+
+                // Store reopened db in map and update session
+                if (instance.databaseMap)
+                  instance.databaseMap.set(alias.id, db);
+                session.db = db;
+
+                // Mark migration complete in MongoDB
+                // (only after everything succeeded)
+                await Aliases.findByIdAndUpdate(session.user.alias_id, {
+                  $set: { has_auto_vacuum_migration: true }
+                });
+              } catch (err) {
+                // If VACUUM failed, ensure we still have a valid db handle
+                if (!db || !db.open) {
+                  try {
+                    db = new Database(dbFilePath, {
+                      timeout: config.busyTimeout,
+                      verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+                    });
+                    await setupPragma(db, session);
+                    if (instance.databaseMap)
+                      instance.databaseMap.set(alias.id, db);
+                    session.db = db;
+                  } catch (reopenErr) {
+                    reopenErr.isCodeBug = true;
+                    logger.fatal(reopenErr);
+                  }
+                }
+
+                throw err;
               } finally {
-                // Release the lock after VACUUM completes
+                // Release the distributed lock
                 await instance.client.del(vacuumLockKey);
+                // Clean up tmp file if it still exists (e.g. on error)
+                try {
+                  fs.unlinkSync(`${dbFilePath}.vacuum-tmp`);
+                } catch {}
               }
             }
           }

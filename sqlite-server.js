@@ -70,6 +70,17 @@ class SQLite {
     //
     this.databaseMap = new DatabaseLRUMap();
 
+    //
+    // Separate LRU for temporary databases (smaller capacity, shorter TTL)
+    // Temp DBs hold queued messages during main-DB unavailability and are
+    // accessed infrequently, so a smaller cache_size (2MB) and shorter idle
+    // TTL (2min) prevent wasted memory while still avoiding re-open overhead.
+    //
+    this.temporaryDatabaseMap = new DatabaseLRUMap({
+      maxSize: 100,
+      idleTTL: ms('2m')
+    });
+
     // Unique worker ID for filtering self-published Redis broadcast messages
     // (prevents local clients from receiving the same broadcast twice)
     this.workerId = `${process.pid}:${Date.now()}`;
@@ -336,15 +347,14 @@ class SQLite {
 
     this.wsInterval = setInterval(() => {
       for (const ws of this.wss.clients) {
-        /*
-        if (ws.isAlive === false) {
-          // <https://github.com/websockets/ws/issues/1142#issuecomment-1279826041>
-          // return ws.close();
-          return ws.terminate();
-        }
-
-        ws.isAlive = false;
-        */
+        // NOTE: ws.terminate() intentionally disabled here.
+        // Terminating dead connections causes IMAP reconnect storms
+        // and increases TTI. The ping alone is sufficient for keepalive.
+        // if (ws.isAlive === false) {
+        //   ws.terminate();
+        //   continue;
+        // }
+        // ws.isAlive = false;
         ws.ping();
       }
     }, ms('45s'));
@@ -369,6 +379,10 @@ class SQLite {
     // Gracefully close all cached database connections
     if (this.databaseMap) {
       await this.databaseMap.closeAll();
+    }
+
+    if (this.temporaryDatabaseMap) {
+      await this.temporaryDatabaseMap.closeAll();
     }
 
     // close server

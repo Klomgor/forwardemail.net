@@ -6957,6 +6957,7 @@
   "Outbound SMTP Messages": "Outbound SMTP Messages",
   "Deliverability for past 30 days": "Deliverability for past 30 days",
   "Hard Bounce": "Hard Bounce",
+  "Rejected": "Rejected",
   "Soft Bounce": "Soft Bounce",
   "Spam/Virus Blocked": "Spam/Virus Blocked",
   "Outbound Deliverability": "Outbound Deliverability",

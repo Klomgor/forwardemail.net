@@ -396,6 +396,11 @@ const Aliases = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // tracks whether VACUUM INTO auto_vacuum=FULL migration has been completed
+  has_auto_vacuum_migration: {
+    type: Boolean,
+    default: false
+  },
   // this is an object that looks like:
   // {
   //   '50': new Date(),
@@ -820,7 +825,14 @@ Aliases.pre('validate', function (next) {
 // it populates "id" String automatically for comparisons
 Aliases.plugin(mongooseCommonPlugin, {
   object: 'alias',
-  omitExtraFields: ['is_rekey', 'is_api', 'tokens', 'pgp_error_sent_at', 'aps'],
+  omitExtraFields: [
+    'is_rekey',
+    'is_api',
+    'tokens',
+    'pgp_error_sent_at',
+    'aps',
+    'has_auto_vacuum_migration'
+  ],
   defaultLocale: i18n.config.defaultLocale
 });
 

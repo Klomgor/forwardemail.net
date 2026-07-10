@@ -72,7 +72,10 @@ class IMAPNotifier extends EventEmitter {
         clearTimeout(data.timeout);
         data.count++;
 
-        if (data.initial < Date.now() - 1000) {
+        if (
+          data.initial <
+          Date.now() - (Number(env.IMAP_NOTIFY_MAX_DELAY_MS) || 1000)
+        ) {
           return fire();
         }
       } else {
@@ -86,7 +89,7 @@ class IMAPNotifier extends EventEmitter {
 
       data.timeout = setTimeout(() => {
         fire();
-      }, 100);
+      }, Number(env.IMAP_NOTIFY_DEBOUNCE_MS) || 100);
       data.timeout.unref();
 
       if (!this.publishTimers.has(ev)) {

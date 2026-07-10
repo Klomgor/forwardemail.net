@@ -635,16 +635,28 @@ async function parsePayload(data, ws) {
         // sending more than 1 GB per day or 1000 messages per day
         // but attempt to use the reverse PTR root domain of the remoteAddress
         //
+        // NOTE: resolvedClientHostname is already resolved during on-connect
+        //       via Tangerine (which has built-in Redis-backed DNS caching).
+        //       Fall back to a reverse lookup if it wasn't set (e.g. direct WS call).
+        //
         let sender = payload.remoteAddress;
-        try {
-          const [clientHostname] = await this.resolver.reverse(
-            payload.remoteAddress
-          );
-          if (isFQDN(clientHostname)) {
-            sender = parseRootDomain(clientHostname);
+        if (
+          payload.resolvedClientHostname &&
+          isFQDN(payload.resolvedClientHostname)
+        ) {
+          sender = parseRootDomain(payload.resolvedClientHostname);
+        } else {
+          // Fallback: attempt reverse lookup via Tangerine (cached)
+          try {
+            const [hostname] = await this.resolver.reverse(
+              payload.remoteAddress
+            );
+            if (hostname && isFQDN(hostname)) {
+              sender = parseRootDomain(hostname);
+            }
+          } catch {
+            // PTR record not found — use raw IP as sender
           }
-        } catch (err) {
-          logger.warn(err);
         }
 
         const date = new Date().toISOString().split('T')[0];
@@ -1780,7 +1792,7 @@ async function parsePayload(data, ws) {
                   logger.fatal(err);
                 }
 
-                if (tmpDb) await closeDatabase(tmpDb);
+                // NOTE: tmpDb lifecycle managed by temporaryDatabaseMap LRU
 
                 if (err) throw err;
               }
@@ -1993,62 +2005,10 @@ async function parsePayload(data, ws) {
         break;
       }
 
+      // NOTE: vacuum is now handled automatically in get-database.js
+      // via VACUUM INTO + atomic rename. This case is kept for
+      // backward compatibility but is effectively a no-op.
       case 'vacuum': {
-        const alias = await Aliases.findOne({
-          _id: new mongoose.Types.ObjectId(payload.session.user.alias_id),
-          domain: new mongoose.Types.ObjectId(payload.session.user.domain_id)
-        })
-          .lean()
-          .exec();
-
-        if (!alias) throw new TypeError('Alias does not exist');
-
-        // vacuum every 24 hours
-        if (
-          !_.isDate(alias.last_vacuum_at) ||
-          new Date(alias.last_vacuum_at).getTime() <
-            dayjs().subtract(1, 'day').toDate().getTime()
-        ) {
-          logger.debug('vacuuming', { alias });
-          //
-          // NOTE: we store this immediately instead of after success
-          //       in case multiple connections are authenticated at the same time
-          //       (e.g. multiple IMAP connections calling onAuth which invokes this)
-          //       (it gets invoked from the "sync" payload action; see above)
-          //
-          // store when we last vacuumed database
-          await Aliases.findOneAndUpdate(
-            {
-              _id: alias._id,
-              domain: alias.domain
-            },
-            {
-              $set: {
-                last_vacuum_at: new Date()
-              }
-            }
-          );
-
-          // TODO: we should check that we have 2x space required
-          // <https://www.theunterminatedstring.com/sqlite-vacuuming/>
-
-          db = await getDatabase(
-            this,
-            // alias
-            {
-              id: payload.session.user.alias_id,
-              storage_location: payload.session.user.storage_location
-            },
-            payload.session
-          );
-
-          // TODO: vacuum into instead (same for elsewhere)
-          // vacuum database
-          db.prepare('VACUUM').run();
-        } else {
-          logger.debug('no vacuum to run', { alias });
-        }
-
         response = {
           id: payload.id,
           data: true

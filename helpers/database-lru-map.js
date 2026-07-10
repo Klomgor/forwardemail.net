@@ -16,9 +16,8 @@ const logger = require('#helpers/logger');
 // Drop-in replacement for Map() with:
 // - Max size limit (configurable, default 500 per worker)
 // - Idle TTL (close databases not accessed within idleTTL)
-// - Throttled LRU sweep (max N evictions per cycle to avoid I/O storms)
+// - Batch eviction (10% of capacity when full)
 // - Transaction awareness (never evicts a DB mid-transaction)
-// - Event-loop lag detection (skip sweep when Node is overloaded)
 // - Safe async close via closeDatabase helper
 //
 // Protection against evicting active databases:
@@ -29,14 +28,9 @@ const logger = require('#helpers/logger');
 class DatabaseLRUMap {
   constructor(options = {}) {
     this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 500;
-    this.maxEvictionsPerSweep =
-      options.maxEvictionsPerSweep ||
-      Number(env.DATABASE_MAP_MAX_EVICTIONS_PER_SWEEP) ||
-      50;
     this.idleTTL = options.idleTTL || ms('5m');
     this._map = new Map(); // key -> { db, lastAccess }
     this._closing = new Set(); // keys currently being closed
-    this._lastSweepTime = Date.now();
 
     // Periodic sweep to close idle databases (every 30s)
     this._sweepInterval = setInterval(() => {
@@ -71,9 +65,9 @@ class DatabaseLRUMap {
       return this;
     }
 
-    // Evict LRU entry if at capacity
+    // Evict 10% of capacity when full (batch eviction)
     if (this._map.size >= this.maxSize) {
-      this._evictLRU();
+      this._evictBatch();
     }
 
     this._map.set(key, {
@@ -102,53 +96,43 @@ class DatabaseLRUMap {
     return this._map.keys();
   }
 
-  // Evict the least recently used entry (single entry, called on capacity overflow)
-  _evictLRU() {
-    let oldestKey = null;
-    let oldestTime = Number.POSITIVE_INFINITY;
+  // Evict 10% of capacity (batch eviction when map is full)
+  _evictBatch() {
+    const count = Math.max(1, Math.ceil(this.maxSize * 0.1));
+    const candidates = [];
     for (const [key, entry] of this._map) {
       // Skip entries currently being closed
       if (this._closing.has(key)) continue;
       // Skip entries mid-transaction (never evict during a write)
       if (entry.db && entry.db.inTransaction) continue;
-      if (entry.db && entry.db.open && entry.lastAccess < oldestTime) {
-        oldestTime = entry.lastAccess;
-        oldestKey = key;
+      if (entry.db && entry.db.open) {
+        candidates.push({ key, lastAccess: entry.lastAccess });
       }
     }
 
-    if (oldestKey !== null) {
-      const entry = this._map.get(oldestKey);
-      this._map.delete(oldestKey);
+    // Sort by lastAccess ascending (oldest first)
+    candidates.sort((a, b) => a.lastAccess - b.lastAccess);
+
+    const toEvict = candidates.slice(0, count);
+    for (const { key } of toEvict) {
+      const entry = this._map.get(key);
+      this._map.delete(key);
       if (entry && entry.db && entry.db.open) {
-        this._closing.add(oldestKey);
+        this._closing.add(key);
         closeDatabase(entry.db)
           .catch((err) => {
             logger.error(err);
           })
           .finally(() => {
-            this._closing.delete(oldestKey);
+            this._closing.delete(key);
           });
       }
     }
   }
 
   // Sweep idle databases that haven't been accessed within TTL.
-  // Throttled: close at most maxEvictionsPerSweep per cycle.
-  // Skips sweep if event-loop lag exceeds threshold (Node is overloaded).
   _sweepIdle() {
     const now = Date.now();
-    const elapsed = now - this._lastSweepTime;
-    this._lastSweepTime = now;
-    // If elapsed time is much longer than expected 30s, the event loop is
-    // saturated — skip this cycle to avoid piling on more I/O.
-    if (elapsed > ms('35s')) {
-      logger.warn(
-        `DatabaseLRUMap: skipping sweep (event-loop lag ${elapsed}ms)`
-      );
-      return;
-    }
-
     const toEvict = [];
     for (const [key, entry] of this._map) {
       if (now - entry.lastAccess > this.idleTTL) {
@@ -159,8 +143,6 @@ class DatabaseLRUMap {
         // Skip entries whose db is not open (already closed externally)
         if (!entry.db || !entry.db.open) continue;
         toEvict.push(key);
-        // Throttle: only evict up to maxEvictionsPerSweep per cycle
-        if (toEvict.length >= this.maxEvictionsPerSweep) break;
       }
     }
 

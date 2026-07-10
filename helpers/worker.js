@@ -235,6 +235,7 @@ async function rekey(payload) {
     );
 
     // run a checkpoint to copy over wal to db
+    db.pragma('wal_checkpoint(PASSIVE)');
 
     // create backup
     db.exec(`VACUUM INTO '${tmp}'`);
@@ -756,6 +757,7 @@ async function backup(payload) {
       case 'sqlite': {
         // create backup
         // takes approx 5-10s per GB
+        db.pragma('wal_checkpoint(PASSIVE)');
         db.exec(`VACUUM INTO '${tmp}'`);
 
         await closeDatabase(db);
@@ -992,6 +994,11 @@ async function backup(payload) {
       }
     });
     await upload.done();
+
+    // Immediately unlink tmp file to release page cache
+    try {
+      await fs.promises.rm(tmp, { force: true });
+    } catch {}
 
     // update alias imap backup date using provided time
     if (payload.format === 'sqlite') {

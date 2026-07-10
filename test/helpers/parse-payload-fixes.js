@@ -20,8 +20,7 @@ function makeDb(opts = {}) {
 test('inTransaction > prevents eviction during sweep', async (t) => {
   const map = new DatabaseLRUMap({
     maxSize: 10,
-    idleTTL: 50,
-    maxEvictionsPerSweep: 10
+    idleTTL: 50
   });
   t.context.map = map;
   const db = makeDb({ inTransaction: true });
@@ -61,8 +60,7 @@ test('inTransaction > prevents eviction during capacity overflow', (t) => {
 test('get() touch > prevents idle eviction of active databases', (t) => {
   const map = new DatabaseLRUMap({
     maxSize: 10,
-    idleTTL: 100,
-    maxEvictionsPerSweep: 10
+    idleTTL: 100
   });
   t.context.map = map;
   map.set('active', makeDb());
@@ -132,16 +130,30 @@ test('ecosystem-sqlite.json > max_memory_restart is 80G', (t) => {
   t.is(app.max_memory_restart, '80G');
 });
 
-test('setup-pragma > cache_size is 2048 KiB (2MB)', (t) => {
+test('setup-pragma > cache_size is 64MB for main databases', (t) => {
   const fs = require('node:fs');
   const path = require('node:path');
   const content = fs.readFileSync(
     path.join(__dirname, '../../helpers/setup-pragma.js'),
     'utf8'
   );
-  // cache_size=-2048 means 2048 KiB = 2MB
+  // cache_size=-65536 means 65536 KiB = 64MB
   t.true(
-    content.includes('cache_size=-2048') ||
-      content.includes('cache_size = -2048')
+    content.includes('cache_size=-65536') ||
+      content.includes('cache_size = -65536')
+  );
+});
+
+test('get-temporary-database > cache_size override is 2MB for temp databases', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/get-temporary-database.js'),
+    'utf8'
+  );
+  // cache_size=-2048 means 2048 KiB = 2MB (temp DB override)
+  t.true(
+    content.includes('cache_size = -2048') ||
+      content.includes('cache_size=-2048')
   );
 });

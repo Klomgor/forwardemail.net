@@ -23,17 +23,10 @@ test('constructor > defaults maxSize to 500', (t) => {
   t.is(map.maxSize, 500);
 });
 
-test('constructor > defaults maxEvictionsPerSweep to 50', (t) => {
-  const map = new DatabaseLRUMap();
-  t.context.map = map;
-  t.is(map.maxEvictionsPerSweep, 50);
-});
-
 test('constructor > accepts custom options', (t) => {
-  const map = new DatabaseLRUMap({ maxSize: 10, maxEvictionsPerSweep: 5 });
+  const map = new DatabaseLRUMap({ maxSize: 10 });
   t.context.map = map;
   t.is(map.maxSize, 10);
-  t.is(map.maxEvictionsPerSweep, 5);
 });
 
 // --- get/set/has/size/delete ---
@@ -101,21 +94,25 @@ test('delete > returns false for missing key', (t) => {
   t.false(map.delete('missing'));
 });
 
-// --- LRU eviction on capacity overflow ---
+// --- Batch eviction on capacity overflow ---
 
-test('set > evicts LRU entry when at capacity', (t) => {
-  const map = new DatabaseLRUMap({ maxSize: 2 });
+test('set > batch-evicts 10% of capacity when full', (t) => {
+  const map = new DatabaseLRUMap({ maxSize: 10 });
   t.context.map = map;
-  map.set('a', makeDb());
-  map.set('b', makeDb());
-  // Make 'a' the oldest
-  map._map.get('a').lastAccess = Date.now() - 1000;
-  map._map.get('b').lastAccess = Date.now();
-  // Adding 'c' should evict 'a' (oldest)
-  map.set('c', makeDb());
-  t.false(map.has('a'));
-  t.true(map.has('b'));
-  t.true(map.has('c'));
+  // Fill to capacity
+  for (let i = 0; i < 10; i++) {
+    map.set(`key${i}`, makeDb());
+    // Make older entries have older lastAccess
+    map._map.get(`key${i}`).lastAccess = Date.now() - (10 - i) * 1000;
+  }
+
+  t.is(map.size, 10);
+  // Adding one more should batch-evict ceil(10 * 0.1) = 1 oldest entry
+  map.set('new', makeDb());
+  t.true(map.has('new'));
+  // key0 was the oldest, should be evicted
+  t.false(map.has('key0'));
+  t.is(map.size, 10);
 });
 
 test('set > does not evict entries in transaction', (t) => {
@@ -149,8 +146,7 @@ test('set > updates existing entry without eviction', (t) => {
 test('_sweepIdle > evicts idle entries past TTL', async (t) => {
   const map = new DatabaseLRUMap({
     maxSize: 10,
-    idleTTL: 50,
-    maxEvictionsPerSweep: 10
+    idleTTL: 50
   });
   t.context.map = map;
   map.set('idle1', makeDb());
@@ -166,8 +162,7 @@ test('_sweepIdle > evicts idle entries past TTL', async (t) => {
 test('_sweepIdle > does not evict entries in transaction', async (t) => {
   const map = new DatabaseLRUMap({
     maxSize: 10,
-    idleTTL: 50,
-    maxEvictionsPerSweep: 10
+    idleTTL: 50
   });
   t.context.map = map;
   map.set('active', makeDb({ inTransaction: true }));
@@ -183,8 +178,7 @@ test('_sweepIdle > does not evict entries in transaction', async (t) => {
 test('_sweepIdle > does not evict recently accessed entries', (t) => {
   const map = new DatabaseLRUMap({
     maxSize: 10,
-    idleTTL: 100,
-    maxEvictionsPerSweep: 10
+    idleTTL: 100
   });
   t.context.map = map;
   map.set('fresh', makeDb());
@@ -194,37 +188,6 @@ test('_sweepIdle > does not evict recently accessed entries', (t) => {
   map._sweepIdle();
   t.true(map.has('fresh'));
   t.false(map.has('stale'));
-});
-
-test('_sweepIdle > respects maxEvictionsPerSweep throttle', async (t) => {
-  const map = new DatabaseLRUMap({
-    maxSize: 100,
-    idleTTL: 50,
-    maxEvictionsPerSweep: 2
-  });
-  t.context.map = map;
-  map.set('a', makeDb());
-  map.set('b', makeDb());
-  map.set('c', makeDb());
-  map.set('d', makeDb());
-  await new Promise((resolve) => {
-    setTimeout(resolve, 60);
-  });
-  map._sweepIdle();
-  // Only 2 should be evicted per cycle
-  t.is(map.size, 2);
-});
-
-test('_sweepIdle > skips sweep when event-loop lag detected', (t) => {
-  const map = new DatabaseLRUMap({ maxSize: 10, idleTTL: 50 });
-  t.context.map = map;
-  map.set('a', makeDb());
-  // Simulate event-loop lag by setting _lastSweepTime far in the past
-  map._lastSweepTime = Date.now() - 60_000;
-  map._map.get('a').lastAccess = Date.now() - 60_000;
-  map._sweepIdle();
-  // Should NOT have evicted because lag was detected
-  t.true(map.has('a'));
 });
 
 // --- closeAll ---
