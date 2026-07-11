@@ -52,13 +52,24 @@ const graceful = new Graceful({
       await Promise.all(
         [...sqlite.databaseMap.keys()].map(async (key) => {
           const db = sqlite.databaseMap.get(key);
-          if (db) await closeDatabase(db);
-          sqlite.databaseMap.delete(key);
+          if (db) {
+            // evict() removes from map without triggering close,
+            // then we close manually to avoid double-close
+            sqlite.databaseMap.evict(key);
+            await closeDatabase(db);
+          }
         })
       );
     },
-    // temporary databases are now opened/closed per request (no map to clean up)
-    async () => {}
+    // temporary databases (LRU-cached connections)
+    async () => {
+      if (
+        !sqlite.temporaryDatabaseMap ||
+        sqlite.temporaryDatabaseMap.size === 0
+      )
+        return;
+      await sqlite.temporaryDatabaseMap.closeAll();
+    }
   ]
 });
 graceful.listen();

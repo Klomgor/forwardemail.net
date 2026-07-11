@@ -255,7 +255,7 @@ async function onMove(mailboxId, update, session, fn) {
     // return early if no messages
     // (we could also do `_id: -1` as a query)
     if (!update._id && update.messages.length === 0)
-      fn(
+      return fn(
         null,
         true,
         {

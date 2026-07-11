@@ -131,12 +131,14 @@ async function refreshSession(session, command) {
         : 0;
 
     // a long cache period avoids MongoDB connection issues interrupting IMAP
-    await this.client.set(
-      `refresh_check:${session.user.alias_id}`,
-      true,
-      'PX',
-      ms('1d')
-    );
+    if (this.client) {
+      await this.client.set(
+        `refresh_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('1d')
+      );
+    }
   }
 
   //

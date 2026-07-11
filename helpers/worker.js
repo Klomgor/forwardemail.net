@@ -238,7 +238,7 @@ async function rekey(payload) {
     db.pragma('wal_checkpoint(PASSIVE)');
 
     // create backup
-    db.exec(`VACUUM INTO '${tmp}'`);
+    db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}';`);
 
     await closeDatabase(db);
 
@@ -758,7 +758,7 @@ async function backup(payload) {
         // create backup
         // takes approx 5-10s per GB
         db.pragma('wal_checkpoint(PASSIVE)');
-        db.exec(`VACUUM INTO '${tmp}'`);
+        db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}';`);
 
         await closeDatabase(db);
 
@@ -869,8 +869,9 @@ async function backup(payload) {
           logger.warn(err);
         });
         await new Promise((resolve, reject) => {
+          output.once('error', reject);
+          output.once('close', resolve);
           archive.once('error', reject);
-          archive.once('end', resolve);
         });
         break;
       }
@@ -939,13 +940,17 @@ async function backup(payload) {
           logger.warn(err);
         });
         await new Promise((resolve, reject) => {
-          archive.on('error', reject);
-          archive.on('end', resolve);
+          output.once('error', reject);
+          output.once('close', resolve);
+          archive.once('error', reject);
         });
         break;
       }
       // No default
     }
+
+    // Close db handle for mbox/eml cases (sqlite case already closes it)
+    if (db && db.open) await closeDatabase(db);
 
     // calculate hash of file
     const hash = await hasha.fromFile(tmp, { algorithm: 'sha256' });

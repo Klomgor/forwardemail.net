@@ -827,7 +827,10 @@ async function onAppend(path, flags, date, raw, session, fn) {
 
     // TODO: notify wildduck about this in GH issues
     // if appending to draft then add draft flag
-    if (mailbox.specialUse === '\\Drafts') data.flags.push('\\Draft');
+    if (mailbox.specialUse === '\\Drafts') {
+      data.flags.push('\\Draft');
+      data.draft = true;
+    }
 
     // store whether junk or not
     data.junk = mailbox.specialUse === '\\Junk';

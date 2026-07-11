@@ -362,8 +362,8 @@ async function onSearch(mailboxId, options, session, fn) {
                 }
               } else if (ne) {
                 const sql = {
-                  query: `select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') != $p1;`,
-                  values: { p1: term.header, p2: term.value }
+                  query: `select _id from Messages WHERE _id NOT IN (select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1);`,
+                  values: { p1: term.header }
                 };
                 const ids = session.db
                   .prepare(sql.query)
@@ -379,7 +379,7 @@ async function onSearch(mailboxId, options, session, fn) {
                 mustIncludeIds = true;
               } else {
                 const sql = {
-                  query: `select _id from Messages, json_each(Messages.headers) where key = $p1;`,
+                  query: `select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1;`,
                   values: { p1: term.header }
                 };
                 const ids = session.db

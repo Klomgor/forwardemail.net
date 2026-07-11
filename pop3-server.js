@@ -216,6 +216,8 @@ class POP3 {
   }
 
   async close() {
+    if (this.subscriber) this.subscriber.unsubscribe('sqlite_auth_reset');
+    if (this.server.notifier) this.server.notifier.close();
     await pify(this.server.close).bind(this.server)();
   }
 }

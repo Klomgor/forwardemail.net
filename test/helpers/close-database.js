@@ -40,10 +40,15 @@ test('closeDatabase > calls close on healthy db', async (t) => {
   t.true(db.close.calledOnce);
 });
 
-test('closeDatabase > does NOT call PRAGMA optimize (intentionally disabled)', async (t) => {
+test('closeDatabase > calls PASSIVE checkpoint but NOT optimize', async (t) => {
   const { db } = t.context;
   await closeDatabase(db);
-  t.false(db.pragma.called);
+  // Should call wal_checkpoint(PASSIVE) before close
+  t.true(db.pragma.calledOnce);
+  t.is(db.pragma.firstCall.args[0], 'wal_checkpoint(PASSIVE)');
+  // Should NOT call optimize (was root cause of IOERR_SHORT_READ)
+  t.false(db.pragma.calledWith('optimize'));
+  t.false(db.pragma.calledWith('analysis_limit=400'));
 });
 
 test('closeDatabase > handles close() throwing', async (t) => {

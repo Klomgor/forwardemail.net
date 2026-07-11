@@ -499,6 +499,7 @@ function createWebSocketAsPromised(options = {}) {
     () => {
       if (wsp._interval) {
         clearInterval(wsp._interval);
+        wsp._interval = null;
       }
     }
     // }, { once: true }

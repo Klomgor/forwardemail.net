@@ -163,10 +163,15 @@ async function onUpdate(update, session, fn) {
       );
 
       // Step 2: Permanently delete marked messages via EXPUNGE
+      // NOTE: must pass isUid + messages to restrict expunge to only
+      // the UIDs that POP3 marked for deletion; otherwise any message
+      // that already had \Deleted (e.g. from IMAP) would also be removed.
       await onExpungePromise.call(
         this,
         session.user.mailbox,
         {
+          isUid: true,
+          messages: update.deleted.map((message) => message.uid),
           silent: true
         },
         session

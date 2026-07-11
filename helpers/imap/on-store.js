@@ -130,7 +130,7 @@ async function onStore(mailboxId, update, session, fn) {
             mailbox: mailboxId.toString(),
             action: update.action,
             flags: update.value,
-            uids: modified || []
+            uids: entries.map((e) => e.uid)
           }
         );
 
@@ -151,7 +151,7 @@ async function onStore(mailboxId, update, session, fn) {
             {
               mailbox: mailboxId.toString(),
               action: update.action,
-              uids: modified || []
+              uids: entries.map((e) => e.uid)
             }
           );
         }
@@ -635,7 +635,7 @@ async function onStore(mailboxId, update, session, fn) {
           mailbox: mailboxId.toString(),
           action: update.action,
           flags: update.value,
-          uids: modified || []
+          uids: entries.map((e) => e.uid)
         }
       );
 
@@ -654,7 +654,7 @@ async function onStore(mailboxId, update, session, fn) {
           {
             mailbox: mailboxId.toString(),
             action: update.action,
-            uids: modified || []
+            uids: entries.map((e) => e.uid)
           }
         );
       }

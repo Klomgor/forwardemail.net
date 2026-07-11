@@ -127,8 +127,7 @@ const PAYLOAD_ACTIONS = new Set([
   'reset', // no db
   'touch', // no db
 
-  // db required
-  'copy_messages',
+  // NOTE: 'copy_messages' removed — not yet implemented (no case handler)
 
   // none of these require db
   // (because they all have `refreshSession` calls)
@@ -883,7 +882,7 @@ async function parsePayload(data, ws) {
                 }
 
                 // 4) We have a specific limit per Sender and yourdomain.com of 1 GB and/or 1000 messages daily.
-                const specific = await Promise.all(
+                const [specificSize, specificCount] = await Promise.all(
                   ['size', 'count'].map(async (kind) => {
                     const key = `imap_limit_${kind}_${config.env}:${date}:${sender}:${root}`;
                     const result = await this.client.incrby(key, 0);
@@ -894,11 +893,11 @@ async function parsePayload(data, ws) {
                   })
                 );
 
-                if (specific.size >= bytes('1GB') || specific.count >= 1000) {
+                if (specificSize >= bytes('1GB') || specificCount >= 1000) {
                   const err = new SMTPError(
                     `${sender} limited with current of ${bytes(
-                      specific.size
-                    )} from ${specific.count} messages to ${root}`,
+                      specificSize
+                    )} from ${specificCount} messages to ${root}`,
                     {
                       responseCode: 421
                     }
@@ -923,12 +922,13 @@ async function parsePayload(data, ws) {
                 );
 
               // we should only use in-memory database is if was connected (IMAP session open)
-              if (
-                this.databaseMap &&
-                this.databaseMap.has(session.user.alias_id) &&
-                this.databaseMap.get(session.user.alias_id).open === true
-              ) {
-                session.db = this.databaseMap.get(session.user.alias_id);
+              {
+                const cachedDb =
+                  this.databaseMap &&
+                  this.databaseMap.get(session.user.alias_id);
+                if (cachedDb && cachedDb.open === true) {
+                  session.db = cachedDb;
+                }
               }
 
               //
@@ -1308,12 +1308,11 @@ async function parsePayload(data, ws) {
               // tmp DB writes and the sync-back overhead they cause).
               //
               if (fallback && !session.db) {
-                if (
+                const recheckDb =
                   this.databaseMap &&
-                  this.databaseMap.has(session.user.alias_id) &&
-                  this.databaseMap.get(session.user.alias_id).open === true
-                ) {
-                  session.db = this.databaseMap.get(session.user.alias_id);
+                  this.databaseMap.get(session.user.alias_id);
+                if (recheckDb && recheckDb.open === true) {
+                  session.db = recheckDb;
                   try {
                     await onAppendPromise.call(
                       this,
@@ -1947,6 +1946,7 @@ async function parsePayload(data, ws) {
           this.databaseMap.get(touchKey); // .get() updates lastAccess
         }
 
+        response = { id: payload.id, data: true };
         break;
       }
 
@@ -2123,6 +2123,7 @@ async function parsePayload(data, ws) {
             }
 
             case 'pluck': {
+              if (!stmt) throw new TypeError('Statement not prepared');
               stmt.pluck(op[1] !== false);
               break;
             }
@@ -2130,6 +2131,7 @@ async function parsePayload(data, ws) {
             case 'run':
             case 'get':
             case 'all': {
+              if (!stmt) throw new TypeError('Statement not prepared');
               // Convert Uint8Array values to Buffer for SQLite binding
               // (msgpackr deserializes Buffers as Uint8Array over WebSocket)
               let values = op[1];
@@ -2361,14 +2363,16 @@ async function parsePayload(data, ws) {
         ]);
 
         // close existing connection if any and purge it
-        if (
-          this?.databaseMap &&
-          this.databaseMap.has(payload.session.user.alias_id)
-        ) {
-          await closeDatabase(
-            this.databaseMap.get(payload.session.user.alias_id)
+        if (this?.databaseMap) {
+          const existingDb = this.databaseMap.get(
+            payload.session.user.alias_id
           );
-          this.databaseMap.delete(payload.session.user.alias_id);
+          if (existingDb) {
+            // evict() removes from map WITHOUT triggering close,
+            // then we close manually to avoid double-close race
+            this.databaseMap.evict(payload.session.user.alias_id);
+            await closeDatabase(existingDb);
+          }
         }
 
         // TODO: don't allow getDatabase to perform a reset here
@@ -2491,6 +2495,10 @@ async function parsePayload(data, ws) {
 
     if (!ws) return response.data;
 
+    // Guard against sending to a closed WebSocket
+    // (e.g. client disconnected during a long-running operation)
+    if (ws.readyState !== 1) return;
+
     ws.send(encoder.pack(response));
   } catch (_err) {
     // since we use multiArgs from pify
@@ -2528,7 +2536,7 @@ async function parsePayload(data, ws) {
 
     if (db && !this?.databaseMap) await closeDatabase(db);
 
-    if (!ws || typeof ws.send !== 'function') throw err;
+    if (!ws || typeof ws.send !== 'function' || ws.readyState !== 1) throw err;
 
     if (_.isPlainObject(payload) && isSANB(payload.id)) {
       ws.send(

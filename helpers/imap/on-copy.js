@@ -207,9 +207,9 @@ async function onCopy(connection, mailboxId, update, session, fn) {
           for (const m of messages) {
             // don't copy in bulk so it doesn't get out of incremental uid sync
             const _id = new mongoose.Types.ObjectId();
-            sourceUid.unshift(m.uid);
+            sourceUid.push(m.uid);
             sourceIds.push(m._id);
-            destinationUid.unshift(uidNext);
+            destinationUid.push(uidNext);
 
             // copy the message and generate new id
             m._id = _id.toString();

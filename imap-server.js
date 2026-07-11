@@ -16,6 +16,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const tls = require('node:tls');
+const { setTimeout: setTimeoutPromise } = require('node:timers/promises');
 
 const MessageHandler = require('@zone-eu/wildduck/lib/message-handler');
 const RateLimiter = require('async-ratelimiter');
@@ -228,9 +229,10 @@ class IMAP {
     // every hour attempt to run a backup on the connected users
     // (initial auth may attempt to backup, but could fail)
     this.backupConnections = this.backupConnections.bind(this);
-    setTimeout(() => {
+    this._backupTimer = setTimeout(() => {
       this.backupConnections();
     }, ms('1h'));
+    this._isClosing = false;
 
     // listen for websocket write stream
     // NOTE: the sqlite-server broadcasts { session_id, alias_id, payload }
@@ -369,8 +371,9 @@ class IMAP {
 
   async backupConnections() {
     try {
+      if (this._isClosing) return;
       if (!this?.server?.connections || this.server.connections.size === 0) {
-        setTimeout(() => {
+        this._backupTimer = setTimeout(() => {
           this.backupConnections();
         }, ms('1h'));
         return;
@@ -393,13 +396,13 @@ class IMAP {
             session: { user: connection.session.user }
           });
 
-          await ms('1s');
+          await setTimeoutPromise(ms('1s'));
         } catch (err) {
           this.logger.debug(err, { session: connection.session.user });
         }
       }
 
-      setTimeout(() => {
+      this._backupTimer = setTimeout(() => {
         this.backupConnections();
       }, ms('1h'));
     } catch (err) {
@@ -436,9 +439,16 @@ class IMAP {
   }
 
   async close() {
+    this._isClosing = true;
+    if (this._backupTimer) {
+      clearTimeout(this._backupTimer);
+      this._backupTimer = null;
+    }
+
     if (this._keepaliveInterval) clearInterval(this._keepaliveInterval);
     // this.subscriber.unsubscribe('sqlite_auth_request');
     this.subscriber.unsubscribe('sqlite_auth_reset');
+    if (this.server.notifier) this.server.notifier.close();
     await pify(this.server.close).bind(this.server)();
   }
 }

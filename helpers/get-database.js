@@ -494,13 +494,11 @@ async function getDatabase(
     // <https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#:~:text=Transaction%20functions%20do,loop%20ticks%20anyways>
     //
     // check if we have in-memory existing opened database
-    if (
-      instance.databaseMap &&
-      instance.databaseMap.has(alias.id) &&
-      instance.databaseMap.get(alias.id).open === true &&
-      instance.databaseMap.get(alias.id).readonly === false
-    ) {
-      db = instance.databaseMap.get(alias.id);
+    const cachedDb = instance.databaseMap
+      ? instance.databaseMap.get(alias.id)
+      : undefined;
+    if (cachedDb && cachedDb.open === true && cachedDb.readonly === false) {
+      db = cachedDb;
       session.db = db;
       if (boolean(env.SQLITE_DEBUG_TIMERS)) {
         console.debug('getDatabase cache hit', {
@@ -517,10 +515,22 @@ async function getDatabase(
         verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
       });
 
-      // store in-memory open connection
-      if (instance.databaseMap) instance.databaseMap.set(alias.id, db);
+      try {
+        await setupPragma(db, session); // takes about 30ms
+      } catch (pragmaErr) {
+        // Close the handle to prevent file descriptor leak
+        // (the handle is NOT in the cache since we set() after success)
+        try {
+          db.close();
+        } catch {}
 
-      await setupPragma(db, session); // takes about 30ms
+        throw pragmaErr;
+      }
+
+      // Store in-memory open connection AFTER setupPragma succeeds.
+      // If setupPragma throws (e.g. bad password), the handle must NOT
+      // be cached — otherwise subsequent requests get a broken handle.
+      if (instance.databaseMap) instance.databaseMap.set(alias.id, db);
 
       // assigns to session so we can easily re-use
       // (also used in allocateConnection in IMAP notifier)
@@ -1241,7 +1251,7 @@ async function getDatabase(
                 // so no concurrent request can obtain a handle to the
                 // about-to-be-replaced file.
                 //
-                if (instance.databaseMap) instance.databaseMap.delete(alias.id);
+                if (instance.databaseMap) instance.databaseMap.evict(alias.id);
 
                 // Close the current db handle
                 db.close();
@@ -1256,7 +1266,16 @@ async function getDatabase(
                 });
 
                 // Re-apply encryption and pragmas
-                await setupPragma(db, session);
+                try {
+                  await setupPragma(db, session);
+                } catch (pragmaErr) {
+                  // Close the handle so it doesn't leak if pragma fails
+                  try {
+                    db.close();
+                  } catch {}
+
+                  throw pragmaErr;
+                }
 
                 // Store reopened db in map and update session
                 if (instance.databaseMap)

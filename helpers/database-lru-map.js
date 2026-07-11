@@ -60,6 +60,12 @@ class DatabaseLRUMap {
     // If already exists, just update
     if (this._map.has(key)) {
       const entry = this._map.get(key);
+      // Close the old handle if it's a different instance (prevents
+      // file descriptor leak when two concurrent opens race)
+      if (entry.db && entry.db !== db && entry.db.open) {
+        closeDatabase(entry.db).catch(() => {});
+      }
+
       entry.db = db;
       entry.lastAccess = Date.now();
       return this;
@@ -88,6 +94,16 @@ class DatabaseLRUMap {
       });
     }
 
+    return true;
+  }
+
+  // Remove entry from the map WITHOUT closing the database.
+  // Use this when the caller will close the db handle itself
+  // (e.g. VACUUM INTO path that does close + rename + reopen).
+  evict(key) {
+    const entry = this._map.get(key);
+    if (!entry) return false;
+    this._map.delete(key);
     return true;
   }
 

@@ -992,7 +992,7 @@ async function onAuth(auth, session, fn) {
       const adminMember = domain.members.find(
         (m) => m.group === 'admin' && m?.user?.timezone
       );
-      if (adminMember) timeZone = adminMember.timezone;
+      if (adminMember) timeZone = adminMember.user.timezone;
     }
 
     const user = {

@@ -939,7 +939,11 @@ async function findOneAndUpdate(
         if (key === '$addToSet') {
           for (const prop of Object.keys(update.$addToSet)) {
             // only support boolean, string, or number (not array or object)
-            if (!['boolean', 'string', 'number'].includes(typeof prop))
+            if (
+              !['boolean', 'string', 'number'].includes(
+                typeof update.$addToSet[prop]
+              )
+            )
               throw new TypeError(
                 'Only boolean, string, number are supported for $addToSet'
               );
@@ -963,12 +967,16 @@ async function findOneAndUpdate(
                 if (!Array.isArray(update.$addToSet[prop].$each))
                   throw new TypeError('$each must be an array');
                 // only add to the set if it doesn't exist
+                const newArr = [...beforeDoc[prop]];
                 for (const val of update.$addToSet[prop].$each) {
-                  if (!beforeDoc[prop].includes(val)) {
-                    if (!update.$set) update.$set = {};
-
-                    update.$set[prop] = [...beforeDoc[prop], val];
+                  if (!newArr.includes(val)) {
+                    newArr.push(val);
                   }
+                }
+
+                if (newArr.length !== beforeDoc[prop].length) {
+                  if (!update.$set) update.$set = {};
+                  update.$set[prop] = newArr;
                 }
               }
             } else if (!beforeDoc[prop].includes(update.$addToSet[prop])) {
@@ -1113,18 +1121,22 @@ function wrapWithRetry(fn, model) {
           if (
             error.message &&
             error.message.includes('database connection is not open') &&
+            args[0] &&
             args[1] &&
             args[1].user &&
-            args[1].user.alias_id &&
-            args[1].instance
+            args[1].user.alias_id
           ) {
             // lazy-require to avoid circular dependency
             // (mongoose-to-sqlite -> get-database -> models -> mongoose-to-sqlite)
             const getDatabase = require('#helpers/get-database');
             const freshDb = await getDatabase(
-              args[1].instance,
-              args[1],
-              args[1].user.storage_location
+              args[0],
+              // alias must have .id and .storage_location for getDatabase
+              {
+                id: args[1].user.alias_id,
+                storage_location: args[1].user.storage_location
+              },
+              args[1]
             );
             if (freshDb) args[1].db = freshDb;
           }

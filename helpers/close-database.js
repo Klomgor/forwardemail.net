@@ -50,6 +50,19 @@ async function closeDatabase(db) {
   // }
   //
 
+  //
+  // PASSIVE checkpoint before close: flushes committed WAL pages back
+  // to the main database file without blocking concurrent readers/writers.
+  // This reduces WAL file growth and improves startup time for the next open.
+  // PASSIVE is safe — it skips pages that would require blocking.
+  //
+  try {
+    db.pragma('wal_checkpoint(PASSIVE)');
+  } catch (err) {
+    // Non-fatal: checkpoint failure doesn't prevent close
+    logger.debug(err, { db });
+  }
+
   try {
     db.close();
   } catch (err) {

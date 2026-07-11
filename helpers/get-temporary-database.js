@@ -5,6 +5,7 @@
 
 const path = require('node:path');
 
+const { boolean } = require('boolean');
 const Database = require('better-sqlite3-multiple-ciphers');
 
 const getPathToDatabase = require('./get-path-to-database');
@@ -49,7 +50,7 @@ async function getTemporaryDatabase(session) {
     // fileMustExist: true,
     timeout: config.busyTimeout,
     // <https://github.com/WiseLibs/better-sqlite3/issues/217#issuecomment-456535384>
-    verbose: env.SQLITE_VERBOSE ? console.log : null
+    verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
   });
 
   const tmpSession = {
@@ -62,7 +63,16 @@ async function getTemporaryDatabase(session) {
     }
   };
 
-  await setupPragma(tmpDb, tmpSession);
+  try {
+    await setupPragma(tmpDb, tmpSession);
+  } catch (pragmaErr) {
+    // Close the handle to prevent file descriptor leak
+    try {
+      tmpDb.close();
+    } catch {}
+
+    throw pragmaErr;
+  }
 
   //
   // Override cache_size for temporary databases (2MB instead of 64MB).

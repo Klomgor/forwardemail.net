@@ -241,3 +241,21 @@ test('drop-in > set() returns this for chaining', (t) => {
   const result = map.set('key', makeDb());
   t.is(result, map);
 });
+// --- evict (remove without close) ---
+test('evict > removes entry from map without closing db', (t) => {
+  const map = new DatabaseLRUMap({ maxSize: 10 });
+  t.context.map = map;
+  const db = makeDb();
+  map.set('key1', db);
+  const result = map.evict('key1');
+  t.true(result);
+  t.false(map.has('key1'));
+  t.is(map.size, 0);
+  // db should still be open (not closed by evict)
+  t.true(db.open);
+});
+test('evict > returns false for missing key', (t) => {
+  const map = new DatabaseLRUMap({ maxSize: 10 });
+  t.context.map = map;
+  t.false(map.evict('missing'));
+});

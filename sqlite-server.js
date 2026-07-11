@@ -143,7 +143,7 @@ class SQLite {
       // Send to all local WebSocket clients (fire-and-forget)
       let localSent = 0;
       for (const client of this.wss.clients) {
-        if (!client.isAlive) continue;
+        if (!client.isAlive || client.readyState !== 1) continue;
         try {
           client.send(packed);
           localSent++;
@@ -240,6 +240,7 @@ class SQLite {
 
     this.wss.on('connection', (ws, request) => {
       ws.isAlive = true;
+      ws.missedPongs = 0;
       logger.debug('connection from %s', request.socket.remoteAddress);
       ws.on('error', (err) => {
         console.error(
@@ -256,10 +257,12 @@ class SQLite {
       ws.on('ping', function () {
         // logger.debug('ping from %s', request.socket.remoteAddress);
         this.isAlive = true;
+        this.missedPongs = 0;
       });
       ws.on('pong', function () {
         // logger.debug('pong from %s', request.socket.remoteAddress);
         this.isAlive = true;
+        this.missedPongs = 0;
       });
       ws.on('message', (data) => {
         ws.isAlive = true;
@@ -333,7 +336,7 @@ class SQLite {
         if (envelope.workerId === this.workerId) return;
         // Forward the inner packed payload to all local WebSocket clients
         for (const client of this.wss.clients) {
-          if (!client.isAlive) continue;
+          if (!client.isAlive || client.readyState !== 1) continue;
           try {
             client.send(envelope.data);
           } catch (err) {
@@ -347,14 +350,23 @@ class SQLite {
 
     this.wsInterval = setInterval(() => {
       for (const ws of this.wss.clients) {
-        // NOTE: ws.terminate() intentionally disabled here.
-        // Terminating dead connections causes IMAP reconnect storms
-        // and increases TTI. The ping alone is sufficient for keepalive.
-        // if (ws.isAlive === false) {
-        //   ws.terminate();
-        //   continue;
-        // }
-        // ws.isAlive = false;
+        //
+        // Graceful dead-connection cleanup:
+        // Terminate only after 3 consecutive missed pongs (~135s).
+        // This avoids reconnect storms from aggressive termination
+        // while still reclaiming half-open TCP connections.
+        //
+        if (ws.isAlive === false) {
+          ws.missedPongs = (ws.missedPongs || 0) + 1;
+          if (ws.missedPongs >= 3) {
+            ws.terminate();
+            continue;
+          }
+        } else {
+          ws.missedPongs = 0;
+        }
+
+        ws.isAlive = false;
         ws.ping();
       }
     }, ms('45s'));

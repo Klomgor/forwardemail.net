@@ -440,6 +440,15 @@ class IMAPNotifier extends EventEmitter {
 
     fn(null, true);
   }
+
+  close() {
+    for (const data of this.publishTimers.values()) {
+      if (data && data.timeout) clearTimeout(data.timeout);
+    }
+
+    this.publishTimers.clear();
+    this._listeners.removeAllListeners();
+  }
 }
 
 module.exports = IMAPNotifier;
