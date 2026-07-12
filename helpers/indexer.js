@@ -286,7 +286,7 @@ class Indexer extends WildDuckIndexer {
 
       if (output.write(chunk) === false) {
         await new Promise((resolve) => {
-          output.once('drain', resolve());
+          output.once('drain', resolve);
         });
       }
     };

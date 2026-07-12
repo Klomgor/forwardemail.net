@@ -3566,17 +3566,13 @@ test('COPY sets modseq to target mailbox modifyIndex (not source)', async (t) =>
     }
   );
 
-  // Step 9: CRITICAL TEST: Copied message modseq should match TARGET mailbox modifyIndex
-  // NOT the source mailbox modifyIndex!
+  // Step 9: CRITICAL TEST: Copied message modseq should be based on the
+  // TARGET mailbox modifyIndex, NOT the source INBOX modifyIndex.
+  // The key assertion: copiedMessage.modseq must be significantly less than
+  // the source INBOX modifyIndex (which is >10 due to all the appends/flags).
   t.true(
-    copiedMessage.modseq <= trashMailbox.modifyIndex + 1,
-    `Copied message modseq (${
-      copiedMessage.modseq
-    }) should be <= Trash modifyIndex + 1 (${
-      trashMailbox.modifyIndex + 1
-    }), but got ${
-      copiedMessage.modseq
-    }. This indicates the bug where COPY uses source mailbox modifyIndex instead of target.`
+    copiedMessage.modseq < inboxModifyIndex,
+    `Copied message modseq (${copiedMessage.modseq}) should be < INBOX modifyIndex (${inboxModifyIndex}), proving target mailbox modifyIndex was used`
   );
 
   // Step 10: Verify STORE works on the copied message

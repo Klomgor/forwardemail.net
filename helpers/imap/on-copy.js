@@ -228,7 +228,8 @@ async function onCopy(connection, mailboxId, update, session, fn) {
                   ? targetMailbox.retention
                   : 0)
             ).toISOString();
-            m.modseq = targetMailbox.modifyIndex;
+            // Use incremented modifyIndex so CONDSTORE clients detect new messages
+            m.modseq = targetMailbox.modifyIndex + 1;
             m.junk = targetMailbox.specialUse === '\\Junk';
             m.remoteAddress = session.remoteAddress;
             m.transaction = 'COPY';
@@ -261,7 +262,7 @@ async function onCopy(connection, mailboxId, update, session, fn) {
                     magic: m.magic
                   },
                   $set: {
-                    counterUpdated: new Date().toString()
+                    counterUpdated: new Date().toISOString()
                   }
                 }
               });
@@ -306,7 +307,7 @@ async function onCopy(connection, mailboxId, update, session, fn) {
             session.db.prepare(sql.query).run(sql.values);
           }
 
-          // store on target mailbox the final value of `uidNext`
+          // store on target mailbox the final value of `uidNext` and `modifyIndex`
           {
             const sql = builder.build({
               type: 'update',
@@ -316,7 +317,8 @@ async function onCopy(connection, mailboxId, update, session, fn) {
               },
               modifier: {
                 $set: {
-                  uidNext
+                  uidNext,
+                  modifyIndex: targetMailbox.modifyIndex + 1
                 }
               }
             });

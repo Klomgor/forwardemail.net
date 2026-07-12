@@ -722,7 +722,7 @@ async function findOne(
     if (boolean(projections[key])) fields.push(key);
   }
 
-  if (!_.isEmpty(projections) && [-1, false].includes(projections._id))
+  if (!_.isEmpty(projections) && ![-1, false].includes(projections._id))
     fields.push('_id');
 
   if (!_.isEmpty(fields)) opts.fields = fields;
@@ -938,14 +938,16 @@ async function findOneAndUpdate(
 
         if (key === '$addToSet') {
           for (const prop of Object.keys(update.$addToSet)) {
-            // only support boolean, string, or number (not array or object)
+            // only support boolean, string, number, or object (for $each)
             if (
-              !['boolean', 'string', 'number'].includes(
+              !['boolean', 'string', 'number', 'object'].includes(
                 typeof update.$addToSet[prop]
-              )
+              ) ||
+              update.$addToSet[prop] === null ||
+              Array.isArray(update.$addToSet[prop])
             )
               throw new TypeError(
-                'Only boolean, string, number are supported for $addToSet'
+                'Only boolean, string, number, or object with $each are supported for $addToSet'
               );
             // ensure that the same prop doesn't exist in a $set
             if (update.$set && update.$set[prop])

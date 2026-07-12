@@ -465,6 +465,10 @@ class CardDAVFilterParser {
    */
   processContentParamFilter(propertyName, paramFilter) {
     const paramName = paramFilter._attr?.name;
+    if (!paramName) {
+      return {};
+    }
+
     // Updated to work with normalized tags
     const textMatch = paramFilter['text-match'];
 
@@ -481,32 +485,34 @@ class CardDAVFilterParser {
     const flags = isCaseInsensitive ? 'im' : 'm';
 
     // Build regex to match parameter in vCard content based on match type
-    const escapedValue = _.escapeRegExp(searchValue); // this.escapeRegex(searchValue);
+    // Escape both paramName and searchValue to prevent ReDoS
+    const escapedParamName = _.escapeRegExp(paramName);
+    const escapedValue = _.escapeRegExp(searchValue);
     let pattern;
 
     switch (matchType) {
       case 'equals': {
-        pattern = `^${propertyName}:[^\\r\\n]*${paramName}=${escapedValue}(?:[;:]|$)`;
+        pattern = `^${propertyName}:[^\\r\\n]*${escapedParamName}=${escapedValue}(?:[;:]|$)`;
         break;
       }
 
       case 'contains': {
-        pattern = `^${propertyName}:[^\\r\\n]*${paramName}=[^;:]*${escapedValue}`;
+        pattern = `^${propertyName}:[^\\r\\n]*${escapedParamName}=[^;:]*${escapedValue}`;
         break;
       }
 
       case 'starts-with': {
-        pattern = `^${propertyName}:[^\\r\\n]*${paramName}=${escapedValue}`;
+        pattern = `^${propertyName}:[^\\r\\n]*${escapedParamName}=${escapedValue}`;
         break;
       }
 
       case 'ends-with': {
-        pattern = `^${propertyName}:[^\\r\\n]*${paramName}=[^;:]*${escapedValue}(?:[;:]|$)`;
+        pattern = `^${propertyName}:[^\\r\\n]*${escapedParamName}=[^;:]*${escapedValue}(?:[;:]|$)`;
         break;
       }
 
       default: {
-        pattern = `^${propertyName}:[^\\r\\n]*${paramName}=[^;:]*${escapedValue}`;
+        pattern = `^${propertyName}:[^\\r\\n]*${escapedParamName}=[^;:]*${escapedValue}`;
       }
     }
 

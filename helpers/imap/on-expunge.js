@@ -226,6 +226,23 @@ async function onExpunge(mailboxId, update, session, fn) {
     // "The EXPUNGE command permanently removes all messages..."
     const messages = session.db.prepare(sql.query).all(sql.values);
 
+    // RFC 7162 (CONDSTORE): increment mailbox modifyIndex so that
+    // clients using CHANGEDSINCE can detect the expunge event.
+    if (messages.length > 0) {
+      await Mailboxes.findOneAndUpdate(
+        this,
+        session,
+        {
+          _id: mailboxId
+        },
+        {
+          $inc: {
+            modifyIndex: 1
+          }
+        }
+      );
+    }
+
     // delete attachments
     try {
       await pMapSeries(messages, async (m) => {

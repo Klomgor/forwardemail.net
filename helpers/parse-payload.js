@@ -215,6 +215,10 @@ async function parsePayload(data, ws) {
 
     if (!isSANB(payload.id)) payload.id = randomUUID();
 
+    // prevent path traversal via payload.id (used in backup file paths)
+    if (/[/\\\0]/.test(payload.id))
+      throw new TypeError('Payload id contains invalid characters');
+
     // action
     if (!isSANB(payload.action) || !PAYLOAD_ACTIONS.has(payload.action))
       throw new TypeError('Payload action missing or invalid');

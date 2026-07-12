@@ -284,7 +284,12 @@ async function onMove(mailboxId, update, session, fn) {
       condition.uid = tools.checkRangeQuery(update.messages);
     }
 
-    const { modifyIndex, specialUse, retention, _id } = targetMailbox;
+    const { specialUse, retention, _id } = targetMailbox;
+    // Increment target mailbox modifyIndex so CONDSTORE/QRESYNC clients
+    // watching the target mailbox detect the newly arrived messages.
+    // Without this, HIGHESTMODSEQ stays unchanged and clients issuing
+    // FETCH ... (CHANGEDSINCE <old>) would miss the moved messages.
+    const modifyIndex = targetMailbox.modifyIndex + 1;
     let { uidNext } = targetMailbox;
 
     const sql = builder.build({
@@ -372,7 +377,7 @@ async function onMove(mailboxId, update, session, fn) {
     }
 
     if (ops.length > 0) {
-      // store on target mailbox the final value of `uidNext`
+      // store on target mailbox the final value of `uidNext` and `modifyIndex`
       {
         const sql = builder.build({
           type: 'update',
@@ -382,7 +387,8 @@ async function onMove(mailboxId, update, session, fn) {
           },
           modifier: {
             $set: {
-              uidNext
+              uidNext,
+              modifyIndex
             }
           }
         });

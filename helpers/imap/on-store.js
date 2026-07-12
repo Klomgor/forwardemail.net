@@ -31,8 +31,10 @@ const updateStorageUsed = require('#helpers/update-storage-used');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendApn = require('#helpers/send-apn');
 const sendWebSocketNotification = require('#helpers/send-websocket-notification');
-const { prepareQuery } = require('#helpers/mongoose-to-sqlite');
-const { syncConvertResult } = require('#helpers/mongoose-to-sqlite');
+const {
+  prepareQuery,
+  syncConvertResult
+} = require('#helpers/mongoose-to-sqlite');
 
 const { formatResponse } = IMAPConnection.prototype;
 
@@ -211,13 +213,7 @@ async function onStore(mailboxId, update, session, fn) {
     }
 
     // converts objectids -> strings and arrays/json appropriately
-    const condition = prepareQuery(
-      Messages.mapping,
-      // TODO: we can probably remove this and leave as `query`
-      JSON.parse(JSON.stringify(query))
-    );
-
-    // TODO: `condition` may need further refined for accuracy (e.g. see `prepareQuery`)
+    const condition = prepareQuery(Messages.mapping, query);
     const projection = {
       _id: true,
       uid: true,
@@ -241,9 +237,10 @@ async function onStore(mailboxId, update, session, fn) {
       // sort required for IMAP UIDPLUS
       sort: 'uid'
     });
-
     const messages = session.db.prepare(sql.query).all(sql.values);
 
+    // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
+    const uidSet = queryAll ? new Set(session.selected.uidList) : null;
     // Determine if unseen status changed for this STORE operation
     const unseenChange = update.value.some((f) => getFlag(f) === '\\seen');
 
@@ -264,8 +261,7 @@ async function onStore(mailboxId, update, session, fn) {
               // skip messages if necessary
               if (
                 queryAll &&
-                (!session?.selected?.uidList ||
-                  !session.selected.uidList.includes(message.uid))
+                (!session?.selected?.uidList || !uidSet.has(message.uid))
               ) {
                 this.logger.debug('message skipped due to queryAll', {
                   message,
@@ -622,8 +618,12 @@ async function onStore(mailboxId, update, session, fn) {
       err = _err;
     }
 
-    // send response
+    // send response — pass err through so the WSP caller can handle it
     fn(null, err, true, modified, payloads, entries);
+
+    // Do not send notifications when the transaction was rolled back;
+    // the changes were never committed so clients must not be notified.
+    if (err) return;
 
     // send websocket push notification
     if (entries.length > 0) {

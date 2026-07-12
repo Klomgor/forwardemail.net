@@ -135,7 +135,7 @@ function getQueryResponse(query, message, options = {}, instance, session) {
           );
 
           // cast invalidly stored In-Reply-To (8) and Message-ID (9) to strings
-          for (const index of [9, 10]) {
+          for (const index of [8, 9]) {
             if (value[index] && Array.isArray(value[index])) {
               value[index] = value[index].pop() || null;
             }
@@ -326,7 +326,7 @@ function getQueryResponse(query, message, options = {}, instance, session) {
           // Instead of BODY[]<10.20> return BODY[]<10> which means that the response is from offset 10 to the end
           if (
             item.original.partial.length === 2 &&
-            item.partial.maxLength - item.partial.startFrom > len
+            item.partial.maxLength > len
           ) {
             item.original.partial.pop();
           }

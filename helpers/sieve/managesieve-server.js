@@ -273,8 +273,16 @@ class ManageSieveConnection {
       // Check for literal
       const literalMatch = line.match(/{(\d+)\+?}$/);
       if (literalMatch) {
+        const size = Number.parseInt(literalMatch[1], 10);
+
+        // Reject oversized literals early to prevent memory exhaustion (DoS)
+        if (size > this.server.config.maxScriptSize) {
+          this.send(RESPONSE.NO, '(QUOTA/MAXSIZE) Script too large');
+          return;
+        }
+
         this.expectingLiteral = true;
-        this.literalSize = Number.parseInt(literalMatch[1], 10);
+        this.literalSize = size;
         this.literalData = '';
         this.currentCommand = line.slice(0, literalMatch.index).trim();
         this.handleLiteralData();
@@ -443,11 +451,18 @@ class ManageSieveConnection {
     const parts = [];
     let current = '';
     let inQuote = false;
+    let escaped = false;
 
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"' && (i === 0 || line[i - 1] !== '\\')) {
+    for (const char of line) {
+      if (escaped) {
+        // Previous char was an unescaped backslash inside a quoted string
+        current += char;
+        escaped = false;
+      } else if (char === '\\' && inQuote) {
+        // Backslash inside a quoted string starts an escape sequence
+        current += char;
+        escaped = true;
+      } else if (char === '"') {
         inQuote = !inQuote;
       } else if (char === ' ' && !inQuote) {
         if (current) {
@@ -463,10 +478,10 @@ class ManageSieveConnection {
       parts.push(current);
     }
 
-    // Remove quotes from quoted strings
+    // Remove quotes from quoted strings and unescape per RFC 5804
     return parts.map((p) => {
       if (p.startsWith('"') && p.endsWith('"')) {
-        return p.slice(1, -1).replaceAll(String.raw`\"`, '"');
+        return p.slice(1, -1).replace(/\\(.)/g, '$1');
       }
 
       return p;
@@ -488,7 +503,11 @@ class ManageSieveConnection {
    * @param {string} message - Response message
    */
   send(status, message) {
-    this.socket.write(`${status} "${message}"\r\n`);
+    // Strip CR/LF to prevent protocol-line injection, then escape
+    // backslashes and double quotes per RFC 5804 Section 4
+    const sanitized = message.replace(/[\r\n]/g, ' ');
+    const escaped = sanitized.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    this.socket.write(`${status} "${escaped}"\r\n`);
   }
 
   /**
@@ -496,7 +515,8 @@ class ManageSieveConnection {
    * @param {string} data - The literal data
    */
   sendLiteral(data) {
-    this.socket.write(`{${data.length}}\r\n${data}\r\n`);
+    // RFC 5804 literals use octet (byte) counts, not character counts
+    this.socket.write(`{${Buffer.byteLength(data)}}\r\n${data}\r\n`);
   }
 
   /**
@@ -682,7 +702,9 @@ class ManageSieveConnection {
 
       for (const script of scripts) {
         const active = script.is_active ? ' ACTIVE' : '';
-        this.socket.write(`"${script.name}"${active}\r\n`);
+        // Escape backslashes and double quotes in script names per RFC 5804
+        const escaped = script.name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        this.socket.write(`"${escaped}"${active}\r\n`);
       }
 
       this.send(RESPONSE.OK, 'Listscripts completed');

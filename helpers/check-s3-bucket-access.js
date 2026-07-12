@@ -5,6 +5,9 @@
 
 const http = require('node:http');
 const https = require('node:https');
+const { lookup: dnsLookup } = require('node:dns/promises');
+
+const isPrivateHost = require('#helpers/is-private-host');
 
 /**
  * Check if an S3-compatible bucket is publicly accessible.
@@ -71,6 +74,9 @@ async function checkS3BucketAccess(endpoint, bucket, timeout = 10000) {
  * Make an anonymous HTTP(S) request and check if it returns 200.
  * A 200 response indicates the resource is publicly accessible.
  *
+ * Includes DNS rebinding protection: resolved IPs are checked against
+ * private/reserved ranges before the connection is established.
+ *
  * @param {string} url - The URL to request
  * @param {number} timeout - Request timeout in milliseconds
  * @returns {Promise<boolean>} true if response is 200, false otherwise
@@ -89,6 +95,23 @@ function _anonymousRequest(url, timeout) {
           headers: {
             // No Authorization header — this is an anonymous request
             'User-Agent': 'ForwardEmail-BucketCheck/1.0'
+          },
+          // Prevent SSRF via DNS rebinding: validate resolved IP at connect time
+          lookup(hostname, options, cb) {
+            dnsLookup(hostname, options)
+              .then((result) => {
+                if (result?.address && isPrivateHost(result.address)) {
+                  const err = new Error(
+                    `Resolved IP ${result.address} is a private/reserved address`
+                  );
+                  err.code = 'EPRIVATEADDR';
+                  cb(err);
+                  return;
+                }
+
+                cb(null, result?.address, result?.family);
+              })
+              .catch((err) => cb(err));
           }
         },
         (res) => {

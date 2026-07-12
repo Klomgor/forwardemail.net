@@ -20,8 +20,6 @@ const {
   IMAPConnection
 } = require('@zone-eu/wildduck/imap-core/lib/imap-connection');
 const { imapHandler } = require('@zone-eu/wildduck/imap-core');
-const _ = require('#helpers/lodash');
-
 const IMAPError = require('#helpers/imap-error');
 const Mailboxes = require('#models/mailboxes');
 const Messages = require('#models/messages');
@@ -29,7 +27,10 @@ const getQueryResponse = require('#helpers/get-query-response');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendWebSocketNotification = require('#helpers/send-websocket-notification');
-const { syncConvertResult } = require('#helpers/mongoose-to-sqlite');
+const {
+  prepareQuery,
+  syncConvertResult
+} = require('#helpers/mongoose-to-sqlite');
 
 // const LIMITED_PROJECTION_KEYS = new Set(['_id', 'flags', 'modseq', 'uid']);
 // const MAX_BULK_WRITE_SIZE = 1000;
@@ -183,9 +184,8 @@ async function onFetch(mailboxId, options, session, fn) {
       pageQuery.uid = tools.checkRangeQuery(options.messages, false);
     }
 
-    // TODO: take out JSON.parse and JSON.stringify
     // converts objectids -> strings and arrays/json appropriately
-    const condition = JSON.parse(JSON.stringify(pageQuery));
+    const condition = prepareQuery(Messages.mapping, pageQuery);
 
     // condition {
     //   mailbox: '6673762a02663ea16204767b',
@@ -255,6 +255,9 @@ async function onFetch(mailboxId, options, session, fn) {
     //
     const isBatchMode = false; // count > 1000;
 
+    // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
+    const uidSet = queryAll ? new Set(session.selected.uidList) : null;
+
     for (const result of isBatchMode
       ? stmt.all(sql.values)
       : stmt.iterate(sql.values)) {
@@ -262,7 +265,7 @@ async function onFetch(mailboxId, options, session, fn) {
 
       // don't process messages that are new since query started
       // <https://github.com/nodemailer/wildduck/issues/708>
-      if (queryAll && !session.selected.uidList.includes(message.uid)) {
+      if (queryAll && !uidSet.has(message.uid)) {
         continue;
       }
 
@@ -309,7 +312,7 @@ async function onFetch(mailboxId, options, session, fn) {
         // flush compiled payloads after every 500 written
         if (isBatchMode && compiledPayloads.length >= 500) {
           await this.wss.broadcast(session, compiledPayloads);
-          _.pullAll(compiledPayloads, compiledPayloads);
+          compiledPayloads.length = 0;
         }
 
         //
@@ -364,12 +367,15 @@ async function onFetch(mailboxId, options, session, fn) {
       // flush compiled payloads after every 500 written
       if (isBatchMode && compiledPayloads.length >= 500) {
         await this.wss.broadcast(session, compiledPayloads);
-        _.pullAll(compiledPayloads, compiledPayloads);
+        compiledPayloads.length = 0;
       }
 
       rowCount++;
 
       if (markAsSeen) {
+        // RFC 7162: Any flag change MUST update the message's mod-sequence
+        // so CONDSTORE clients can detect the implicit \Seen change.
+        const newModseq = mailbox.modifyIndex + 1;
         const sql = builder.build({
           type: 'update',
           table: 'Messages',
@@ -377,10 +383,11 @@ async function onFetch(mailboxId, options, session, fn) {
             _id: message._id.toString()
           },
           modifier: {
-            $set: {
-              flags: JSON.stringify(message.flags),
-              unseen: false
-            }
+            $set: prepareQuery(Messages.mapping, {
+              flags: message.flags,
+              unseen: false,
+              modseq: newModseq
+            })
           }
         });
         ops.push([sql.query, sql.values]);
@@ -392,6 +399,7 @@ async function onFetch(mailboxId, options, session, fn) {
           flags: message.flags,
           message: message._id,
           thread: message.thread,
+          modseq: newModseq,
           // unseenChange is true when marking as seen via FETCH
           unseenChange: true
         });
@@ -405,6 +413,19 @@ async function onFetch(mailboxId, options, session, fn) {
           for (const op of ops) {
             session.db.prepare(op[0]).run(op[1]);
           }
+
+          // RFC 7162: Update mailbox modifyIndex when markAsSeen changes flags
+          const mbSql = builder.build({
+            type: 'update',
+            table: 'Mailboxes',
+            condition: {
+              _id: mailbox._id.toString()
+            },
+            modifier: {
+              $set: { modifyIndex: mailbox.modifyIndex + 1 }
+            }
+          });
+          session.db.prepare(mbSql.query).run(mbSql.values);
         })
         .immediate(ops);
     }

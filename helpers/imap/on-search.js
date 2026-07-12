@@ -26,6 +26,8 @@ const env = require('#config/env');
 const logger = require('#helpers/logger');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
+const { decodeMetadata } = require('#helpers/msgpack-helpers');
+const recursivelyParse = require('#helpers/recursively-parse');
 
 const builder = new Builder({ bufferAsNative: true });
 
@@ -84,7 +86,7 @@ async function onSearch(mailboxId, options, session, fn) {
 
     // prepare query for search
     const query = {
-      mailbox: mailbox._id
+      mailbox: mailbox._id.toString()
     };
 
     const uidList = new Set();
@@ -146,6 +148,9 @@ async function onSearch(mailboxId, options, session, fn) {
 
             //
             // TODO: note this is currently disabled (see notes in sqlite-server.js regarding fts5)
+            // WARNING: when enabling FTS5, term.value MUST be sanitized against
+            // FTS5 query syntax injection (*, ", OR, AND, NOT, NEAR, column:)
+            // to prevent users from crafting malicious MATCH expressions.
             //
             let sql;
             if (env.SQLITE_FTS5_ENABLED) {
@@ -158,22 +163,34 @@ async function onSearch(mailboxId, options, session, fn) {
                 }
               };
             } else {
+              // Escape LIKE metacharacters (%, _, \) so they match literally
+              const escaped = term.value
+                .replaceAll('\\', '\\\\')
+                .replaceAll('%', '\\%')
+                .replaceAll('_', '\\_');
               sql = {
-                query: `select _id from Messages where text ${
+                query: `select _id from Messages where mailbox = $mailbox and text ${
                   ne ? 'NOT LIKE' : 'LIKE'
-                } $p1;`,
+                } $p1 ESCAPE '\\';`,
                 values: {
-                  p1: `%${term.value}%`
+                  mailbox: mailbox._id.toString(),
+                  p1: `%${escaped}%`
                 }
               };
             }
 
             const ids = session.db.prepare(sql.query).pluck().all(sql.values);
 
-            // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-            // new approach:
-            for (const id of ids) {
-              set.add(id);
+            // RFC 3501: multiple criteria are AND'd; intersect when set already populated
+            if (mustIncludeIds) {
+              const newIds = new Set(ids);
+              for (const id of set) {
+                if (!newIds.has(id)) set.delete(id);
+              }
+            } else {
+              for (const id of ids) {
+                set.add(id);
+              }
             }
 
             mustIncludeIds = true;
@@ -280,19 +297,45 @@ async function onSearch(mailboxId, options, session, fn) {
               }
 
               default: {
-                if (term.exists) {
-                  parent.push({
-                    flags: {
-                      [ne ? '$ne' : '$eq']: term.value
-                    }
-                  });
-                } else {
-                  parent.push({
-                    flags: {
-                      [ne ? '$eq' : '$ne']: term.value
-                    }
-                  });
+                // Custom keywords are stored in the brotli-compressed
+                // `flags` blob and cannot be queried via SQL operators.
+                // Decode each message's flags and filter in JavaScript,
+                // using the same set/mustIncludeIds intersection pattern
+                // as BODY/TEXT/HEADER searches.
+                const wantPresent = term.exists ? !ne : ne;
+                const keyword = term.value;
+                const flagSql = {
+                  query:
+                    'select _id, flags from Messages where mailbox = $mailbox;',
+                  values: { mailbox: mailbox._id.toString() }
+                };
+                const flagRows = session.db
+                  .prepare(flagSql.query)
+                  .all(flagSql.values);
+                const matchedIds = [];
+                for (const row of flagRows) {
+                  const decoded =
+                    decodeMetadata(row.flags, recursivelyParse) || [];
+                  const has = decoded.some(
+                    (f) => (typeof f === 'string' ? f : String(f)) === keyword
+                  );
+                  if (wantPresent ? has : !has) {
+                    matchedIds.push(row._id);
+                  }
                 }
+
+                if (mustIncludeIds) {
+                  const newIds = new Set(matchedIds);
+                  for (const id of set) {
+                    if (!newIds.has(id)) set.delete(id);
+                  }
+                } else {
+                  for (const id of matchedIds) {
+                    set.add(id);
+                  }
+                }
+
+                mustIncludeIds = true;
               }
             }
 
@@ -313,30 +356,36 @@ async function onSearch(mailboxId, options, session, fn) {
                 '(?i)' + // case insensitive (PCRE_CASELESS)
                 _.escapeRegExp(Buffer.from(term.value, 'binary').toString());
 
-              const entry = {};
               if (term.value) {
                 if (ne) {
                   const sql = {
-                    // `select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1 and json_extract(value, '$.value') != $p2;`
-                    // NOTE: unlike MongoDB we can do a NOT for a RegExp here (see below commented out WildDuck reference)
-                    query: `select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1 and json_extract(value, '$.value') NOT REGEXP $p2;`,
+                    // NOT HEADER X value: messages where the header is absent
+                    // OR the header value does not match the pattern.
+                    // Using NOT IN (positive match set) captures both cases.
+                    query: `select _id from Messages where mailbox = $mailbox and _id NOT IN (select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1 and json_extract(value, '$.value') REGEXP $p2);`,
                     values: {
+                      mailbox: mailbox._id.toString(),
                       p1: term.header,
-                      p2: Buffer.from(term.value, 'binary')
-                        .toString()
-                        .toLowerCase()
-                        .trim()
+                      // Use the escaped regex (with (?i) prefix) for consistency
+                      // with the positive branch — prevents regex injection from
+                      // user-supplied header search values.
+                      p2: regex
                     }
                   };
                   const ids = session.db
                     .prepare(sql.query)
                     .pluck()
                     .all(sql.values);
-
-                  // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-                  // new approach:
-                  for (const id of ids) {
-                    set.add(id);
+                  // RFC 3501: multiple criteria are AND'd; intersect when set already populated
+                  if (mustIncludeIds) {
+                    const newIds = new Set(ids);
+                    for (const id of set) {
+                      if (!newIds.has(id)) set.delete(id);
+                    }
+                  } else {
+                    for (const id of ids) {
+                      set.add(id);
+                    }
                   }
 
                   mustIncludeIds = true;
@@ -344,53 +393,72 @@ async function onSearch(mailboxId, options, session, fn) {
                   const sql = {
                     // NOTE: for array lookups:
                     // REGEXP `select _id from Messages, json_each(Messages.headers) where key = $p1 and value REGEXP $p2;`
-                    query: `select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1 and json_extract(value, '$.value') REGEXP $p2;`,
-                    values: { p1: term.header, p2: regex }
+                    query: `select _id from Messages, json_each(Messages.headers) where Messages.mailbox = $mailbox and json_extract(value, '$.key') = $p1 and json_extract(value, '$.value') REGEXP $p2;`,
+                    values: {
+                      mailbox: mailbox._id.toString(),
+                      p1: term.header,
+                      p2: regex
+                    }
                   };
                   const ids = session.db
                     .prepare(sql.query)
                     .pluck()
                     .all(sql.values);
-
-                  // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-                  // new approach:
-                  for (const id of ids) {
-                    set.add(id);
+                  // RFC 3501: multiple criteria are AND'd; intersect when set already populated
+                  if (mustIncludeIds) {
+                    const newIds = new Set(ids);
+                    for (const id of set) {
+                      if (!newIds.has(id)) set.delete(id);
+                    }
+                  } else {
+                    for (const id of ids) {
+                      set.add(id);
+                    }
                   }
 
                   mustIncludeIds = true;
                 }
               } else if (ne) {
                 const sql = {
-                  query: `select _id from Messages WHERE _id NOT IN (select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1);`,
-                  values: { p1: term.header }
+                  query: `select _id from Messages where mailbox = $mailbox and _id NOT IN (select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1);`,
+                  values: { mailbox: mailbox._id.toString(), p1: term.header }
                 };
                 const ids = session.db
                   .prepare(sql.query)
                   .pluck()
                   .all(sql.values);
-
-                // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-                // new approach:
-                for (const id of ids) {
-                  set.add(id);
+                // RFC 3501: multiple criteria are AND'd; intersect when set already populated
+                if (mustIncludeIds) {
+                  const newIds = new Set(ids);
+                  for (const id of set) {
+                    if (!newIds.has(id)) set.delete(id);
+                  }
+                } else {
+                  for (const id of ids) {
+                    set.add(id);
+                  }
                 }
 
                 mustIncludeIds = true;
               } else {
                 const sql = {
-                  query: `select _id from Messages, json_each(Messages.headers) where json_extract(value, '$.key') = $p1;`,
-                  values: { p1: term.header }
+                  query: `select _id from Messages, json_each(Messages.headers) where Messages.mailbox = $mailbox and json_extract(value, '$.key') = $p1;`,
+                  values: { mailbox: mailbox._id.toString(), p1: term.header }
                 };
                 const ids = session.db
                   .prepare(sql.query)
                   .pluck()
                   .all(sql.values);
-
-                // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-                // new approach:
-                for (const id of ids) {
-                  set.add(id);
+                // RFC 3501: multiple criteria are AND'd; intersect when set already populated
+                if (mustIncludeIds) {
+                  const newIds = new Set(ids);
+                  for (const id of set) {
+                    if (!newIds.has(id)) set.delete(id);
+                  }
+                } else {
+                  for (const id of ids) {
+                    set.add(id);
+                  }
                 }
 
                 mustIncludeIds = true;
@@ -426,7 +494,6 @@ async function onSearch(mailboxId, options, session, fn) {
               //           }
               //         : term.header
               //     };
-              if (!_.isEmpty(entry)) parent.push(entry);
             }
 
             break;
@@ -437,7 +504,12 @@ async function onSearch(mailboxId, options, session, fn) {
           case 'headerdate': {
             {
               let op = false;
-              const value = new Date(term.value + ' GMT');
+              const dateObj = new Date(term.value + ' GMT');
+              // IMPORTANT: Convert Date to ISO string because SQLite cannot
+              // bind Date objects (throws "can only bind numbers, strings,
+              // bigints, buffers, and null"). Dates are stored as ISO strings
+              // in the database (via the Date setter in mongoose-to-sqlite).
+              const value = dateObj.toISOString();
               switch (term.operator) {
                 case '<': {
                   op = '$lt';
@@ -464,7 +536,10 @@ async function onSearch(mailboxId, options, session, fn) {
                 }
               }
 
-              let entry = op
+              const endOfDay = new Date(
+                dateObj.getTime() + 24 * 3600 * 1000
+              ).toISOString();
+              const entry = op
                 ? {
                     [op]: value
                   }
@@ -474,7 +549,7 @@ async function onSearch(mailboxId, options, session, fn) {
                   // json-sql version:
                   {
                     $gte: value,
-                    $lt: new Date(value.getTime() + 24 * 3600 * 1000)
+                    $lt: endOfDay
                   };
               // wildduck version:
               // : [
@@ -490,49 +565,84 @@ async function onSearch(mailboxId, options, session, fn) {
               // internaldate => idate
               // date => $or
               // <https://github.com/nodemailer/wildduck/issues/560>
+              // For single-operator searches (BEFORE, SINCE, SENTBEFORE, etc.),
+              // `entry` is {$op: value} and $not works correctly.
+              // For "ON date" searches (no operator), `entry` is {$gte: X, $lt: Y}.
+              // json-sql-enhanced's $not incorrectly negates compound conditions as
+              // NOT(A) AND NOT(B) instead of NOT(A AND B) = NOT(A) OR NOT(B).
+              // So for negated ON-date, manually construct the correct inversion.
               switch (term.key) {
                 case 'headerdate': {
-                  entry = {
-                    hdate: ne
-                      ? {
-                          $not: entry
-                        }
-                      : entry
-                  };
+                  if (ne && !op) {
+                    parent.push({
+                      $or: [
+                        { hdate: { $lt: value } },
+                        { hdate: { $gte: endOfDay } }
+                      ]
+                    });
+                  } else {
+                    parent.push({
+                      hdate: ne ? { $not: entry } : entry
+                    });
+                  }
+
                   break;
                 }
 
                 case 'internaldate': {
-                  entry = {
-                    idate: ne
-                      ? {
-                          $not: entry
-                        }
-                      : entry
-                  };
+                  if (ne && !op) {
+                    parent.push({
+                      $or: [
+                        { idate: { $lt: value } },
+                        { idate: { $gte: endOfDay } }
+                      ]
+                    });
+                  } else {
+                    parent.push({
+                      idate: ne ? { $not: entry } : entry
+                    });
+                  }
 
                   break;
                 }
 
                 case 'date': {
-                  entry = {
-                    $or: [
-                      {
-                        hdate: ne
-                          ? {
-                              $not: entry
-                            }
-                          : entry
-                      },
-                      {
-                        idate: ne
-                          ? {
-                              $not: entry
-                            }
-                          : entry
-                      }
-                    ]
-                  };
+                  if (ne) {
+                    // Negated: NOT(hdate_in_range OR idate_in_range)
+                    // De Morgan's: (NOT hdate_in_range) AND (NOT idate_in_range)
+                    if (op) {
+                      // Single op: $not works correctly
+                      parent.push({
+                        $and: [
+                          { hdate: { $not: { [op]: value } } },
+                          { idate: { $not: { [op]: value } } }
+                        ]
+                      });
+                    } else {
+                      // ON-date: manually invert each
+                      parent.push({
+                        $and: [
+                          {
+                            $or: [
+                              { hdate: { $lt: value } },
+                              { hdate: { $gte: endOfDay } }
+                            ]
+                          },
+                          {
+                            $or: [
+                              { idate: { $lt: value } },
+                              { idate: { $gte: endOfDay } }
+                            ]
+                          }
+                        ]
+                      });
+                    }
+                  } else {
+                    // Positive: match if EITHER hdate OR idate is in range
+                    parent.push({
+                      $or: [{ hdate: entry }, { idate: entry }]
+                    });
+                  }
 
                   break;
                 }
@@ -541,8 +651,6 @@ async function onSearch(mailboxId, options, session, fn) {
                   throw new TypeError(`${term.key} unsupported`);
                 }
               }
-
-              if (!_.isEmpty(entry)) parent.push(entry);
             }
 
             break;
@@ -630,8 +738,7 @@ async function onSearch(mailboxId, options, session, fn) {
 
     if ($and.length > 0) query.$and = $and;
 
-    // converts objectids -> strings and arrays/json appropriately
-    const condition = JSON.parse(JSON.stringify(query));
+    const condition = query;
 
     const sql = builder.build({
       type: 'select',

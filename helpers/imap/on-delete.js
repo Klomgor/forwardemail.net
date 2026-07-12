@@ -16,7 +16,9 @@
 // const imapTools = require('@zone-eu/wildduck/imap-core/lib/imap-tools');
 const pify = require('pify');
 
+const onExpunge = require('./on-expunge');
 const onMove = require('./on-move');
+const onStore = require('./on-store');
 
 const IMAPError = require('#helpers/imap-error');
 const ensureDefaultMailboxes = require('#helpers/ensure-default-mailboxes');
@@ -28,7 +30,9 @@ const sendApn = require('#helpers/send-apn');
 const sendWebSocketNotification = require('#helpers/send-websocket-notification');
 const updateStorageUsed = require('#helpers/update-storage-used');
 
+const onExpungePromise = pify(onExpunge, { multiArgs: true });
 const onMovePromise = pify(onMove, { multiArgs: true });
+const onStorePromise = pify(onStore, { multiArgs: true });
 
 async function onDelete(path, session, fn) {
   this.logger.debug('DELETE', { path, session });
@@ -131,29 +135,67 @@ async function onDelete(path, session, fn) {
     // );
 
     if (uidList.length > 0) {
-      try {
-        const results = await onMovePromise.call(
-          this,
-          mailbox._id,
-          {
-            destination: 'Trash',
-            messages: uidList
-          },
-          {
-            ...session,
-            selected: {
-              uidList
+      //
+      // If we are deleting Trash or Junk itself, skip the MOVE (it would
+      // fail with CANNOT because source === target) and permanently
+      // remove messages via EXPUNGE instead.
+      //
+      if (['\\Trash', '\\Junk'].includes(mailbox.specialUse)) {
+        try {
+          // Step 1: Mark all messages with \Deleted flag
+          await onStorePromise.call(
+            this,
+            mailbox._id,
+            {
+              action: 'add',
+              value: ['\\Deleted'],
+              messages: uidList,
+              silent: true
+            },
+            session
+          );
+          // Step 2: Permanently remove via EXPUNGE
+          const results = await onExpungePromise.call(
+            this,
+            mailbox._id,
+            {
+              isUid: true,
+              messages: uidList,
+              silent: true
+            },
+            session
+          );
+          this.logger.debug('expunge results', { results });
+        } catch (_err) {
+          let err = _err;
+          if (Array.isArray(err)) err = _err[0];
+          throw err;
+        }
+      } else {
+        try {
+          const results = await onMovePromise.call(
+            this,
+            mailbox._id,
+            {
+              destination: 'Trash',
+              messages: uidList
+            },
+            {
+              ...session,
+              selected: {
+                uidList
+              }
             }
-          }
-        );
-        this.logger.debug('results', { results });
-      } catch (_err) {
-        // since we use multiArgs from pify
-        // if a promise that was wrapped with multiArgs: true
-        // throws, then the error will be an array so we need to get first key
-        let err = _err;
-        if (Array.isArray(err)) err = _err[0];
-        throw err;
+          );
+          this.logger.debug('results', { results });
+        } catch (_err) {
+          // since we use multiArgs from pify
+          // if a promise that was wrapped with multiArgs: true
+          // throws, then the error will be an array so we need to get first key
+          let err = _err;
+          if (Array.isArray(err)) err = _err[0];
+          throw err;
+        }
       }
     }
 
