@@ -375,18 +375,22 @@ class IMAPNotifier extends EventEmitter {
 
     const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
     setImmediate(() => {
-      this.publisher.publish(
-        config.IMAP_REDIS_CHANNEL_NAME,
-        safeStringify({
-          e: aliasId,
-          p: payload
-        })
-      );
-      if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-        console.debug('notifier fire', {
-          duration_ms: Date.now() - t0,
-          alias_id: aliasId
-        });
+      try {
+        this.publisher.publish(
+          config.IMAP_REDIS_CHANNEL_NAME,
+          safeStringify({
+            e: aliasId,
+            p: payload
+          })
+        );
+        if (boolean(env.SQLITE_DEBUG_TIMERS)) {
+          console.debug('notifier fire', {
+            duration_ms: Date.now() - t0,
+            alias_id: aliasId
+          });
+        }
+      } catch (err) {
+        logger.fatal(err, { aliasId });
       }
     });
   }

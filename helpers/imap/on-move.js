@@ -110,7 +110,12 @@ async function onMove(mailboxId, update, session, fn) {
 
       fn(null, bool, response);
 
-      if (expungeEntries.length > 0 && existEntries.length > 0) {
+      if (
+        Array.isArray(expungeEntries) &&
+        expungeEntries.length > 0 &&
+        Array.isArray(existEntries) &&
+        existEntries.length > 0
+      ) {
         this.server.notifier
           .addEntries(this, session, mailboxId, expungeEntries)
           .then(() =>

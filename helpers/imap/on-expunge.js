@@ -55,6 +55,7 @@ async function onExpunge(mailboxId, update, session, fn) {
       const payloads = [];
 
       if (
+        Array.isArray(messages) &&
         messages.length > 0 &&
         // write to socket we've expunged message
         // <https://github.com/zone-eu/wildduck/issues/811>
@@ -77,7 +78,12 @@ async function onExpunge(mailboxId, update, session, fn) {
       //
       // <https://github.com/zone-eu/wildduck/issues/241>
       //
-      if (messages.length > 0 && !update.silent && session?.selected?.uidList) {
+      if (
+        Array.isArray(messages) &&
+        messages.length > 0 &&
+        !update.silent &&
+        session?.selected?.uidList
+      ) {
         payloads.push({
           tag: '*',
           command: String(session.selected.uidList.length),
@@ -99,7 +105,7 @@ async function onExpunge(mailboxId, update, session, fn) {
       fn(null, bool);
 
       const entries =
-        messages.length > 0
+        Array.isArray(messages) && messages.length > 0
           ? messages.map((message) => ({
               ignore: session.id,
               command: 'EXPUNGE',

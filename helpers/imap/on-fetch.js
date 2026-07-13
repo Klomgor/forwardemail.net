@@ -66,7 +66,7 @@ async function onFetch(mailboxId, options, session, fn) {
 
       fn(null, bool, response);
 
-      if (entries.length > 0) {
+      if (Array.isArray(entries) && entries.length > 0) {
         this.server.notifier
           .addEntries(this, session, mailboxId, entries)
           .then(() => this.server.notifier.fire(session.user.alias_id))

@@ -63,7 +63,7 @@ async function onCopy(connection, mailboxId, update, session, fn) {
       clearTimeout(timeout);
       fn(null, bool, response);
 
-      if (entries.length > 0) {
+      if (Array.isArray(entries) && entries.length > 0) {
         this.server.notifier
           .addEntries(this, session, targetMailbox._id, entries)
           .then(() =>
