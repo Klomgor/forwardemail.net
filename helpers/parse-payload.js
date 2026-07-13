@@ -225,6 +225,13 @@ async function decrementRateLimiting(client, date, sender, root, byteLength) {
     .decrby(specificSizeKey, byteLength)
     .decr(specificCountKey)
     .decr(burstKey)
+    // Set TTL on all keys to prevent orphaned negative-value keys
+    // if the originals expired before this decrement was called
+    .pexpire(sizeKey, ms('1d'))
+    .pexpire(countKey, ms('1d'))
+    .pexpire(specificSizeKey, ms('1d'))
+    .pexpire(specificCountKey, ms('1d'))
+    .pexpire(burstKey, BURST_LIMIT_TTL_MS)
     .exec();
 }
 

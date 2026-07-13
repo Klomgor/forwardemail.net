@@ -1182,8 +1182,27 @@ async function getForwardingAddresses(
         ms('1h')
       );
     } catch (err) {
-      err.isCodeBug = true;
-      logger.error(err);
+      // DNS errors (ENODATA, ENOTFOUND, etc.) are expected when domains
+      // don't have TXT records configured — not code bugs
+      if (
+        err.code &&
+        [
+          'ENODATA',
+          'ENOTFOUND',
+          'ENONAME',
+          'ESERVFAIL',
+          'EREFUSED',
+          'ETIMEOUT',
+          'ECANCELLED',
+          'ECANCELED',
+          'EAI_AGAIN'
+        ].includes(err.code)
+      ) {
+        logger.warn(err);
+      } else {
+        err.isCodeBug = true;
+        logger.error(err);
+      }
     }
   }
 

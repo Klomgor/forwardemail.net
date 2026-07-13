@@ -5,6 +5,7 @@
       "script": "pop3.js",
       "max_restarts": 999,
       "max_memory_restart": "20G",
+      "kill_timeout": 30000,
       "exec_mode": "cluster",
       "wait_ready": true,
       "instances": "max",
@@ -23,6 +24,7 @@
       "script": "pop3.js",
       "max_restarts": 999,
       "max_memory_restart": "20G",
+      "kill_timeout": 30000,
       "exec_mode": "fork",
       "wait_ready": true,
       "instances": "1",
@@ -41,6 +43,7 @@
       "script": "pop3.js",
       "max_restarts": 999,
       "max_memory_restart": "20G",
+      "kill_timeout": 30000,
       "exec_mode": "fork",
       "wait_ready": true,
       "instances": "1",
@@ -60,6 +63,7 @@
       "name": "proxy-http",
       "script": "proxy.js",
       "max_restarts": 999,
+      "kill_timeout": 30000,
       "exec_mode": "fork",
       "wait_ready": true,
       "instances": "1",
@@ -78,6 +82,7 @@
       "name": "proxy-https",
       "script": "proxy.js",
       "max_restarts": 999,
+      "kill_timeout": 30000,
       "exec_mode": "fork",
       "wait_ready": true,
       "instances": "1",
@@ -97,7 +102,9 @@
   "deploy": {
     "production": {
       "user": "deploy",
-      "host": ["121.127.44.71"],
+      "host": [
+        "121.127.44.71"
+      ],
       "ref": "origin/master",
       "repo": "git@github.com:forwardemail/forwardemail.net.git",
       "path": "/var/www/production",

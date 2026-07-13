@@ -635,9 +635,11 @@ async function onAppend(path, flags, date, raw, session, fn) {
 
     // this is set only via "tmp" command in parse payload
     if (session.checkForExisting) {
+      // Check ALL mailboxes for this fingerprint (not just the target)
+      // to prevent duplicate delivery when a user moves/deletes a message
+      // from the original mailbox and a retry arrives
       const existingMessage = await Messages.findOne(this, session, {
-        fingerprint,
-        mailbox: mailbox._id
+        fingerprint
       });
 
       //
@@ -649,7 +651,7 @@ async function onAppend(path, flags, date, raw, session, fn) {
           uidValidity: mailbox.uidValidity,
           uid: existingMessage.uid,
           id: existingMessage._id,
-          mailbox: mailbox._id,
+          mailbox: existingMessage.mailbox || mailbox._id,
           mailboxPath: mailbox.path,
           size: existingMessage.size,
           status: 'new'

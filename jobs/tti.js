@@ -43,7 +43,7 @@ const TTI = require('#models/tti');
 // every 30s ensure that both IMAP connections per provider are established
 // (this ensures that all providers are always connected)
 //
-setInterval(async () => {
+const keepaliveInterval = setInterval(async () => {
   try {
     await Promise.all(
       config.imapConfigurations.map(async (provider) => {
@@ -97,6 +97,7 @@ const graceful = new Graceful({
   timeoutMs: ms('30s'),
   customHandlers: [
     async () => {
+      clearInterval(keepaliveInterval);
       if (imapClients.size === 0) return;
       await Promise.all(
         [...imapClients.values()]

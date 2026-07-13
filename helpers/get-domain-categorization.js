@@ -46,6 +46,7 @@ const undici = require('undici');
 const pkg = require('../package.json');
 
 const { hasLegitimateHosting } = require('#helpers/check-domain-reputation');
+const { isPrivateHostResolved } = require('#helpers/is-private-host');
 const config = require('#config');
 const { PARKING_IPS } = require('#config/smtp-reputation');
 const loggerDefault = require('#helpers/logger');
@@ -503,6 +504,12 @@ async function fetchDomainContent(domain, opts = {}) {
     error: null,
     server: null
   };
+
+  // SSRF protection: block requests to private/internal hosts
+  if (await isPrivateHostResolved(domain)) {
+    result.error = 'SSRF_BLOCKED_PRIVATE_HOST';
+    return result;
+  }
 
   for (const scheme of ['https', 'http']) {
     const url = `${scheme}://${domain}`;
