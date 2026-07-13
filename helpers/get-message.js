@@ -29,8 +29,8 @@ async function getMessage(imapClient, info, provider) {
       async () => {
         try {
           //
-          // Guard: if the IMAP connection became unusable (e.g. server closed
-          // it under load), create a fresh ImapFlow instance and reconnect.
+          // Guard: if the connection became unusable (e.g. server closed it
+          // under load), create a fresh ImapFlow instance and reconnect.
           // ImapFlow instances are single-use — once closed, connect() cannot
           // be called again on the same object.
           //
@@ -50,14 +50,15 @@ async function getMessage(imapClient, info, provider) {
           //
           // Issue NOOP to force the server to send pending EXISTS/RECENT
           // notifications.  Without this, the client's view of the mailbox
-          // may be stale and fetch('1:*') won't include newly arrived messages.
+          // may be stale and fetch('1:*') won't see newly arrived messages.
           //
           await client.noop();
 
           //
-          // Use '1:*' to scan all messages in the mailbox.  With two
-          // concurrent sends (direct + forwarded) the target message may
-          // not be the highest sequence number.
+          // Scan all messages in the mailbox.  Both the direct and forwarded
+          // messages land in the same INBOX, and either may arrive first —
+          // so we must scan all messages (not just '*' / last) to find our
+          // specific target Message-ID regardless of arrival order.
           //
           for await (const message of client.fetch('1:*', {
             headers: ['Message-ID']
@@ -103,7 +104,7 @@ async function getMessage(imapClient, info, provider) {
         return Boolean(received);
       },
       {
-        interval: 1000,
+        interval: 0,
         timeout: ms('1m')
       }
     );

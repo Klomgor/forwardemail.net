@@ -40,7 +40,7 @@ const setupMongoose = require('#helpers/setup-mongoose');
 const TTI = require('#models/tti');
 
 //
-// every 30s ensure that IMAP connection is established
+// every 30s ensure that both IMAP connections per provider are established
 // (this ensures that all providers are always connected)
 //
 setInterval(async () => {
@@ -48,18 +48,22 @@ setInterval(async () => {
     await Promise.all(
       config.imapConfigurations.map(async (provider) => {
         try {
-          // https://github.com/postalsys/imapflow/blob/88e46d9bbcdc347d22df27bc591841431d8dc831/lib/imap-flow.js#L243-L247
-          if (
-            imapClients.has(provider.name) &&
-            imapClients.get(provider.name).usable
-          )
-            return;
+          const pair = imapClients.get(provider.name) || [null, null];
+          for (let idx = 0; idx < 2; idx++) {
+            if (pair[idx] && pair[idx].usable) continue;
+            try {
+              if (pair[idx]) pair[idx].close();
+            } catch {}
 
-          imapClients.delete(provider.name);
-          const imapClient = new ImapFlow(provider.config);
-          await imapClient.connect();
-          await imapClient.mailboxOpen('INBOX');
-          imapClients.set(provider.name, imapClient);
+            pair[idx] = new ImapFlow({
+              ...provider.config,
+              socketTimeout: ms('1d')
+            });
+            await pair[idx].connect();
+            await pair[idx].mailboxOpen('INBOX');
+          }
+
+          imapClients.set(provider.name, pair);
         } catch (err) {
           err.provider = provider;
           err.isCodeBug = true;
@@ -80,6 +84,10 @@ const resolver = createTangerine(client, logger);
 const HOSTNAME = os.hostname();
 const IP_ADDRESS = ip.address();
 
+// Two long-lived IMAP connections per provider so the direct and forwarded
+// getMessage calls can run in parallel without deadlocking (ImapFlow
+// serializes commands on a single client).
+// Key: provider.name, Value: [client0, client1]
 const imapClients = new Map();
 
 const graceful = new Graceful({
@@ -91,15 +99,18 @@ const graceful = new Graceful({
     async () => {
       if (imapClients.size === 0) return;
       await Promise.all(
-        [...imapClients.values()].map(async (client) => {
-          try {
-            await client.logout();
-          } catch (err) {
-            err.client = client;
-            err.isCodeBug = true;
-            await logger.fatal(err);
-          }
-        })
+        [...imapClients.values()]
+          .flat()
+          .filter(Boolean)
+          .map(async (c) => {
+            try {
+              await c.logout();
+            } catch (err) {
+              err.client = c;
+              err.isCodeBug = true;
+              await logger.fatal(err);
+            }
+          })
       );
     }
   ]
@@ -165,24 +176,28 @@ async function checkTTI() {
       config.imapConfigurations.map(async (provider) => {
         let directMs = 0;
         let forwardingMs = 0;
-        let imapClient;
+        let pair = imapClients.get(provider.name) || [null, null];
         try {
-          // https://github.com/postalsys/imapflow/blob/88e46d9bbcdc347d22df27bc591841431d8dc831/lib/imap-flow.js#L243-L247
-          if (
-            imapClients.has(provider.name) &&
-            imapClients.get(provider.name).usable
-          ) {
-            imapClient = imapClients.get(provider.name);
-          } else {
-            imapClients.delete(provider.name);
-            imapClient = new ImapFlow({
+          //
+          // Ensure two long-lived IMAP connections exist for this provider
+          // so the direct and forwarded getMessage calls can run in parallel.
+          //
+          pair = imapClients.get(provider.name) || [null, null];
+          for (let idx = 0; idx < 2; idx++) {
+            if (pair[idx] && pair[idx].usable) continue;
+            try {
+              if (pair[idx]) pair[idx].close();
+            } catch {}
+
+            pair[idx] = new ImapFlow({
               ...provider.config,
-              socketTimeout: ms('1d') // long-lived IMAP connections
+              socketTimeout: ms('1d')
             });
-            await imapClient.connect();
-            await imapClient.mailboxOpen('INBOX');
-            imapClients.set(provider.name, imapClient);
+            await pair[idx].connect();
+            await pair[idx].mailboxOpen('INBOX');
           }
+
+          imapClients.set(provider.name, pair);
 
           const results = await Promise.all(
             [provider.config.auth.user, provider.forwarder].map(
@@ -337,16 +352,16 @@ Forward Email
                 // rewrite messageId since `raw` overrides this
                 info.messageId = messageId;
 
-                const { received, err, client } = await getMessage(
-                  imapClient,
-                  info,
-                  provider
-                );
+                const {
+                  received,
+                  err,
+                  client: returnedClient
+                } = await getMessage(pair[i], info, provider);
 
                 // If getMessage had to reconnect, update the shared reference
-                if (client && client !== imapClient) {
-                  imapClient = client;
-                  imapClients.set(provider.name, client);
+                if (returnedClient && returnedClient !== pair[i]) {
+                  pair[i] = returnedClient;
+                  imapClients.set(provider.name, pair);
                 }
 
                 if (err) {
@@ -381,13 +396,12 @@ Forward Email
           logger.fatal(err);
         }
 
-        // delete all messages once done
-        if (imapClient) {
+        // delete all messages once done (use first connection from the pair)
+        if (pair && pair[0] && pair[0].usable) {
           try {
-            await imapClient.messageDelete({ all: true });
+            await pair[0].messageDelete({ all: true });
           } catch (err) {
             err.provider = provider;
-            err.client = imapClient;
             err.isCodeBug = true;
             logger.fatal(err);
           }
