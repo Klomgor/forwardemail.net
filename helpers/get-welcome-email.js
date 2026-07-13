@@ -13,14 +13,11 @@ const config = require('#config');
 // see a helpful message when they first connect their email client.
 //
 function getWelcomeEmail(session) {
-  const address =
+  const to =
     session.user.username ||
-    session.user.alias_name ||
-    session.user.alias_id ||
-    'user';
-  const domain =
-    session.user.domain_name || config.webHost || 'forwardemail.net';
-  const to = `${address}@${domain}`;
+    `${session.user.alias_name || session.user.alias_id || 'user'}@${
+      session.user.domain_name || config.webHost || 'forwardemail.net'
+    }`;
   const from = `"Forward Email" <support@${
     config.webHost || 'forwardemail.net'
   }>`;

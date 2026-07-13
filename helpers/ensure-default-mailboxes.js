@@ -51,9 +51,6 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
       if (cached) return false;
     }
 
-    // Set cache to prevent redundant checks
-    await instance.client.set(cacheKey, true, 'PX', ms('1d'));
-
     // Get existing paths
     const paths = await Mailboxes.distinct(instance, session, 'path', {});
 
@@ -71,7 +68,10 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
       }
     }
 
-    if (required.length === 0) return isInitialSetup;
+    if (required.length === 0) {
+      await instance.client.set(cacheKey, true, 'PX', ms('1d'));
+      return isInitialSetup;
+    }
 
     // NOTE: we don't invoke `onCreate` here or re-use it since it calls `refreshSession`
     //       (and that would lead to unnecessary recursion)
@@ -116,6 +116,7 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
       })
     );
 
+    await instance.client.set(cacheKey, true, 'PX', ms('1d'));
     return isInitialSetup;
   } catch (err) {
     logger.fatal(err, { session, resolver: instance.resolver });

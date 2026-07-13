@@ -60,12 +60,6 @@ class DatabaseLRUMap {
     // If already exists, just update
     if (this._map.has(key)) {
       const entry = this._map.get(key);
-      // Close the old handle if it's a different instance (prevents
-      // file descriptor leak when two concurrent opens race)
-      if (entry.db && entry.db !== db && entry.db.open) {
-        closeDatabase(entry.db).catch(() => {});
-      }
-
       entry.db = db;
       entry.lastAccess = Date.now();
       return this;

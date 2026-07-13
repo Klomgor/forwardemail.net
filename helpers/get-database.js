@@ -616,13 +616,6 @@ async function getDatabase(
     // TODO: add p-timeout to the client.get calls below
     if (!migrateCheck) {
       try {
-        await instance.client.set(
-          `migrate_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('1d')
-        );
-
         //
         // NOTE: if we change schema on db then we
         //       need to stop sqlite server then
@@ -686,6 +679,13 @@ async function getDatabase(
             }
           }
         }
+
+        await instance.client.set(
+          `migrate_check:${session.user.alias_id}`,
+          true,
+          'PX',
+          ms('1d')
+        );
       } catch (err) {
         logger.fatal(err);
       }
@@ -1177,6 +1177,7 @@ async function getDatabase(
         //  5. Only after successful reopen do we store in databaseMap and
         //     mark has_auto_vacuum_migration in MongoDB
         //
+        if (!db.open) throw new TypeError('database connection is not open');
         const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
         if (!hasAutoVacuum) {
           // get latest from cache in case another connection started a vacuum
@@ -1323,13 +1324,21 @@ async function getDatabase(
         // especially after one or more CREATE INDEX statements.
         // <https://www.sqlite.org/pragma.html#pragma_optimize:~:text=All%20applications%20should%20run%20%22PRAGMA%20optimize%3B%22%20after%20a%20schema%20change%2C%20especially%20after%20one%20or%20more%20CREATE%20INDEX%20statements.>
         //
-        db.pragma('analysis_limit=400');
-        db.pragma('optimize');
+        if (db.open) {
+          db.pragma('analysis_limit=400');
+          db.pragma('optimize');
+        }
       } catch (err) {
         err.message = `VACUUM failed: ${err.message}`;
         err.isCodeBug = true;
         logger.fatal(err);
       }
+    }
+
+    // Final safety: if the handle was closed during initialization
+    // (e.g. by LRU sweep during awaits), throw so p-retry can reopen
+    if (!db.open) {
+      throw new TypeError('database connection is not open');
     }
 
     return db;
