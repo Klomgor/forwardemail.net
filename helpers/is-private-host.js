@@ -41,9 +41,10 @@ function isPrivateHost(hostname) {
  * whether any resolved IP is private/internal.
  * Use this for outbound HTTP requests to prevent DNS rebinding attacks.
  * @param {string} hostname - The hostname to check
+ * @param {object} [resolver] - Optional Tangerine resolver instance (Redis-backed, cached)
  * @returns {Promise<boolean>} true if the hostname is private/internal
  */
-async function isPrivateHostResolved(hostname) {
+async function isPrivateHostResolved(hostname, resolver) {
   // First do the synchronous checks
   if (isPrivateHost(hostname)) return true;
 
@@ -51,11 +52,14 @@ async function isPrivateHostResolved(hostname) {
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return false;
   if (/^[\da-f:]+$/i.test(hostname)) return false;
 
-  // Resolve the hostname and check all returned IPs
+  // Resolve the hostname and check all returned IPs.
+  // Use provided Tangerine resolver if available (Redis-backed cache),
+  // otherwise fall back to a fresh node:dns Resolver.
   try {
-    const resolver = new dns.promises.Resolver({ timeout: 5000, tries: 2 });
-    const addresses = await resolver.resolve4(hostname).catch(() => []);
-    const addresses6 = await resolver.resolve6(hostname).catch(() => []);
+    const r =
+      resolver || new dns.promises.Resolver({ timeout: 5000, tries: 2 });
+    const addresses = await r.resolve4(hostname).catch(() => []);
+    const addresses6 = await r.resolve6(hostname).catch(() => []);
     const allAddresses = [...addresses, ...addresses6];
 
     for (const addr of allAddresses) {

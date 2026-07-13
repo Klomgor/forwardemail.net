@@ -49,7 +49,7 @@ function WKD(resolver, client) {
       const parsedUrl = new URL(url);
       if (
         env.NODE_ENV !== 'test' &&
-        (await isPrivateHostResolved(parsedUrl.hostname))
+        (await isPrivateHostResolved(parsedUrl.hostname, resolver))
       )
         throw Boom.badRequest(
           i18n.translateError('INVALID_LOCALHOST_URL', 'en')
@@ -91,7 +91,7 @@ function WKD(resolver, client) {
                     if (
                       env.NODE_ENV !== 'test' &&
                       result?.address &&
-                      (await isPrivateHostResolved(result.address))
+                      (await isPrivateHostResolved(result.address, resolver))
                     ) {
                       fn(
                         new Error(

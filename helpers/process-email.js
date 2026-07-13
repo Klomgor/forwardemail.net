@@ -1590,7 +1590,7 @@ async function processEmail({ email, port = 25, resolver, client }) {
         const parsedWebhookUrl = new URL(url);
         if (
           env.NODE_ENV !== 'test' &&
-          (await isPrivateHostResolved(parsedWebhookUrl.hostname))
+          (await isPrivateHostResolved(parsedWebhookUrl.hostname, resolver))
         ) {
           logger.warn('bounce_webhook blocked: private host', {
             url,

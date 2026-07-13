@@ -193,7 +193,9 @@ async function downloadAliasBackup(ctx) {
         try {
           const isPublic = await checkS3BucketAccess(
             domainWithS3.s3_endpoint,
-            customBucket
+            customBucket,
+            10000,
+            ctx.resolver
           );
           if (isPublic) {
             ctx.logger.warn(

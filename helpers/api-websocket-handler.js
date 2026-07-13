@@ -62,13 +62,14 @@ const AUTH_TIMEOUT_MS = ms('10s');
 
 class ApiWebSocketHandler {
   constructor(options = {}) {
-    const { server, client } = options;
+    const { server, client, resolver } = options;
 
     if (!server) throw new Error('HTTP server is required');
     if (!client) throw new Error('Redis client is required');
 
     this.server = server;
     this.client = client;
+    this.resolver = resolver || null;
 
     // Map<aliasId, Set<WebSocket>>
     this.clients = new Map();
@@ -644,7 +645,13 @@ class ApiWebSocketHandler {
       if (!aliasConnections || aliasConnections.size === 0) {
         // No active WebSocket connections for this alias —
         // fall back to push notification delivery (APNs/FCM/UnifiedPush)
-        sendPushNotification(this.client, aliasId, payload.event, payload);
+        sendPushNotification(
+          this.client,
+          aliasId,
+          payload.event,
+          payload,
+          this.resolver
+        );
         return;
       }
 

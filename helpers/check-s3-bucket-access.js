@@ -26,9 +26,15 @@ const isPrivateHost = require('#helpers/is-private-host');
  * @param {string} endpoint - The S3 endpoint URL (e.g. https://s3.amazonaws.com)
  * @param {string} bucket - The bucket name
  * @param {number} [timeout=10000] - Request timeout in milliseconds
+ * @param {object} [resolver] - Optional Tangerine resolver instance (Redis-backed, cached)
  * @returns {Promise<boolean>} true if the bucket is publicly accessible, false otherwise
  */
-async function checkS3BucketAccess(endpoint, bucket, timeout = 10000) {
+async function checkS3BucketAccess(
+  endpoint,
+  bucket,
+  timeout = 10000,
+  resolver
+) {
   //
   // Try two common URL patterns for S3-compatible services:
   // 1. Path-style: https://endpoint/bucket (most compatible)
@@ -47,7 +53,7 @@ async function checkS3BucketAccess(endpoint, bucket, timeout = 10000) {
   // Path-style URL: https://endpoint/bucket
   const pathStyleUrl = new URL(`/${bucket}`, endpointUrl).href;
 
-  const isPublic = await _anonymousRequest(pathStyleUrl, timeout);
+  const isPublic = await _anonymousRequest(pathStyleUrl, timeout, resolver);
   if (isPublic) return true;
 
   //
@@ -60,7 +66,8 @@ async function checkS3BucketAccess(endpoint, bucket, timeout = 10000) {
     virtualHostUrl.pathname = '/';
     const isPublicVirtual = await _anonymousRequest(
       virtualHostUrl.href,
-      timeout
+      timeout,
+      resolver
     );
     if (isPublicVirtual) return true;
   } catch {
@@ -79,10 +86,11 @@ async function checkS3BucketAccess(endpoint, bucket, timeout = 10000) {
  *
  * @param {string} url - The URL to request
  * @param {number} timeout - Request timeout in milliseconds
+ * @param {object} [resolver] - Optional Tangerine resolver instance
  * @returns {Promise<boolean>} true if response is 200, false otherwise
  * @private
  */
-function _anonymousRequest(url, timeout) {
+function _anonymousRequest(url, timeout, resolver) {
   return new Promise((resolve) => {
     try {
       const parsedUrl = new URL(url);
@@ -96,9 +104,14 @@ function _anonymousRequest(url, timeout) {
             // No Authorization header — this is an anonymous request
             'User-Agent': 'ForwardEmail-BucketCheck/1.0'
           },
-          // Prevent SSRF via DNS rebinding: validate resolved IP at connect time
+          // Prevent SSRF via DNS rebinding: validate resolved IP at connect time.
+          // Use Tangerine resolver if available (Redis-backed cache),
+          // otherwise fall back to node:dns/promises lookup.
           lookup(hostname, options, cb) {
-            dnsLookup(hostname, options)
+            const lookupFn = resolver
+              ? (h, opts) => resolver.lookup(h, opts)
+              : (h, opts) => dnsLookup(h, opts);
+            lookupFn(hostname, options)
               .then((result) => {
                 if (result?.address && isPrivateHost(result.address)) {
                   const err = new Error(

@@ -110,7 +110,7 @@ async function onStore(mailboxId, update, session, fn) {
       }
 
       // <https://github.com/nodemailer/wildduck/blob/08c5804798e7ffe1b281859c4edcec2465d058c2/imap-core/lib/commands/store.js#L145>
-      if (entries.length > 0) {
+      if (Array.isArray(entries) && entries.length > 0) {
         this.server.notifier
           .addEntries(this, session, mailboxId, entries)
           .then(() => this.server.notifier.fire(session.user.alias_id))
@@ -621,16 +621,14 @@ async function onStore(mailboxId, update, session, fn) {
     // send response
     if (err) {
       // Transaction was rolled back - do not send notifications for
-      // changes that were never committed.  Pass the imapResponse code
-      // (e.g. 'INUSE') so the IMAP core can relay it to the client.
-      if (modified && modified.length > 0) {
-        fn(null, false, modified);
-      } else if (err.imapResponse) {
-        fn(null, err.imapResponse);
-      } else {
-        fn(err);
-      }
-
+      // changes that were never committed.  Serialize the error as a
+      // plain object (not an Error instance) so that msgpackr preserves
+      // custom properties like `imapResponse` across the WebSocket boundary.
+      // Pass empty payloads/entries to prevent the WSP caller from writing
+      // stale FETCH responses or firing notifications for uncommitted changes.
+      const errInfo = { _storeError: true };
+      if (err.imapResponse) errInfo.imapResponse = err.imapResponse;
+      fn(null, errInfo, false, modified, [], []);
       return;
     }
 

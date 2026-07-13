@@ -1044,7 +1044,7 @@ async function forward(recipient, headers, session, body) {
         );
         if (
           env.NODE_ENV !== 'test' &&
-          (await isPrivateHostResolved(webhookUrl.hostname))
+          (await isPrivateHostResolved(webhookUrl.hostname, this.resolver))
         )
           throw new SMTPError(
             i18n.translateError('INVALID_LOCALHOST_URL', 'en'),

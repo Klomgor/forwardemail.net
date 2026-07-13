@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
-const dns = require('node:dns');
 const http = require('node:http');
 const https = require('node:https');
 const net = require('node:net');
@@ -126,7 +125,7 @@ async function testS3Connection(ctx) {
     throw Boom.badRequest(ctx.translateError('CUSTOM_S3_INVALID_ENDPOINT'));
   }
 
-  if (await isPrivateHostResolved(parsedEndpoint.hostname)) {
+  if (await isPrivateHostResolved(parsedEndpoint.hostname, ctx.resolver)) {
     throw Boom.badRequest(ctx.translateError('CUSTOM_S3_INVALID_ENDPOINT'));
   }
 
@@ -137,7 +136,8 @@ async function testS3Connection(ctx) {
   // lookup(). This ensures the IP validated above is the same IP used
   // for the actual S3 requests.
   //
-  const resolver = new dns.promises.Resolver({ timeout: 5000, tries: 2 });
+  // Use Tangerine resolver (Redis-backed, cached) from Koa context
+  const { resolver } = ctx;
   let pinnedIP;
   try {
     const isIPv6 = net.isIPv6(parsedEndpoint.hostname);
@@ -155,7 +155,7 @@ async function testS3Connection(ctx) {
   }
 
   // Double-check the resolved IP is not private (defense in depth)
-  if (await isPrivateHostResolved(pinnedIP)) {
+  if (await isPrivateHostResolved(pinnedIP, resolver)) {
     throw Boom.badRequest(ctx.translateError('CUSTOM_S3_INVALID_ENDPOINT'));
   }
 
@@ -202,7 +202,12 @@ async function testS3Connection(ctx) {
     await testClient.send(new HeadBucketCommand({ Bucket: bucket }));
 
     // Check that the bucket is not publicly accessible
-    const isPublic = await checkS3BucketAccess(endpoint, bucket);
+    const isPublic = await checkS3BucketAccess(
+      endpoint,
+      bucket,
+      10000,
+      resolver
+    );
     if (isPublic) {
       throw Boom.badRequest(ctx.translateError('CUSTOM_S3_PUBLIC_BUCKET'));
     }

@@ -816,7 +816,7 @@ Domains.pre('validate', async function (next) {
         );
       }
 
-      if (await isPrivateHostResolved(endpointHost)) {
+      if (await isPrivateHostResolved(endpointHost, this.resolver)) {
         throw Boom.badRequest(
           i18n.translateError('INVALID_LOCALHOST_URL', this.locale)
         );
@@ -1411,7 +1411,7 @@ Domains.pre('save', async function (next) {
         .replace('HTTP://', 'http://')
         .replace('HTTPS://', 'https://')
     );
-    if (await isPrivateHostResolved(parsedUrl.hostname))
+    if (await isPrivateHostResolved(parsedUrl.hostname, this.resolver))
       throw Boom.badRequest(
         i18n.translateError('INVALID_LOCALHOST_URL', this.locale)
       );

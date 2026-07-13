@@ -37,7 +37,8 @@ const api = new API(
 // Attach WebSocket handler to the API server
 const wsHandler = new ApiWebSocketHandler({
   server: api.server,
-  client: api.client
+  client: api.client,
+  resolver: api.app.context.resolver
 });
 
 const graceful = new Graceful({

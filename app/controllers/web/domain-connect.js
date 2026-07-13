@@ -41,7 +41,7 @@ const SERVICE_ID = config.domainConnect.serviceId;
 
 // Discover the Domain Connect API base URL for a domain via DNS-over-HTTPS
 // Queries _domainconnect.<domain> TXT record via Cloudflare DoH
-async function discoverDomainConnectUrl(domain) {
+async function discoverDomainConnectUrl(domain, resolver) {
   try {
     const url = `https://cloudflare-dns.com/dns-query?name=_domainconnect.${encodeURIComponent(
       domain
@@ -68,7 +68,8 @@ async function discoverDomainConnectUrl(domain) {
     // Uses async DNS resolution to prevent DNS rebinding attacks
     try {
       const parsedUrl = new URL(apiBase);
-      if (await isPrivateHostResolved(parsedUrl.hostname)) return null;
+      if (await isPrivateHostResolved(parsedUrl.hostname, resolver))
+        return null;
     } catch {
       return null;
     }
@@ -84,14 +85,15 @@ async function discoverDomainConnectUrl(domain) {
 // Returns JSON with urlSyncUX (UX URL for apply redirect) and urlAPI (API URL for template checks)
 //
 // FWD-01-006: Uses safeFetch with DNS pinning to prevent TOCTOU DNS rebinding.
-async function fetchProviderSettings(apiBase, domain) {
+async function fetchProviderSettings(apiBase, domain, resolver) {
   try {
     const url = `${apiBase}/v2/${encodeURIComponent(domain)}/settings`;
     const { body, statusCode } = await safeFetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
       bodyTimeout: 5000,
-      headersTimeout: 5000
+      headersTimeout: 5000,
+      resolver
     });
     if (statusCode !== 200) return null;
     return body.json();
@@ -108,14 +110,15 @@ async function fetchProviderSettings(apiBase, domain) {
 //   'error'      — network error or non-200/404 status (inconclusive)
 //
 // FWD-01-006: Uses safeFetch with DNS pinning to prevent TOCTOU DNS rebinding.
-async function checkTemplateSupport(apiBase) {
+async function checkTemplateSupport(apiBase, resolver) {
   try {
     const url = `${apiBase}/v2/domainTemplates/providers/${PROVIDER_ID}/services/${SERVICE_ID}`;
     const { statusCode } = await safeFetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
       bodyTimeout: 5000,
-      headersTimeout: 5000
+      headersTimeout: 5000,
+      resolver
     });
     if (statusCode === 200) return 'supported';
     if (statusCode === 404) return 'not_found';
@@ -257,18 +260,25 @@ module.exports = async (ctx) => {
   let templateDefinitelyNotFound = false;
 
   // Step 1: Auto-discover via _domainconnect TXT record
-  const discovered = await discoverDomainConnectUrl(domain);
+  const discovered = await discoverDomainConnectUrl(domain, ctx.resolver);
 
   if (discovered) {
     // We found a Domain Connect provider for this domain.
     // Fetch their settings to get the correct urlSyncUX and urlAPI.
-    const settings = await fetchProviderSettings(discovered, domain);
+    const settings = await fetchProviderSettings(
+      discovered,
+      domain,
+      ctx.resolver
+    );
 
     if (settings && settings.urlSyncUX) {
       // Provider has proper settings — check if our template is supported.
       // Use urlAPI for template check if available, otherwise use the discovered base.
       const templateCheckBase = settings.urlAPI || discovered;
-      const templateResult = await checkTemplateSupport(templateCheckBase);
+      const templateResult = await checkTemplateSupport(
+        templateCheckBase,
+        ctx.resolver
+      );
       if (templateResult === 'supported') {
         urlSyncUX = settings.urlSyncUX;
       } else if (templateResult === 'not_found') {
@@ -282,7 +292,10 @@ module.exports = async (ctx) => {
       const matched = matchDiscoveredToKnownProvider(discovered);
 
       // Check template at the discovered URL
-      const templateResult = await checkTemplateSupport(discovered);
+      const templateResult = await checkTemplateSupport(
+        discovered,
+        ctx.resolver
+      );
       if (templateResult === 'supported') {
         // Use the known provider's urlSyncUX if available, then applyUrl, then discovered
         urlSyncUX =
@@ -352,7 +365,7 @@ module.exports = async (ctx) => {
       throw new Error('urlSyncUX must be HTTPS');
     }
 
-    if (await isPrivateHostResolved(syncUrl.hostname)) {
+    if (await isPrivateHostResolved(syncUrl.hostname, ctx.resolver)) {
       throw new Error('urlSyncUX resolves to private address');
     }
   } catch {

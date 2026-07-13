@@ -28,20 +28,26 @@ const { isPrivateHostResolved } = require('#helpers/is-private-host');
  *
  * @param {string} url - The full URL to fetch
  * @param {object} [options] - undici request options (method, headers, bodyTimeout, etc.)
+ * @param {object} [options.resolver] - Optional Tangerine resolver instance (Redis-backed, cached)
  * @returns {Promise<{statusCode: number, headers: object, body: object}>}
  * @throws {Error} If the hostname resolves to a private IP or DNS fails
  */
 async function safeFetch(url, options = {}) {
+  const { resolver: tangerineResolver, ...requestOptions } = options;
   const parsed = new URL(url);
   const { hostname } = parsed;
 
-  // Resolve DNS to get the actual IP
+  // Resolve DNS to get the actual IP.
+  // Use provided Tangerine resolver if available (Redis-backed cache),
+  // otherwise fall back to a fresh node:dns Resolver.
   let pinnedIP;
   if (net.isIPv4(hostname) || net.isIPv6(hostname)) {
     pinnedIP = hostname;
   } else {
-    const resolver = new dns.promises.Resolver({ timeout: 5000, tries: 2 });
-    const addresses = await resolver.resolve4(hostname);
+    const r =
+      tangerineResolver ||
+      new dns.promises.Resolver({ timeout: 5000, tries: 2 });
+    const addresses = await r.resolve4(hostname);
     if (!addresses || addresses.length === 0) {
       throw new Error(`DNS resolution failed for ${hostname}`);
     }
@@ -50,7 +56,7 @@ async function safeFetch(url, options = {}) {
   }
 
   // Validate the resolved IP is not private/internal
-  if (await isPrivateHostResolved(pinnedIP)) {
+  if (await isPrivateHostResolved(pinnedIP, tangerineResolver)) {
     throw new Error(`Resolved IP for ${hostname} is a private address`);
   }
 
@@ -74,7 +80,7 @@ async function safeFetch(url, options = {}) {
 
   try {
     return await undici.request(url, {
-      ...options,
+      ...requestOptions,
       dispatcher: agent
     });
   } finally {

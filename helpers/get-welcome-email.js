@@ -21,48 +21,90 @@ function getWelcomeEmail(session) {
   const from = `"Forward Email" <support@${
     config.webHost || 'forwardemail.net'
   }>`;
+  const host = config.webHost || 'forwardemail.net';
   const date = new Date().toUTCString();
   const messageId = `<welcome-${Date.now()}-${Math.random()
     .toString(36)
-    .slice(2)}@${config.webHost || 'forwardemail.net'}>`;
-
+    .slice(2)}@${host}>`;
   const subject = 'Welcome to Forward Email';
 
   const textBody = [
-    `Welcome to Forward Email!`,
+    'Welcome to Forward Email!',
     '',
     `Your encrypted mailbox (${to}) is ready.`,
     '',
-    'Here are some helpful links to get started:',
     '',
-    `- FAQ: https://${config.webHost || 'forwardemail.net'}/faq`,
-    `- Privacy Policy: https://${config.webHost || 'forwardemail.net'}/privacy`,
-    `- Getting Started Guide: https://${
-      config.webHost || 'forwardemail.net'
-    }/guides`,
+    'GET STARTED',
+    '',
+    `- FAQ: https://${host}/faq`,
+    `- Import & Migrate Your Mailbox: https://${host}/faq#how-do-i-import-and-migrate-my-existing-mailbox`,
+    `- Email Client Setup: https://${host}/faq#email-clients`,
+    '',
+    '',
+    'MANAGE YOUR ACCOUNT',
+    '',
+    `- Create Aliases & Mailboxes: https://${host}/my-account/domains`,
+    `- Account Security & Profile: https://${host}/my-account/security`,
+    `- Billing & Plans: https://${host}/my-account/billing`,
+    '',
+    '',
+    'LEARN MORE',
+    '',
+    `- Technical Whitepaper (PDF): https://${host}/technical-whitepaper.pdf`,
+    `- Self-Hosting Guide: https://${host}/faq#do-you-support-self-hosting`,
+    `- Privacy Policy: https://${host}/privacy`,
+    `- Terms of Service: https://${host}/terms`,
+    '',
+    '',
+    'CONNECT WITH US',
+    '',
+    `- Support & Help: https://${host}/help`,
+    '- Matrix Chat: https://matrix.to/#/#forwardemail:matrix.org',
+    '- Follow @fwdemail on X (Twitter): https://x.com/fwdemail',
+    '- GitHub: https://github.com/forwardemail',
+    '',
     '',
     'If you have any questions, simply reply to this email.',
     '',
-    '— The Forward Email Team'
+    '\u2014 The Forward Email Team'
   ].join('\r\n');
 
   const htmlBody = [
-    '<html><body>',
-    '<h2>Welcome to Forward Email!</h2>',
+    '<html><body style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">',
+    '<h2 style="color: #20c997;">Welcome to Forward Email!</h2>',
     `<p>Your encrypted mailbox (<strong>${to}</strong>) is ready.</p>`,
-    '<p>Here are some helpful links to get started:</p>',
-    '<ul>',
-    `<li><a href="https://${
-      config.webHost || 'forwardemail.net'
-    }/faq">FAQ</a></li>`,
-    `<li><a href="https://${
-      config.webHost || 'forwardemail.net'
-    }/privacy">Privacy Policy</a></li>`,
-    `<li><a href="https://${
-      config.webHost || 'forwardemail.net'
-    }/guides">Getting Started Guide</a></li>`,
+    '',
+    '<h3>Get Started</h3>',
+    '<ul style="line-height: 1.8;">',
+    `<li><a href="https://${host}/faq">FAQ</a></li>`,
+    `<li><a href="https://${host}/faq#how-do-i-import-and-migrate-my-existing-mailbox">Import &amp; Migrate Your Mailbox</a></li>`,
+    `<li><a href="https://${host}/faq#email-clients">Email Client Setup</a> (Thunderbird, Outlook, Apple Mail, and more)</li>`,
     '</ul>',
-    '<p>If you have any questions, simply reply to this email.</p>',
+    '',
+    '<h3>Manage Your Account</h3>',
+    '<ul style="line-height: 1.8;">',
+    `<li><a href="https://${host}/my-account/domains">Create Aliases &amp; Mailboxes</a></li>`,
+    `<li><a href="https://${host}/my-account/security">Account Security &amp; Profile</a></li>`,
+    `<li><a href="https://${host}/my-account/billing">Billing &amp; Plans</a></li>`,
+    '</ul>',
+    '',
+    '<h3>Learn More</h3>',
+    '<ul style="line-height: 1.8;">',
+    `<li><a href="https://${host}/technical-whitepaper.pdf">Technical Whitepaper</a> (PDF)</li>`,
+    `<li><a href="https://${host}/faq#do-you-support-self-hosting">Self-Hosting Guide</a></li>`,
+    `<li><a href="https://${host}/privacy">Privacy Policy</a></li>`,
+    `<li><a href="https://${host}/terms">Terms of Service</a></li>`,
+    '</ul>',
+    '',
+    '<h3>Connect With Us</h3>',
+    '<ul style="line-height: 1.8;">',
+    `<li><a href="https://${host}/help">Support &amp; Help</a></li>`,
+    '<li><a href="https://matrix.to/#/#forwardemail:matrix.org">Matrix Chat Room</a></li>',
+    '<li><a href="https://x.com/fwdemail">@fwdemail on X (Twitter)</a></li>',
+    '<li><a href="https://github.com/forwardemail">GitHub</a></li>',
+    '</ul>',
+    '',
+    '<p style="margin-top: 28px;">If you have any questions, simply reply to this email.</p>',
     '<p>&mdash; The Forward Email Team</p>',
     '</body></html>'
   ].join('\r\n');

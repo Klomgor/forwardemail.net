@@ -61,10 +61,11 @@ const PUSH_CONCURRENCY = 5;
  * and wkd helpers — all of which resolve DNS before making outbound requests.
  *
  * @param {string} urlString - The URL to validate
+ * @param {object} [resolver] - Optional Tangerine resolver instance (Redis-backed, cached)
  * @returns {Promise<void>}
  * @throws {Error} if URL targets private/reserved addresses
  */
-async function validateOutboundUrl(urlString) {
+async function validateOutboundUrl(urlString, resolver) {
   const parsed = new URL(urlString);
 
   if (parsed.protocol !== 'https:') {
@@ -73,7 +74,7 @@ async function validateOutboundUrl(urlString) {
 
   // Use isPrivateHostResolved (async DNS resolution) to prevent DNS rebinding.
   // This matches the pattern in domain-connect.js, on-data-mx.js, process-email.js, wkd.js
-  if (await isPrivateHostResolved(parsed.hostname)) {
+  if (await isPrivateHostResolved(parsed.hostname, resolver)) {
     throw new Error(
       `Push endpoint targets private/reserved address: ${parsed.hostname}`
     );
@@ -159,8 +160,16 @@ function getApnsProvider() {
  * @param {string} aliasId - The alias ID to notify
  * @param {string} event - The WebSocket event name (e.g. 'newMessage')
  * @param {Object} [data={}] - Event payload (title, body, etc.)
+ * @param {object} [resolver] - Optional Tangerine resolver instance
  */
-async function sendPushNotification(client, aliasId, event, data = {}) {
+// eslint-disable-next-line max-params
+async function sendPushNotification(
+  client,
+  aliasId,
+  event,
+  data = {},
+  resolver
+) {
   if (!client || !aliasId || !event) return;
 
   // Sanitize event name: only allow known safe characters
@@ -186,7 +195,7 @@ async function sendPushNotification(client, aliasId, event, data = {}) {
       tokens,
       async (tokenDoc) => {
         try {
-          await deliverToToken(tokenDoc, payload);
+          await deliverToToken(tokenDoc, payload, resolver);
           await PushTokens.recordSuccess(tokenDoc._id);
         } catch (err) {
           logger.warn('Push delivery failed', {
@@ -293,7 +302,7 @@ function buildPayload(event, data) {
 /**
  * Deliver a notification to a specific token based on its platform.
  */
-async function deliverToToken(tokenDoc, payload) {
+async function deliverToToken(tokenDoc, payload, resolver) {
   switch (tokenDoc.platform) {
     case 'apns': {
       return deliverApns(tokenDoc, payload);
@@ -304,7 +313,7 @@ async function deliverToToken(tokenDoc, payload) {
     }
 
     case 'unified-push': {
-      return deliverUnifiedPush(tokenDoc, payload);
+      return deliverUnifiedPush(tokenDoc, payload, resolver);
     }
 
     case 'web-push': {
@@ -453,12 +462,11 @@ async function deliverFcm(tokenDoc, payload) {
  *
  * No env var configuration needed — the endpoint URL is the token itself.
  */
-async function deliverUnifiedPush(tokenDoc, payload) {
+async function deliverUnifiedPush(tokenDoc, payload, resolver) {
   const endpointUrl = tokenDoc.token;
-
   // SSRF prevention: resolve DNS and validate against private/reserved ranges
   // (prevents DNS rebinding attacks where attacker changes A record after registration)
-  await validateOutboundUrl(endpointUrl);
+  await validateOutboundUrl(endpointUrl, resolver);
 
   const body = JSON.stringify({
     event: payload.event,

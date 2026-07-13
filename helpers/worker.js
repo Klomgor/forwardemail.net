@@ -64,6 +64,7 @@ const refineAndLogError = require('#helpers/refine-and-log-error');
 const setupMongoose = require('#helpers/setup-mongoose');
 const { decrypt } = require('#helpers/encrypt-decrypt');
 const checkS3BucketAccess = require('#helpers/check-s3-bucket-access');
+const createTangerine = require('#helpers/create-tangerine');
 const { getS3Client } = require('#helpers/get-s3-client');
 const { syncConvertResult } = require('#helpers/mongoose-to-sqlite');
 
@@ -117,9 +118,13 @@ client.setMaxListeners(0);
 // spoof instance for `getDatabase` calls
 // (since this is run in a worker outside of server instances)
 //
+// Create a Tangerine resolver for DNS lookups (Redis-backed, cached)
+const resolver = createTangerine(client, logger);
+
 const instance = {
   constructor: { name: 'SQLite' },
   client,
+  resolver,
   logger
 };
 
@@ -477,7 +482,9 @@ async function backup(payload) {
     try {
       const isPublic = await checkS3BucketAccess(
         domain.s3_endpoint,
-        customBucket
+        customBucket,
+        10000,
+        resolver
       );
       if (isPublic) {
         // Save original bucket name for the email notification

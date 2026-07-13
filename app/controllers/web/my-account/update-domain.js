@@ -124,7 +124,9 @@ async function updateDomain(ctx, next) {
         try {
           const isPublic = await checkS3BucketAccess(
             ctx.state.domain.s3_endpoint,
-            ctx.state.domain.s3_bucket
+            ctx.state.domain.s3_bucket,
+            10000,
+            ctx.resolver
           );
           if (isPublic) {
             throw Boom.badRequest(
@@ -328,7 +330,9 @@ async function updateDomain(ctx, next) {
             try {
               const isPublic = await checkS3BucketAccess(
                 ctx.state.domain.s3_endpoint,
-                ctx.state.domain.s3_bucket
+                ctx.state.domain.s3_bucket,
+                10000,
+                ctx.resolver
               );
               if (isPublic) {
                 throw Boom.badRequest(
