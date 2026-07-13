@@ -85,13 +85,29 @@ class RetryClient extends undici.Client {
         response.signal = options.signal;
         return response;
       } catch (err) {
-        if (count >= retries || !isRetryableError(err)) throw err;
+        if (t) clearTimeout(t);
+
+        if (count >= retries || !isRetryableError(err)) {
+          // Destroy per-request dispatcher on terminal failure to prevent
+          // socket/fd leak (the response body won't be consumed on error).
+          if (options.dispatcher) {
+            options.dispatcher.destroy();
+            options.dispatcher = undefined;
+          }
+
+          throw err;
+        }
+
+        // Destroy the dispatcher before retrying — the recursive call will
+        // create a fresh one.  Without this, each retry leaks an Agent.
+        if (options.dispatcher) {
+          options.dispatcher.destroy();
+          options.dispatcher = undefined;
+        }
+
         const ms = calculateDelay(count);
         if (ms) await timers.setTimeout(ms);
         return this.request(options, count + 1);
-      } finally {
-        if (t) clearTimeout(t);
-        // if (options.dispatcher) options.dispatcher.destroy();
       }
     };
   }

@@ -120,12 +120,15 @@ function WKD(resolver, client) {
       const response = await undici.fetch(url, {
         signal: abortController.signal,
         dispatcher
-        // TODO: may need `dispatcher.destroy()`, but not sure since we use `undici.fetch` vs `undici.request`
       });
       clearTimeout(t);
+      // Close the agent after the response is obtained to avoid leaking
+      // sockets.  The response body stream remains readable after close().
+      dispatcher.close();
       return response;
     } catch (err) {
       clearTimeout(t);
+      dispatcher.destroy();
       //
       // Enhanced error logging for WKD fetch failures
       // Log the underlying cause for "TypeError: fetch failed" errors

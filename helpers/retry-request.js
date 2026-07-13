@@ -183,12 +183,27 @@ async function retryRequest(url, opts = {}, count = 1) {
       });
     }
 
-    if (count >= opts.retries || !isRetryableError(err)) throw err;
+    if (count >= opts.retries || !isRetryableError(err)) {
+      // Destroy per-request dispatcher on terminal failure to prevent
+      // socket/fd leak (the response body won't be consumed on error).
+      if (opts.dispatcher) {
+        opts.dispatcher.destroy();
+        opts.dispatcher = undefined;
+      }
+
+      throw err;
+    }
+
+    // Destroy the dispatcher before retrying — the recursive call will
+    // create a fresh one.  Without this, each retry leaks an Agent.
+    if (opts.dispatcher) {
+      opts.dispatcher.destroy();
+      opts.dispatcher = undefined;
+    }
+
     const ms = opts.calculateDelay(count);
     if (ms) await timers.setTimeout(ms);
     return retryRequest(url, opts, count + 1);
-  } finally {
-    // if (opts.dispatcher) opts.dispatcher.destroy();
   }
 }
 

@@ -40,7 +40,6 @@ const status = require('statuses');
 const { Headers } = require('mailsplit');
 const { Iconv } = require('iconv');
 const { SRS } = require('sender-rewriting-scheme');
-const { boolean } = require('boolean');
 const { sealMessage } = require('mailauth');
 const { simpleParser } = require('mailparser');
 const _ = require('#helpers/lodash');
@@ -423,8 +422,19 @@ async function imap(alias, headers, session, body) {
   //   },
   //   ...
   // ]
-  const value = await this.client.get(getFingerprintKey(session, alias.id));
-  if (boolean(value)) {
+  // Atomic claim: SET NX PX acquires a "delivery lock" for this
+  // fingerprint+alias pair.  If another MX worker already claimed it,
+  // `acquired` will be null and we skip delivery (prevents the race
+  // where two workers both GET before either SETs).
+  const fpKey = getFingerprintKey(session, alias.id);
+  const acquired = await this.client.set(
+    fpKey,
+    '1',
+    'PX',
+    config.fingerprintTTL,
+    'NX'
+  );
+  if (!acquired) {
     accepted.push(alias.address);
     if (alias.vacationResponder)
       vacationResponders.push(alias.vacationResponder);
@@ -535,15 +545,8 @@ async function imap(alias, headers, session, body) {
         session
       });
 
-      // store that we sent this message so we don't again
-      const key = getFingerprintKey(session, alias.id);
-      this.client
-        .pipeline()
-        .incr(key)
-        .pexpire(key, config.fingerprintTTL)
-        .exec()
-        .then()
-        .catch((err) => logger.fatal(err));
+      // NOTE: fingerprint key was already claimed atomically via SET NX PX
+      // above before delivery began — no additional write needed here.
       // push to accepted array
       accepted.push(alias.address);
       if (alias.vacationResponder)
@@ -552,6 +555,12 @@ async function imap(alias, headers, session, body) {
   } catch (_err) {
     // an error occurred here with websockets so we bounce all IMAP recipients
     logger.fatal(_err, { session, resolver: this.resolver });
+
+    // Release the fingerprint claim so the sender can retry delivery.
+    // Without this, a transient failure (e.g. WebSocket timeout) would
+    // permanently block re-delivery for the duration of fingerprintTTL.
+    this.client.del(fpKey).catch((err) => logger.fatal(err));
+
     const err = parseError(_err);
     err.target = env.IMAP_HOST;
     //
@@ -887,8 +896,11 @@ async function forward(recipient, headers, session, body) {
   // prevent sending to the same webhook or email twice
   const key = getFingerprintKey(session, recipient.webhook || recipient.to[0]);
 
-  const [count] = await Promise.all([
-    this.client.incrby(key, 0),
+  // Run denylist check concurrently with the fingerprint claim
+  const [acquired] = await Promise.all([
+    // Atomic claim: SET NX PX prevents the race where two MX workers
+    // both read "0" before either increments.
+    this.client.set(key, '1', 'PX', config.fingerprintTTL, 'NX'),
     (async () => {
       //
       // NOTE: we send emails in series therefore we can check
@@ -913,11 +925,9 @@ async function forward(recipient, headers, session, body) {
       }
     })()
   ]);
-
   const accepted = [];
   const bounces = [];
-
-  if (count > 0) {
+  if (!acquired) {
     // NOTE: we group together recipients based off endpoint
     for (const replacement of Object.keys(recipient.replacements)) {
       if (!accepted.includes(replacement)) accepted.push(replacement);
@@ -1132,15 +1142,8 @@ async function forward(recipient, headers, session, body) {
         session
       });
 
-      // store that we sent this so we don't again
-      this.client
-        .pipeline()
-        .incr(key)
-        .pexpire(key, config.fingerprintTTL)
-        .exec()
-        .then()
-        .catch((err) => logger.fatal(err));
-
+      // NOTE: fingerprint key was already claimed atomically via SET NX PX
+      // above before forwarding began — no additional write needed here.
       // NOTE: we group together recipients based off endpoint
       for (const replacement of Object.keys(recipient.replacements)) {
         if (!accepted.includes(replacement)) accepted.push(replacement);
@@ -1570,15 +1573,8 @@ async function forward(recipient, headers, session, body) {
       session
     });
 
-    // store that we sent this so we don't again
-    this.client
-      .pipeline()
-      .incr(key)
-      .pexpire(key, config.fingerprintTTL)
-      .exec()
-      .then()
-      .catch((err) => logger.fatal(err));
-
+    // NOTE: fingerprint key was already claimed atomically via SET NX PX
+    // above before forwarding began — no additional write needed here.
     if (info.accepted && info.accepted.length > 0) {
       // add the masked recipient to the final accepted array
       // (we don't want to reveal forwarding config to client SMTP servers)
