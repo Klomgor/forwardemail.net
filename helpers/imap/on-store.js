@@ -618,12 +618,23 @@ async function onStore(mailboxId, update, session, fn) {
       err = _err;
     }
 
-    // send response — pass err through so the WSP caller can handle it
-    fn(null, err, true, modified, payloads, entries);
+    // send response
+    if (err) {
+      // Transaction was rolled back - do not send notifications for
+      // changes that were never committed.  Pass the imapResponse code
+      // (e.g. 'INUSE') so the IMAP core can relay it to the client.
+      if (modified && modified.length > 0) {
+        fn(null, false, modified);
+      } else if (err.imapResponse) {
+        fn(null, err.imapResponse);
+      } else {
+        fn(err);
+      }
 
-    // Do not send notifications when the transaction was rolled back;
-    // the changes were never committed so clients must not be notified.
-    if (err) return;
+      return;
+    }
+
+    fn(null, null, true, modified, payloads, entries);
 
     // send websocket push notification
     if (entries.length > 0) {
