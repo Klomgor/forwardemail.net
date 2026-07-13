@@ -36,6 +36,7 @@
 //
 
 const { Buffer } = require('node:buffer');
+const dns = require('node:dns');
 
 // eslint-disable-next-line import/no-unassigned-import
 require('#helpers/polyfill-towellformed');
@@ -46,6 +47,7 @@ const undici = require('undici');
 const pkg = require('../package.json');
 
 const { hasLegitimateHosting } = require('#helpers/check-domain-reputation');
+const isPrivateHost = require('#helpers/is-private-host');
 const { isPrivateHostResolved } = require('#helpers/is-private-host');
 const config = require('#config');
 const { PARKING_IPS } = require('#config/smtp-reputation');
@@ -60,9 +62,27 @@ const loggerDefault = require('#helpers/logger');
 // Creating the Agent once avoids per-call overhead and enables
 // connection pooling across concurrent categorisation requests.
 //
-const dispatcher = new undici.Agent().compose(
-  undici.interceptors.redirect({ maxRedirections: 5 })
-);
+// Use a custom connect.lookup that validates resolved IPs at connect time
+// to prevent DNS rebinding attacks (TOCTOU gap between isPrivateHostResolved
+// pre-check and the actual TCP connection) and redirect-to-private-IP attacks.
+const dispatcher = new undici.Agent({
+  connect: {
+    lookup(hostname, options, fn) {
+      dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return fn(err);
+        if (address && isPrivateHost(address)) {
+          const error = new Error(
+            `Resolved IP ${address} is a private/reserved address`
+          );
+          error.code = 'EPRIVATEADDR';
+          return fn(error);
+        }
+
+        return fn(null, address, family);
+      });
+    }
+  }
+}).compose(undici.interceptors.redirect({ maxRedirections: 5 }));
 
 // ───────────────────────────────────────────────────────────────────
 // Keyword dictionaries for content-based categorisation

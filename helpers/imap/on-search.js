@@ -154,12 +154,18 @@ async function onSearch(mailboxId, options, session, fn) {
             //
             let sql;
             if (env.SQLITE_FTS5_ENABLED) {
+              // Sanitize FTS5 query to prevent injection of operators
+              // (*, ", OR, AND, NOT, NEAR, column:).  Wrap the term in
+              // double-quotes so FTS5 treats it as a literal phrase.
+              const sanitized = term.value
+                .replace(/"/g, '""') // escape embedded double-quotes
+                .replace(/\*/g, ''); // strip wildcard operator
               sql = {
                 query: `select _id from Messages_fts where Messages_fts ${
                   ne ? 'NOT MATCH' : 'MATCH'
                 } $p1 ORDER BY rank;`,
                 values: {
-                  p1: term.value
+                  p1: `"${sanitized}"`
                 }
               };
             } else {

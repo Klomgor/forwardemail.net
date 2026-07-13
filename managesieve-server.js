@@ -336,6 +336,25 @@ class ManageSieveServer {
       return;
     }
 
+    //
+    // FWD-02-001: Enforce maximum buffer size to prevent memory exhaustion.
+    // A malicious client could send data without CRLF delimiters, causing
+    // unbounded buffer growth.  We allow up to maxScriptSize + 4 KB
+    // (to accommodate the largest valid payload — a PUTSCRIPT literal —
+    // plus a generous allowance for the command line itself).
+    //
+    const MAX_BUFFER_SIZE = this.maxScriptSize + 4096;
+    if (session.buffer.length > MAX_BUFFER_SIZE) {
+      this.logger.warn('ManageSieve buffer overflow, closing connection', {
+        component: 'ManageSieve',
+        sessionId: session.id,
+        bufferSize: session.buffer.length
+      });
+      this.send(session, `${RESPONSE.BYE} "Buffer overflow"`);
+      session.socket.destroy();
+      return;
+    }
+
     // If we're waiting for SASL authentication continuation, handle it first
     if (session.pendingAuthMechanism) {
       const crlfIndex = session.buffer.indexOf('\r\n');
@@ -387,7 +406,12 @@ class ManageSieveServer {
   // Process a single command
   //
   async processCommand(session, line) {
-    this.logger.info(`ManageSieve command: ${line}`, {
+    // FWD-02-003: Redact AUTHENTICATE arguments from logs to prevent
+    // credential leakage (initial-response may contain base64 password).
+    const logLine = /^authenticate\s/i.test(line)
+      ? 'AUTHENTICATE [REDACTED]'
+      : line;
+    this.logger.info(`ManageSieve command: ${logLine}`, {
       component: 'ManageSieve',
       sessionId: session.id
     });
@@ -562,6 +586,15 @@ class ManageSieveServer {
     const literalMatch = args.match(/{(\d+)\+?}\s*$/);
     if (literalMatch) {
       const size = Number.parseInt(literalMatch[1], 10);
+      // FWD-02-002: Limit AUTHENTICATE literal size to prevent memory DoS.
+      // PLAIN auth data is base64(authzid\0authcid\0password); 8 KB is
+      // more than sufficient for any legitimate credential.
+      const MAX_AUTH_LITERAL = 8192;
+      if (size > MAX_AUTH_LITERAL) {
+        this.send(session, `${RESPONSE.NO} "Authentication data too large"`);
+        return;
+      }
+
       // Set up pending literal to read auth data
       session.pendingLiteral = {
         size,

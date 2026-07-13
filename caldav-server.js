@@ -4305,9 +4305,29 @@ class CalDAV extends API {
           );
         }
 
-        // Read the raw binary body
+        // Read the raw binary body with streaming size enforcement
+        // to prevent memory exhaustion from oversized uploads.
+        const contentLength = Number.parseInt(
+          ctx.req.headers['content-length'],
+          10
+        );
+        if (contentLength > MAX_ATTACHMENT_SIZE) {
+          throw Boom.entityTooLarge(
+            `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
+          );
+        }
+
         const chunks = [];
+        let totalBytes = 0;
         for await (const chunk of ctx.req) {
+          totalBytes += chunk.length;
+          if (totalBytes > MAX_ATTACHMENT_SIZE) {
+            ctx.req.destroy();
+            throw Boom.entityTooLarge(
+              `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
+            );
+          }
+
           chunks.push(chunk);
         }
 
@@ -4315,12 +4335,6 @@ class CalDAV extends API {
 
         if (bodyBuffer.length === 0) {
           throw Boom.badRequest('Attachment body is empty');
-        }
-
-        if (bodyBuffer.length > MAX_ATTACHMENT_SIZE) {
-          throw Boom.entityTooLarge(
-            `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
-          );
         }
 
         // Generate a unique MANAGED-ID
@@ -4363,9 +4377,29 @@ class CalDAV extends API {
           );
         }
 
-        // Read the raw binary body
+        // Read the raw binary body with streaming size enforcement
+        // to prevent memory exhaustion from oversized uploads.
+        const contentLength = Number.parseInt(
+          ctx.req.headers['content-length'],
+          10
+        );
+        if (contentLength > MAX_ATTACHMENT_SIZE) {
+          throw Boom.entityTooLarge(
+            `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
+          );
+        }
+
         const chunks = [];
+        let totalBytes = 0;
         for await (const chunk of ctx.req) {
+          totalBytes += chunk.length;
+          if (totalBytes > MAX_ATTACHMENT_SIZE) {
+            ctx.req.destroy();
+            throw Boom.entityTooLarge(
+              `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
+            );
+          }
+
           chunks.push(chunk);
         }
 
@@ -4373,12 +4407,6 @@ class CalDAV extends API {
 
         if (bodyBuffer.length === 0) {
           throw Boom.badRequest('Attachment body is empty');
-        }
-
-        if (bodyBuffer.length > MAX_ATTACHMENT_SIZE) {
-          throw Boom.entityTooLarge(
-            `Attachment exceeds maximum size of ${MAX_ATTACHMENT_SIZE} bytes`
-          );
         }
 
         // Generate a new MANAGED-ID for the updated attachment

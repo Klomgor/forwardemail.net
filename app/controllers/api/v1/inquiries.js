@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
-const { createHmac } = require('node:crypto');
+const { Buffer } = require('node:buffer');
+const { createHmac, timingSafeEqual } = require('node:crypto');
 const Boom = require('@hapi/boom');
 const isSANB = require('is-string-and-not-blank');
 const { Headers } = require('mailsplit');
@@ -55,7 +56,15 @@ async function create(ctx) {
       .update(body)
       .digest('hex');
 
-    if (requestHeaders[WEBHOOK_SIGNATURE_HEADER] !== webhookSignature)
+    const receivedSig = Buffer.from(
+      requestHeaders[WEBHOOK_SIGNATURE_HEADER],
+      'utf8'
+    );
+    const expectedSig = Buffer.from(webhookSignature, 'utf8');
+    if (
+      receivedSig.length !== expectedSig.length ||
+      !timingSafeEqual(receivedSig, expectedSig)
+    )
       throw Boom.forbidden(
         ctx.translateError('INVALID_INQUIRY_WEBHOOK_SIGNATURE')
       );

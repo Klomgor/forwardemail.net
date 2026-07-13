@@ -5,6 +5,16 @@
 
 const env = require('#config/env');
 
+// Escape XML special characters to prevent injection in autodiscover responses
+function escapeXml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 //
 // Thunderbird / Mozilla autoconfig
 // GET /mail/config-v1.1.xml
@@ -115,7 +125,7 @@ async function autodiscover(ctx) {
     // Extract email from <EMailAddress>user@example.com</EMailAddress>
     const match = /<emailaddress>([^<]+)<\/emailaddress>/i.exec(body);
     if (match) {
-      email = match[1];
+      email = escapeXml(match[1]);
     }
   } catch (err) {
     ctx.logger.debug(err);

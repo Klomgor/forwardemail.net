@@ -15,6 +15,7 @@ const PushTokens = require('#models/push-tokens');
 const config = require('#config');
 const { isPrivateHostResolved } = require('#helpers/is-private-host');
 const logger = require('#helpers/logger');
+const safeFetch = require('#helpers/safe-fetch');
 
 //
 // Push notification delivery helper for the Forward Email Mail App.
@@ -464,9 +465,15 @@ async function deliverFcm(tokenDoc, payload) {
  */
 async function deliverUnifiedPush(tokenDoc, payload, resolver) {
   const endpointUrl = tokenDoc.token;
-  // SSRF prevention: resolve DNS and validate against private/reserved ranges
-  // (prevents DNS rebinding attacks where attacker changes A record after registration)
-  await validateOutboundUrl(endpointUrl, resolver);
+  // Validate URL scheme and credentials before making the request
+  const parsed = new URL(endpointUrl);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Only HTTPS URLs are allowed for push delivery');
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error('Push endpoint must not contain credentials');
+  }
 
   const body = JSON.stringify({
     event: payload.event,
@@ -475,24 +482,26 @@ async function deliverUnifiedPush(tokenDoc, payload, resolver) {
     ...payload.data
   });
 
-  const response = await fetch(endpointUrl, {
+  // Use safeFetch with DNS pinning to prevent TOCTOU DNS rebinding attacks.
+  // safeFetch resolves the hostname ONCE, validates it is not a private IP,
+  // then pins the resolved IP at the connection level via a custom undici
+  // Agent — eliminating the window between DNS check and TCP connect.
+  const { statusCode, body: responseBody } = await safeFetch(endpointUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': String(Buffer.byteLength(body))
     },
     body,
-    // Timeout to prevent hanging on unresponsive endpoints
-    signal: AbortSignal.timeout(10_000)
+    bodyTimeout: 10_000,
+    headersTimeout: 10_000,
+    resolver
   });
 
-  if (!response.ok) {
-    const responseBody = await response.text();
+  if (statusCode < 200 || statusCode >= 300) {
+    const text = await responseBody.text();
     throw new Error(
-      `UnifiedPush delivery failed (${response.status}): ${responseBody.slice(
-        0,
-        200
-      )}`
+      `UnifiedPush delivery failed (${statusCode}): ${text.slice(0, 200)}`
     );
   }
 }

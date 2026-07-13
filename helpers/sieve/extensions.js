@@ -20,6 +20,8 @@
  * - regex (draft-ietf-sieve-regex) - Regular expression matching
  */
 
+const RE2 = require('re2');
+
 /**
  * Extension registry and metadata
  */
@@ -668,12 +670,16 @@ class Imap4FlagsExtension {
       }
 
       case 'matches': {
-        // Simple glob matching
+        // Simple glob matching (use RE2 to prevent ReDoS)
         const regexPattern = normalizedPattern
           .replaceAll(/[$()+.[\]^{|}]/g, String.raw`\$&`)
           .replaceAll('*', '.*')
           .replaceAll('?', '.');
-        return new RegExp(`^${regexPattern}$`).test(normalizedFlag);
+        try {
+          return new RE2(`^${regexPattern}$`).test(normalizedFlag);
+        } catch {
+          return false;
+        }
       }
 
       default: {
@@ -819,12 +825,16 @@ class BodyExtension {
           .replaceAll(/[$()+.[\]^{|}]/g, String.raw`\$&`)
           .replaceAll('*', '.*')
           .replaceAll('?', '.');
-        return new RegExp(regexPattern).test(normalizedContent);
+        try {
+          return new RE2(regexPattern).test(normalizedContent);
+        } catch {
+          return false;
+        }
       }
 
       case 'regex': {
         try {
-          return new RegExp(pattern, 'i').test(content);
+          return new RE2(pattern, 'i').test(content);
         } catch {
           return false;
         }
