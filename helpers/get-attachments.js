@@ -23,11 +23,15 @@ function getAttachments(mimeTree) {
   if (typeof mimeTree === 'string') {
     const index = mimeTree.indexOf(ATTACHMENT_MAP_STR);
     if (index === -1) return [];
-    return Object.values(
-      JSON.parse(
-        `{${mimeTree.slice(index + ATTACHMENT_MAP_STR.length).split('}')[0]}}`
-      )
-    );
+    try {
+      return Object.values(
+        JSON.parse(
+          `{${mimeTree.slice(index + ATTACHMENT_MAP_STR.length).split('}')[0]}}`
+        )
+      );
+    } catch {
+      return [];
+    }
   }
 
   return [];

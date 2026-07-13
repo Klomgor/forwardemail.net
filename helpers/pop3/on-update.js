@@ -150,7 +150,7 @@ async function onUpdate(update, session, fn) {
     // RFC 1939: POP3 DELE+QUIT should permanently delete messages, not move to Trash
     if (update.deleted && update.deleted.length > 0) {
       // Step 1: Mark messages with \Deleted flag
-      await onStorePromise.call(
+      const storeResult = await onStorePromise.call(
         this,
         session.user.mailbox,
         {
@@ -162,20 +162,28 @@ async function onUpdate(update, session, fn) {
         session
       );
 
-      // Step 2: Permanently delete marked messages via EXPUNGE
-      // NOTE: must pass isUid + messages to restrict expunge to only
-      // the UIDs that POP3 marked for deletion; otherwise any message
-      // that already had \Deleted (e.g. from IMAP) would also be removed.
-      await onExpungePromise.call(
-        this,
-        session.user.mailbox,
-        {
-          isUid: true,
-          messages: update.deleted.map((message) => message.uid),
-          silent: true
-        },
-        session
-      );
+      // If STORE failed (soft error), skip EXPUNGE to avoid no-op deletion
+      if (storeResult?.[0]?._storeError) {
+        const err = new TypeError('POP3 STORE failed, skipping EXPUNGE');
+        err.storeResult = storeResult[0];
+        err.isCodeBug = true;
+        this.logger.fatal(err, { session, resolver: this.resolver });
+      } else {
+        // Step 2: Permanently delete marked messages via EXPUNGE
+        // NOTE: must pass isUid + messages to restrict expunge to only
+        // the UIDs that POP3 marked for deletion; otherwise any message
+        // that already had \Deleted (e.g. from IMAP) would also be removed.
+        await onExpungePromise.call(
+          this,
+          session.user.mailbox,
+          {
+            isUid: true,
+            messages: update.deleted.map((message) => message.uid),
+            silent: true
+          },
+          session
+        );
+      }
     }
   } catch (_err) {
     // since we use multiArgs from pify

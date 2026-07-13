@@ -436,8 +436,15 @@ class IMAPNotifier extends EventEmitter {
     }`;
 
     try {
-      const count = await this.publisher.incrby(key, 0);
-      if (count > 0) await this.publisher.decr(key);
+      // Atomic decrement-if-positive to avoid TOCTOU race
+      const result = await this.publisher.eval(
+        "local c = redis.call('get', KEYS[1]) if c and tonumber(c) > 0 then return redis.call('decr', KEYS[1]) else return 0 end",
+        1,
+        key
+      );
+      // Safeguard: if somehow negative, reset
+      if (typeof result === 'number' && result < 0)
+        await this.publisher.del(key);
     } catch (err) {
       logger.fatal(err);
     }

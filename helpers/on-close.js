@@ -6,6 +6,15 @@
 const config = require('#config');
 const logger = require('#helpers/logger');
 
+// Atomic decrement-floor-at-zero: avoids TOCTOU race between read and decrement
+const ATOMIC_DECR_FLOOR_SCRIPT = `
+local v = redis.call("get", KEYS[1])
+if v and tonumber(v) > 0 then
+  return redis.call("decr", KEYS[1])
+end
+return 0
+`;
+
 async function onClose(session) {
   // NOTE: do not change this prefix unless you also change it in `helpers/on-connect.js` and `helpers/on-auth.js`
   const prefix = `concurrent_${this.constructor.name.toLowerCase()}_${
@@ -20,8 +29,7 @@ async function onClose(session) {
       if (!session?.remoteAddress) return;
       try {
         const key = `${prefix}:${session.remoteAddress}`;
-        const count = await this.client.incrby(key, 0);
-        if (count > 0) await this.client.decr(key);
+        await this.client.eval(ATOMIC_DECR_FLOOR_SCRIPT, 1, key);
       } catch (err) {
         logger.fatal(err);
       }
@@ -37,8 +45,7 @@ async function onClose(session) {
         const key = `${prefix}:${
           session.user.alias_id || session.user.domain_id
         }`;
-        const count = await this.client.incrby(key, 0);
-        if (count > 0) await this.client.decr(key);
+        await this.client.eval(ATOMIC_DECR_FLOOR_SCRIPT, 1, key);
       } catch (err) {
         logger.fatal(err);
       }

@@ -507,6 +507,7 @@ async function list(ctx) {
 
     // Add all results to search conditions
     for (const ids of results) {
+      if (!Array.isArray(ids)) continue;
       searchConditions.push({
         _id: {
           $in: ids.map((id) => id.toString())
@@ -532,11 +533,12 @@ async function list(ctx) {
         values: { p1: key.toLowerCase().trim(), p2: regex }
       };
 
-      const ids = await ctx.instance.wsp.request({
+      let ids = await ctx.instance.wsp.request({
         action: 'stmt',
         session: { user: ctx.state.session.user },
         stmt: [['prepare', sql.query], ['pluck'], ['all', sql.values]]
       });
+      if (!Array.isArray(ids)) ids = [];
 
       searchConditions.push({
         _id: {
@@ -553,11 +555,12 @@ async function list(ctx) {
         values: { p1: regex }
       };
 
-      const ids = await ctx.instance.wsp.request({
+      let ids = await ctx.instance.wsp.request({
         action: 'stmt',
         session: { user: ctx.state.session.user },
         stmt: [['prepare', sql.query], ['pluck'], ['all', sql.values]]
       });
+      if (!Array.isArray(ids)) ids = [];
 
       searchConditions.push({
         _id: {
@@ -589,11 +592,12 @@ async function list(ctx) {
       values: { p1: regex }
     };
 
-    const headerIds = await ctx.instance.wsp.request({
+    let headerIds = await ctx.instance.wsp.request({
       action: 'stmt',
       session: { user: ctx.state.session.user },
       stmt: [['prepare', sql.query], ['pluck'], ['all', sql.values]]
     });
+    if (!Array.isArray(headerIds)) headerIds = [];
 
     searchConditions.push({
       $or: [
@@ -693,7 +697,7 @@ async function list(ctx) {
   const sql = builder.build(opts);
 
   // Get messages with pagination using single query with subquery
-  const messages = await ctx.instance.wsp.request({
+  let messages = await ctx.instance.wsp.request({
     action: 'stmt',
     session: { user: ctx.state.session.user },
     stmt: [
@@ -701,6 +705,7 @@ async function list(ctx) {
       ['all', sql.values]
     ]
   });
+  if (!Array.isArray(messages)) messages = [];
 
   // Extract count - if no results, run count query separately
   let itemCount = 0;

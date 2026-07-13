@@ -1222,9 +1222,9 @@ async function forward(recipient, headers, session, body) {
       if (obj.response) {
         if (obj.response.text) {
           // ensure the response is not more than 1 KB
-          const bytes = Buffer.byteLength(obj.response.text, 'utf8');
+          const responseSize = Buffer.byteLength(obj.response.text, 'utf8');
           obj.response =
-            bytes > bytes('1KB')
+            responseSize > bytes('1KB')
               ? 'Response byte size exceeds 1 KB'
               : obj.response.text;
         } else delete obj.response;

@@ -72,6 +72,8 @@ async function updateAttachments(attachmentIds, magic, session) {
     attachments = session.db.prepare(sql.query).all(sql.values);
   }
 
+  if (!Array.isArray(attachments)) attachments = [];
+
   // delete attachments if necessary
   const $in = [];
   for (const attachment of attachments) {

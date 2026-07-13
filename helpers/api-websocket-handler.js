@@ -171,16 +171,23 @@ class ApiWebSocketHandler {
    * @returns {Promise<boolean>} true if allowed, false if rate limited
    */
   async _checkRateLimit(ip) {
-    const key = `ws_rate:${config.env}:${ip}`;
-    const results = await this.client
-      .pipeline()
-      .incr(key)
-      .pexpire(key, RATE_LIMIT_TTL_MS)
-      .exec();
+    try {
+      const key = `ws_rate:${config.env}:${ip}`;
+      const results = await this.client
+        .pipeline()
+        .incr(key)
+        .pexpire(key, RATE_LIMIT_TTL_MS)
+        .exec();
 
-    // results is [[err, count], [err, ok]]
-    const count = results[0][1];
-    return count <= MAX_CONNECT_ATTEMPTS_PER_MINUTE;
+      // results is [[err, count], [err, ok]]
+      const count = results?.[0]?.[1];
+      if (typeof count !== 'number') return true;
+      return count <= MAX_CONNECT_ATTEMPTS_PER_MINUTE;
+    } catch (err) {
+      logger.fatal(err);
+      // Allow connection on Redis failure to avoid blocking all clients
+      return true;
+    }
   }
 
   /**

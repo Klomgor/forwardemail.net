@@ -77,7 +77,11 @@ async function onMove(mailboxId, update, session, fn) {
       //
       // so basically anywhere formatResponse is called it needs to happen on IMAP side
       //
-      if (!update.silent && response.sourceUid.length > 0) {
+      if (
+        !update.silent &&
+        Array.isArray(response?.sourceUid) &&
+        response.sourceUid.length > 0
+      ) {
         for (const uid of response.sourceUid) {
           payloads.push(formatResponse.call(session, 'EXPUNGE', uid));
         }
@@ -87,6 +91,7 @@ async function onMove(mailboxId, update, session, fn) {
       // <https://github.com/zone-eu/wildduck/blob/76f79fd274e62da3dffe8a2aac170ba41aecaa2b/lib/message-handler.js#L2083-L2095>
       if (
         !update.silent &&
+        Array.isArray(response?.sourceUid) &&
         response.sourceUid.length > 0 &&
         session?.selected?.uidList
       ) {

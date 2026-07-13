@@ -492,6 +492,7 @@ function createWebSocketAsPromised(options = {}) {
           logger.warn(err);
         }
       }, ms('5s'));
+      wsp._interval.unref();
     }
   });
 

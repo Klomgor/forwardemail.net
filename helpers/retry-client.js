@@ -27,6 +27,7 @@ class RetryClient extends undici.Client {
     this._request = this.request;
 
     this.request = async (options, count = 1) => {
+      let t;
       try {
         // throwOnError was removed in undici v7
         // <https://github.com/nodejs/undici/issues/4698>
@@ -34,7 +35,7 @@ class RetryClient extends undici.Client {
         const abortController = new AbortController();
         options.signal = abortController.signal;
 
-        const t = setTimeout(() => {
+        t = setTimeout(() => {
           if (!abortController?.signal?.aborted)
             abortController.abort(
               new TimeoutError(`Request took longer than ${timeout}ms`)
@@ -89,6 +90,7 @@ class RetryClient extends undici.Client {
         if (ms) await timers.setTimeout(ms);
         return this.request(options, count + 1);
       } finally {
+        if (t) clearTimeout(t);
         // if (options.dispatcher) options.dispatcher.destroy();
       }
     };
