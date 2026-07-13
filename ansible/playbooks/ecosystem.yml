@@ -55,3 +55,13 @@
         src: "{{ playbook_dir }}/templates/ecosystem-web.json.j2"
         dest: "{{ lookup('env', 'PWD') }}/ecosystem-web.json"
       delegate_to: localhost
+    - name: Create ecosystem-carddav.json
+      template:
+        src: "{{ playbook_dir }}/templates/ecosystem-cardav.json.j2"
+        dest: "{{ lookup('env', 'PWD') }}/ecosystem-carddav.json"
+      delegate_to: localhost
+    - name: Create ecosystem-mx.json
+      template:
+        src: "{{ playbook_dir }}/templates/ecosystem-mx.json.j2"
+        dest: "{{ lookup('env', 'PWD') }}/ecosystem-mx.json"
+      delegate_to: localhost
