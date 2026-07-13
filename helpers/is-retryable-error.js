@@ -206,6 +206,28 @@ function isRetryableError(err) {
   )
     return true;
 
+  //
+  // SQLite transient errors that should be retried
+  // (busy, locked, protocol, I/O errors that resolve after WAL checkpoint)
+  //
+  if (
+    typeof err.code === 'string' &&
+    (err.code === 'SQLITE_BUSY' ||
+      err.code === 'SQLITE_LOCKED' ||
+      err.code === 'SQLITE_PROTOCOL' ||
+      err.code === 'SQLITE_IOERR')
+  )
+    return true;
+
+  if (
+    typeof err.message === 'string' &&
+    (err.message.includes('busy executing a query') ||
+      err.message.includes('no such table') ||
+      err.message.includes('database is locked') ||
+      err.message.includes('database disk image is malformed'))
+  )
+    return true;
+
   if (
     err.isBoom &&
     err?.output?.statusCode &&

@@ -217,6 +217,10 @@ async function hook(err, message, meta) {
   // from Admin > Logs. Guard `err` the same way the surrounding checks do.
   if (err && err.message === 'Hash is not unique.') return;
 
+  // Suppress transient socket/network errors unconditionally
+  // (even when MongoDB is unavailable and the mongoose block below is skipped)
+  if (err && isSocketError(err)) return;
+
   // wrapper for non-browser condition
   if (mongoose && hasMixin) {
     // if it was SSL/TLS/socket error then ignore it

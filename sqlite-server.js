@@ -77,7 +77,7 @@ class SQLite {
     // TTL (2min) prevent wasted memory while still avoiding re-open overhead.
     //
     this.temporaryDatabaseMap = new DatabaseLRUMap({
-      maxSize: 100,
+      maxSize: 500,
       idleTTL: ms('2m')
     });
 

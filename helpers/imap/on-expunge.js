@@ -295,11 +295,23 @@ async function onExpunge(mailboxId, update, session, fn) {
         );
     }
 
+    // Optimize query planner (guard against busy/closed/in-transaction state)
+    if (session.db && session.db.open && !session.db.inTransaction) {
+      try {
+        session.db.pragma('analysis_limit=400');
+        session.db.pragma('optimize');
+      } catch (err) {
+        this.logger.fatal(err, {
+          mailboxId,
+          update,
+          session,
+          resolver: this.resolver
+        });
+      }
+    }
+
+    // update storage in background
     try {
-      // Optimize query planner and potentially trigger vacuum
-      session.db.pragma('analysis_limit=400');
-      session.db.pragma('optimize');
-      // update storage in background
       updateStorageUsed(session.user.alias_id, this.client)
         .then()
         .catch((err) =>

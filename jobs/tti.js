@@ -337,11 +337,17 @@ Forward Email
                 // rewrite messageId since `raw` overrides this
                 info.messageId = messageId;
 
-                const { received, err } = await getMessage(
+                const { received, err, client } = await getMessage(
                   imapClient,
                   info,
                   provider
                 );
+
+                // If getMessage had to reconnect, update the shared reference
+                if (client && client !== imapClient) {
+                  imapClient = client;
+                  imapClients.set(provider.name, client);
+                }
 
                 if (err) {
                   delete info.source;

@@ -5,22 +5,61 @@
 
 const ms = require('ms');
 const pWaitFor = require('p-wait-for');
+const { ImapFlow } = require('imapflow');
+
+//
+// Connection error codes thrown by ImapFlow when the socket dies:
+// - 'NoConnection'      → run() finds socket destroyed before command starts
+// - 'EConnectionClosed' → fetch() iterator detects socket death mid-stream
+// - 'ENotFinished'      → FETCH command never completed normally
+//
+const CONNECTION_ERROR_CODES = new Set([
+  'NoConnection',
+  'EConnectionClosed',
+  'ENotFinished'
+]);
 
 async function getMessage(imapClient, info, provider) {
   let received;
   let err;
+  let client = imapClient;
+
   try {
     await pWaitFor(
       async () => {
-        // TODO: IMAP Protocol Extension Support
-        // TODO: render a page with each provider's capabilities
-        // <https://gist.github.com/nevans/8ef449da0786f9d1cc7c8324a288dd9b>
-        // /blog/smtp-capability-command-by-provider
-        // /blog/smtp-jmap-capability-imaprev
-        // console.log('capabilities', imapClient.capabilities);
-
         try {
-          for await (const message of imapClient.fetch('*', {
+          //
+          // Guard: if the IMAP connection became unusable (e.g. server closed
+          // it under load), create a fresh ImapFlow instance and reconnect.
+          // ImapFlow instances are single-use — once closed, connect() cannot
+          // be called again on the same object.
+          //
+          if (!client.usable) {
+            try {
+              client.close();
+            } catch {}
+
+            client = new ImapFlow({
+              ...provider.config,
+              socketTimeout: ms('1d')
+            });
+            await client.connect();
+            await client.mailboxOpen('INBOX');
+          }
+
+          //
+          // Issue NOOP to force the server to send pending EXISTS/RECENT
+          // notifications.  Without this, the client's view of the mailbox
+          // may be stale and fetch('1:*') won't include newly arrived messages.
+          //
+          await client.noop();
+
+          //
+          // Use '1:*' to scan all messages in the mailbox.  With two
+          // concurrent sends (direct + forwarded) the target message may
+          // not be the highest sequence number.
+          //
+          for await (const message of client.fetch('1:*', {
             headers: ['Message-ID']
           })) {
             if (received) continue;
@@ -42,6 +81,20 @@ async function getMessage(imapClient, info, provider) {
             }
           }
         } catch (_err) {
+          //
+          // If the connection died mid-poll, mark client as unusable so the
+          // next iteration will reconnect.  Do NOT throw — let pWaitFor retry.
+          //
+          if (CONNECTION_ERROR_CODES.has(_err.code)) {
+            try {
+              client.close();
+            } catch {}
+
+            // Return false so pWaitFor retries on next interval
+            return false;
+          }
+
+          // For non-connection errors, propagate to stop polling
           err = _err;
         }
 
@@ -50,7 +103,7 @@ async function getMessage(imapClient, info, provider) {
         return Boolean(received);
       },
       {
-        interval: 0,
+        interval: 1000,
         timeout: ms('1m')
       }
     );
@@ -58,7 +111,7 @@ async function getMessage(imapClient, info, provider) {
     err = _err;
   }
 
-  return { provider, received, err };
+  return { provider, received, err, client };
 }
 
 module.exports = getMessage;

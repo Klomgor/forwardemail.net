@@ -736,149 +736,160 @@ async function getDatabase(
           // }
         });
 
-        if (mailboxes.length === 0)
-          throw new TypeError('Trash folder(s) do not exist');
-
-        // Use alias-specific retention if configured (skips dynamic scaling).
-        // Otherwise fall back to dynamic storage-based scaling.
-        const aliasRetention = session.user.alias_retention || 0;
-        let days;
-        if (aliasRetention > 0) {
-          // Convert ms back to days (alias_retention is stored in ms on session)
-          days = Math.round(aliasRetention / (24 * 60 * 60 * 1000));
+        if (mailboxes.length === 0) {
+          logger.debug('Trash folder(s) do not exist yet; skipping cleanup', {
+            session
+          });
         } else {
-          // Use alias-specific storage (not pooled) for trash cleanup
-          // so each alias cleans trash based on its own usage vs its own cap
-          const [aliasDoc, maxQuotaPerAlias] = await Promise.all([
-            Aliases.findOne({ id: session.user.alias_id })
-              .select('storage_used')
-              .lean()
-              .exec(),
-            Domains.getMaxQuota(session.user.domain_id, session.user.alias_id)
-          ]);
+          // Use alias-specific retention if configured (skips dynamic scaling).
+          // Otherwise fall back to dynamic storage-based scaling.
+          const aliasRetention = session.user.alias_retention || 0;
+          let days;
+          if (aliasRetention > 0) {
+            // Convert ms back to days (alias_retention is stored in ms on session)
+            days = Math.round(aliasRetention / (24 * 60 * 60 * 1000));
+          } else {
+            // Use alias-specific storage (not pooled) for trash cleanup
+            // so each alias cleans trash based on its own usage vs its own cap
+            const [aliasDoc, maxQuotaPerAlias] = await Promise.all([
+              Aliases.findOne({ id: session.user.alias_id })
+                .select('storage_used')
+                .lean()
+                .exec(),
+              Domains.getMaxQuota(session.user.domain_id, session.user.alias_id)
+            ]);
 
-          const storageUsed =
-            aliasDoc && typeof aliasDoc.storage_used === 'number'
-              ? aliasDoc.storage_used
-              : 0;
+            const storageUsed =
+              aliasDoc && typeof aliasDoc.storage_used === 'number'
+                ? aliasDoc.storage_used
+                : 0;
 
-          const percentageUsed = Math.round(
-            (storageUsed / maxQuotaPerAlias) * 100
-          );
+            const percentageUsed = Math.round(
+              (storageUsed / maxQuotaPerAlias) * 100
+            );
 
-          // subtract the % from 30d and round up with min 1 day
-          // (min 1 prevents deleting all Trash/Junk at 100% storage)
-          days = Math.max(Math.round(30 * (1 - percentageUsed / 100)), 1);
-        }
-
-        {
-          const sql = builder.build({
-            type: 'remove',
-            table: 'Messages',
-            condition: {
-              $or: [
-                {
-                  mailbox: {
-                    $in: mailboxes.map((m) => m._id.toString())
-                  },
-                  exp: 1,
-                  rdate: {
-                    $lte: new Date().toISOString()
-                  }
-                },
-                {
-                  mailbox: {
-                    $in: mailboxes.map((m) => m._id.toString())
-                  },
-                  rdate: {
-                    $lte: dayjs().subtract(days, 'days').toDate().toISOString()
-                  }
-                },
-                {
-                  mailbox: {
-                    $in: mailboxes.map((m) => m._id.toString())
-                  },
-                  undeleted: 0
-                },
-                {
-                  mailbox: {
-                    $in: mailboxes.map((m) => m._id.toString())
-                  },
-                  created_at: {
-                    $lte: dayjs().subtract(days, 'days').toDate().toISOString()
-                  }
-                }
-              ]
-            }
-          });
-
-          db.prepare(sql.query).run(sql.values);
-        }
-
-        // TODO: wss broadcast changes here to connected clients
-
-        // iterate over all messages to get an array of attachment ids
-        // and then iterate over all attachments to delete those not in the list
-        const now = new Date().toISOString();
-        const sql = builder.build({
-          type: 'select',
-          table: 'Messages',
-          condition: {
-            created_at: {
-              $lte: now
-            },
-            ha: true
-          },
-          fields: ['mimeTree']
-        });
-
-        const stmt = db.prepare(sql.query);
-
-        const hashSet = new Set();
-
-        for (const message of stmt.iterate(sql.values)) {
-          const mimeTree = decodeMetadata(message.mimeTree, recursivelyParse);
-          const hashes = getAttachments(mimeTree);
-          for (const hash of hashes) {
-            hashSet.add(hash);
+            // subtract the % from 30d and round up with min 1 day
+            // (min 1 prevents deleting all Trash/Junk at 100% storage)
+            days = Math.max(Math.round(30 * (1 - percentageUsed / 100)), 1);
           }
-        }
 
-        // NOTE: this only works if there's at least one hash from existing messages
-        //       (otherwise to do it for all we'd just remove this conditional check)
-        // TODO: <https://github.com/nodemailer/wildduck/issues/750>
-        if (hashSet.size > 0) {
-          // iterate over all attachments from the past
-          // and if the hash is not in the array then remove it
-          const sql = builder.build({
-            type: 'select',
-            table: 'Attachments',
-            condition: {
-              created_at: { $lte: now },
-              counterUpdated: { $lte: now }
-            },
-            fields: ['hash']
-          });
-
-          const existingHashes = db.prepare(sql.query).pluck().all(sql.values);
-
-          for (const hash of existingHashes) {
-            if (hashSet.has(hash)) continue;
-
+          {
             const sql = builder.build({
               type: 'remove',
-              table: 'Attachments',
+              table: 'Messages',
               condition: {
-                created_at: { $lte: now },
-                counterUpdated: { $lte: now },
-                hash
+                $or: [
+                  {
+                    mailbox: {
+                      $in: mailboxes.map((m) => m._id.toString())
+                    },
+                    exp: 1,
+                    rdate: {
+                      $lte: new Date().toISOString()
+                    }
+                  },
+                  {
+                    mailbox: {
+                      $in: mailboxes.map((m) => m._id.toString())
+                    },
+                    rdate: {
+                      $lte: dayjs()
+                        .subtract(days, 'days')
+                        .toDate()
+                        .toISOString()
+                    }
+                  },
+                  {
+                    mailbox: {
+                      $in: mailboxes.map((m) => m._id.toString())
+                    },
+                    undeleted: 0
+                  },
+                  {
+                    mailbox: {
+                      $in: mailboxes.map((m) => m._id.toString())
+                    },
+                    created_at: {
+                      $lte: dayjs()
+                        .subtract(days, 'days')
+                        .toDate()
+                        .toISOString()
+                    }
+                  }
+                ]
               }
             });
 
             db.prepare(sql.query).run(sql.values);
           }
 
-          /*
+          // TODO: wss broadcast changes here to connected clients
+
+          // iterate over all messages to get an array of attachment ids
+          // and then iterate over all attachments to delete those not in the list
+          const now = new Date().toISOString();
+          const sql = builder.build({
+            type: 'select',
+            table: 'Messages',
+            condition: {
+              created_at: {
+                $lte: now
+              },
+              ha: true
+            },
+            fields: ['mimeTree']
+          });
+
+          const stmt = db.prepare(sql.query);
+
+          const hashSet = new Set();
+
+          for (const message of stmt.iterate(sql.values)) {
+            const mimeTree = decodeMetadata(message.mimeTree, recursivelyParse);
+            const hashes = getAttachments(mimeTree);
+            for (const hash of hashes) {
+              hashSet.add(hash);
+            }
+          }
+
+          // NOTE: this only works if there's at least one hash from existing messages
+          //       (otherwise to do it for all we'd just remove this conditional check)
+          // TODO: <https://github.com/nodemailer/wildduck/issues/750>
+          if (hashSet.size > 0) {
+            // iterate over all attachments from the past
+            // and if the hash is not in the array then remove it
+            const sql = builder.build({
+              type: 'select',
+              table: 'Attachments',
+              condition: {
+                created_at: { $lte: now },
+                counterUpdated: { $lte: now }
+              },
+              fields: ['hash']
+            });
+
+            const existingHashes = db
+              .prepare(sql.query)
+              .pluck()
+              .all(sql.values);
+
+            for (const hash of existingHashes) {
+              if (hashSet.has(hash)) continue;
+
+              const sql = builder.build({
+                type: 'remove',
+                table: 'Attachments',
+                condition: {
+                  created_at: { $lte: now },
+                  counterUpdated: { $lte: now },
+                  hash
+                }
+              });
+
+              db.prepare(sql.query).run(sql.values);
+            }
+
+            /*
           // TODO: this is too slow, it took 1 hour in production
           db.transaction((hashes) => {
             for (const hash of hashes) {
@@ -897,19 +908,26 @@ async function getDatabase(
             }
           }).immediate(existingHashes);
           */
+          }
+
+          // Update storage after deleting messages from Trash/Spam/Junk
+          // This fixes the bug where deleted messages don't free up storage quota
+          updateStorageUsed(session.user.alias_id, instance.client)
+            .then()
+            .catch((err) =>
+              logger.fatal(err, { session, resolver: instance.resolver })
+            );
+        } // end else (mailboxes.length > 0)
+
+        // Optimize query planner (guard against busy/closed/in-transaction state)
+        if (db && db.open && !db.inTransaction) {
+          try {
+            db.pragma('analysis_limit=400');
+            db.pragma('optimize');
+          } catch (err) {
+            logger.fatal(err, { session, resolver: instance.resolver });
+          }
         }
-
-        // Optimize query planner and potentially trigger vacuum
-        db.pragma('analysis_limit=400');
-        db.pragma('optimize');
-
-        // Update storage after deleting messages from Trash/Spam/Junk
-        // This fixes the bug where deleted messages don't free up storage quota
-        updateStorageUsed(session.user.alias_id, instance.client)
-          .then()
-          .catch((err) =>
-            logger.fatal(err, { session, resolver: instance.resolver })
-          );
       } catch (err) {
         logger.fatal(err, { session, resolver: instance.resolver });
       }
@@ -1186,14 +1204,6 @@ async function getDatabase(
             );
             if (acquired) {
               try {
-                // Rate-limit: only attempt once per week per alias
-                await instance.client.set(
-                  `vacuum_check:${session.user.alias_id}`,
-                  true,
-                  'PX',
-                  ms('7d')
-                );
-
                 const tmpPath = `${dbFilePath}.vacuum-tmp`;
 
                 // Clean up any stale tmp file from a previous failed attempt
@@ -1274,6 +1284,14 @@ async function getDatabase(
                 await Aliases.findByIdAndUpdate(session.user.alias_id, {
                   $set: { has_auto_vacuum_migration: true }
                 });
+
+                // Rate-limit: only set AFTER success so failures can retry
+                await instance.client.set(
+                  `vacuum_check:${session.user.alias_id}`,
+                  true,
+                  'PX',
+                  ms('7d')
+                );
               } catch (err) {
                 // If VACUUM failed, ensure we still have a valid db handle
                 if (!db || !db.open) {
@@ -1310,9 +1328,13 @@ async function getDatabase(
         // especially after one or more CREATE INDEX statements.
         // <https://www.sqlite.org/pragma.html#pragma_optimize:~:text=All%20applications%20should%20run%20%22PRAGMA%20optimize%3B%22%20after%20a%20schema%20change%2C%20especially%20after%20one%20or%20more%20CREATE%20INDEX%20statements.>
         //
-        if (db.open) {
-          db.pragma('analysis_limit=400');
-          db.pragma('optimize');
+        if (db && db.open && !db.inTransaction) {
+          try {
+            db.pragma('analysis_limit=400');
+            db.pragma('optimize');
+          } catch (err) {
+            logger.fatal(err, { session, resolver: instance.resolver });
+          }
         }
       } catch (err) {
         err.message = `VACUUM failed: ${err.message}`;

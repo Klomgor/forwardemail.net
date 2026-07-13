@@ -14,7 +14,7 @@ const logger = require('#helpers/logger');
 // LRU Map for SQLite database connections.
 //
 // Drop-in replacement for Map() with:
-// - Max size limit (configurable, default 500 per worker)
+// - Max size limit (configurable, default 2500 per worker)
 // - Idle TTL (close databases not accessed within idleTTL)
 // - Batch eviction (10% of capacity when full)
 // - Transaction awareness (never evicts a DB mid-transaction)
@@ -27,7 +27,7 @@ const logger = require('#helpers/logger');
 //
 class DatabaseLRUMap {
   constructor(options = {}) {
-    this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 500;
+    this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 2500;
     this.idleTTL = options.idleTTL || ms('5m');
     this._map = new Map(); // key -> { db, lastAccess }
     this._closing = new Set(); // keys currently being closed
