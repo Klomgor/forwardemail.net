@@ -584,8 +584,8 @@ Payments.index({
 
 // Targeted indexes instead of broad text index
 Payments.index({ reference: 1 }); // Exact reference lookup
-Payments.index({ stripe_payment_intent_id: 1 }); // Stripe lookup
-Payments.index({ paypal_transaction_id: 1 }); // PayPal lookup
+Payments.index({ stripe_payment_intent_id: 1 }, { unique: true, sparse: true }); // Prevent duplicate Stripe payments (webhook + redirect race condition)
+Payments.index({ paypal_transaction_id: 1 }, { unique: true, sparse: true }); // Prevent duplicate PayPal transaction payments
 // Unique sparse indexes to prevent duplicate payments from concurrent creation
 // (webhook + redirect race condition). Sparse so that documents without
 // these fields are not constrained.

@@ -5222,6 +5222,9 @@ Nuestros servidores MX tienen límites diarios para el correo entrante recibido 
   * Los `Senders` que están [en la lista blanca](#do-you-have-an-allowlist) están limitados a enviar 10 GB por día.
   * Todos los demás `Senders` están limitados a enviar 1 GB y/o 1000 mensajes por día.
 * Tenemos un límite específico por `Sender` y `yourdomain.com` de 1 GB y/o 1000 mensajes diarios.
+* Tenemos un límite de ráfaga de 50 mensajes por `Sender` y `yourdomain.com` por minuto. Esto previene que los spammers inunden un dominio con cientos de mensajes por segundo incluso cuando el límite diario no se ha alcanzado.
+
+Todos los límites de tasa se aplican de forma atómica — los contadores se incrementan antes de almacenar el mensaje, eliminando condiciones de carrera donde solicitudes concurrentes podrían evadir los límites.
 
 Los servidores MX también limitan los mensajes que se reenvían a uno o más destinatarios mediante limitación de tasa – pero esto solo aplica a `Senders` que no están en la [lista blanca](#do-you-have-an-allowlist):
 

@@ -5220,6 +5220,9 @@ Nasze serwery MX mają dzienne limity na przychodzącą pocztę otrzymywaną dla
   * `Nadawcy`, którzy są [na liście dozwolonych](#do-you-have-an-allowlist) mają limit wysyłki 10 GB dziennie.
   * Wszyscy inni `Nadawcy` mają limit wysyłki 1 GB i/lub 1000 wiadomości dziennie.
 * Mamy specyficzny limit na `Nadawcę` i `yourdomain.com` wynoszący 1 GB i/lub 1000 wiadomości dziennie.
+* Mamy limit burst wynoszący 50 wiadomości na `Nadawcę` i `yourdomain.com` na minutę. Zapobiega to zalewaniu domeny przez spamerów setkami wiadomości na sekundę, nawet gdy dzienny limit nie został osiągnięty.
+
+Wszystkie limity szybkości są egzekwowane atomowo — liczniki są zwiększane przed zapisaniem wiadomości, eliminując warunki wyścigu, w których równoczesne żądania mogłyby ominąć limity.
 
 Serwery MX ograniczają także wiadomości przekazywane do jednego lub więcej odbiorców poprzez ograniczenia szybkości – ale dotyczy to tylko `Nadawców` nie znajdujących się na [liście dozwolonych](#do-you-have-an-allowlist):
 

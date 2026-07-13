@@ -154,23 +154,77 @@ const STATEMENT_OPERATIONS = new Set(['prepare', 'run', 'get', 'all', 'pluck']);
 
 const SIXTY_FOUR_MB_IN_BYTES = bytes('64MB');
 
+//
+// Burst rate limit: max messages per sender+domain per minute.
+// This prevents spammers from flooding a domain with hundreds of
+// messages per second even when the daily limit hasn't been reached.
+//
+const BURST_LIMIT_PER_MINUTE = 50;
+const BURST_LIMIT_TTL_MS = 60_000; // 1 minute
+
+//
+// Atomic rate-limit increment.
+// Increments all four counters (global size, global count, specific size,
+// specific count) AND the per-minute burst counter in a single pipeline
+// BEFORE the message is stored.  Returns the new counter values so the
+// caller can check limits immediately — eliminating the TOCTOU race
+// where concurrent requests all read count=0 and all pass.
+//
 // eslint-disable-next-line max-params
-async function increaseRateLimiting(client, date, sender, root, byteLength) {
+async function atomicRateLimitIncrement(
+  client,
+  date,
+  sender,
+  root,
+  byteLength
+) {
   const sizeKey = `imap_limit_size_${config.env}:${date}:${sender}`;
   const countKey = `imap_limit_count_${config.env}:${date}:${sender}`;
   const specificSizeKey = `imap_limit_size_${config.env}:${date}:${sender}:${root}`;
   const specificCountKey = `imap_limit_count_${config.env}:${date}:${sender}:${root}`;
-  await client
+  const burstKey = `imap_burst_${config.env}:${sender}:${root}`;
+  const results = await client
     .pipeline()
-    .incrby(sizeKey, byteLength)
-    .incr(countKey)
-    .incrby(specificSizeKey, byteLength)
-    .incr(specificCountKey)
+    .incrby(sizeKey, byteLength) // [0] global size
+    .incr(countKey) // [1] global count
+    .incrby(specificSizeKey, byteLength) // [2] specific size
+    .incr(specificCountKey) // [3] specific count
+    .incr(burstKey) // [4] burst count (per minute)
     // TODO: all ansible servers should be set to use utc timezone
     .pexpire(sizeKey, ms('1d'))
     .pexpire(countKey, ms('1d'))
     .pexpire(specificSizeKey, ms('1d'))
     .pexpire(specificCountKey, ms('1d'))
+    .pexpire(burstKey, BURST_LIMIT_TTL_MS)
+    .exec();
+  return {
+    size: results[0][1],
+    count: results[1][1],
+    specificSize: results[2][1],
+    specificCount: results[3][1],
+    burstCount: results[4][1]
+  };
+}
+
+//
+// Decrement rate-limit counters when storage fails after increment.
+// This keeps counters accurate so legitimate messages are not blocked
+// by phantom counts from failed deliveries.
+//
+// eslint-disable-next-line max-params
+async function decrementRateLimiting(client, date, sender, root, byteLength) {
+  const sizeKey = `imap_limit_size_${config.env}:${date}:${sender}`;
+  const countKey = `imap_limit_count_${config.env}:${date}:${sender}`;
+  const specificSizeKey = `imap_limit_size_${config.env}:${date}:${sender}:${root}`;
+  const specificCountKey = `imap_limit_count_${config.env}:${date}:${sender}:${root}`;
+  const burstKey = `imap_burst_${config.env}:${sender}:${root}`;
+  await client
+    .pipeline()
+    .decrby(sizeKey, byteLength)
+    .decr(countKey)
+    .decrby(specificSizeKey, byteLength)
+    .decr(specificCountKey)
+    .decr(burstKey)
     .exec();
 }
 
@@ -802,7 +856,15 @@ async function parsePayload(data, ws) {
                 );
               }
 
-              // don't rate limit our own servers
+              //
+              // Atomic rate limiting: increment counters BEFORE storage
+              // to eliminate TOCTOU race condition where concurrent requests
+              // all read count=0 and all pass the check simultaneously.
+              //
+              // NOTE: rateLimitIncremented is used to track whether we need
+              // to decrement on storage failure (see catch block below).
+              //
+              let rateLimitIncremented = false;
               if (
                 payload.remoteAddress !== IP_ADDRESS &&
                 sender !== env.WEB_HOST
@@ -817,23 +879,45 @@ async function parsePayload(data, ws) {
                 // 2) Senders that are allowlisted are limited to sending 10 GB per day.
                 // 3) All other Senders are limited to sending 1 GB and/or 1000 messages per day.
                 // 4) We have a specific limit per Sender and yourdomain.com of 1 GB and/or 1000 messages daily.
+                // 5) Burst limit: max 50 messages per Sender+domain per minute.
 
-                // check current size and message count for sender
-                const [size, count] = await Promise.all(
-                  ['size', 'count'].map(async (kind) => {
-                    const key = `imap_limit_${kind}_${config.env}:${date}:${sender}`;
-                    const result = await this.client.incrby(key, 0);
-                    // TODO: ttl should be milliseconds until end of day
-                    //       (right now it will go until 24h after if 11:59pm for example)
-                    await this.client.pexpire(key, ms('1d')); // TODO: all ansible servers should be set to use utc timezone
-                    return result;
-                  })
-                );
+                // Atomically increment all counters and get new values
+                const { size, count, specificSize, specificCount, burstCount } =
+                  await atomicRateLimitIncrement(
+                    this.client,
+                    date,
+                    sender,
+                    root,
+                    byteLength
+                  );
+                rateLimitIncremented = true;
+
+                // 5) Burst limit: reject if more than 50 messages/min to this domain
+                if (burstCount > BURST_LIMIT_PER_MINUTE) {
+                  const err = new SMTPError(
+                    `${sender} burst limited to ${BURST_LIMIT_PER_MINUTE} messages/min to ${root} (current: ${burstCount})`,
+                    { responseCode: 421 }
+                  );
+                  err.payload = payload;
+                  throw err;
+                }
+
+                // 4) Per sender+domain: 1 GB and/or 1000 messages daily
+                if (specificSize > bytes('1GB') || specificCount > 1000) {
+                  const err = new SMTPError(
+                    `${sender} limited with current of ${bytes(
+                      specificSize
+                    )} from ${specificCount} messages to ${root}`,
+                    { responseCode: 421 }
+                  );
+                  err.payload = payload;
+                  throw err;
+                }
 
                 if (isFQDN(sender)) {
                   if (config.truthSources.has(sender)) {
                     // 1) Senders that we consider to be "trusted" as a source of truth
-                    if (size >= bytes('100GB')) {
+                    if (size > bytes('100GB')) {
                       const err = new SMTPError(
                         `${sender} limited to 100 GB with current of ${bytes(
                           size
@@ -851,7 +935,7 @@ async function parsePayload(data, ws) {
                     );
                     if (allowlisted) {
                       // 2) Senders that are allowlisted are limited to sending 10 GB per day.
-                      if (size >= bytes('10GB')) {
+                      if (size > bytes('10GB')) {
                         const err = new SMTPError(
                           `${sender} limited to 10 GB with current of ${bytes(
                             size
@@ -862,7 +946,7 @@ async function parsePayload(data, ws) {
                         throw err;
                       }
                       // 3) All other Senders are limited to sending 1 GB and/or 1000 messages per day.
-                    } else if (size >= bytes('1GB') || count >= 1000) {
+                    } else if (size > bytes('1GB') || count > 1000) {
                       const err = new SMTPError(
                         `#3 ${sender} limited with current of ${bytes(
                           size
@@ -873,38 +957,13 @@ async function parsePayload(data, ws) {
                       throw err;
                     }
                   }
-                } else if (size >= bytes('1GB') || count >= 1000) {
+                } else if (size > bytes('1GB') || count > 1000) {
                   // 3) All other Senders are limited to sending 1 GB and/or 1000 messages per day.
                   const err = new SMTPError(
                     `#3 ${sender} limited with current of ${bytes(
                       size
                     )} from ${count} messages`,
                     { responseCode: 421 }
-                  );
-                  err.payload = payload;
-                  throw err;
-                }
-
-                // 4) We have a specific limit per Sender and yourdomain.com of 1 GB and/or 1000 messages daily.
-                const [specificSize, specificCount] = await Promise.all(
-                  ['size', 'count'].map(async (kind) => {
-                    const key = `imap_limit_${kind}_${config.env}:${date}:${sender}:${root}`;
-                    const result = await this.client.incrby(key, 0);
-                    // TODO: ttl should be milliseconds until end of day
-                    //       (right now it will go until 24h after if 11:59pm for example)
-                    await this.client.pexpire(key, ms('1d')); // TODO: all ansible servers should be set to use utc timezone
-                    return result;
-                  })
-                );
-
-                if (specificSize >= bytes('1GB') || specificCount >= 1000) {
-                  const err = new SMTPError(
-                    `${sender} limited with current of ${bytes(
-                      specificSize
-                    )} from ${specificCount} messages to ${root}`,
-                    {
-                      responseCode: 421
-                    }
                   );
                   err.payload = payload;
                   throw err;
@@ -1269,24 +1328,21 @@ async function parsePayload(data, ws) {
                       createFolder: sieveResult.create || false
                     }
                   );
-                  //
-                  // increase rate limiting size and count
-                  //
-                  try {
-                    await increaseRateLimiting(
+                } catch (_err) {
+                  // in order to ensure tmp write still occurs
+                  delete session.db;
+
+                  // Decrement rate-limit counters since storage failed
+                  // (keeps counters accurate for legitimate messages)
+                  if (rateLimitIncremented) {
+                    decrementRateLimiting(
                       this.client,
                       date,
                       sender,
                       root,
                       byteLength
-                    );
-                  } catch (err) {
-                    err.payload = _.omit(payload, 'raw');
-                    logger.fatal(err);
+                    ).catch((err) => logger.fatal(err));
                   }
-                } catch (_err) {
-                  // in order to ensure tmp write still occurs
-                  delete session.db;
 
                   const err = Array.isArray(_err) ? _err[0] : _err;
                   if (isRetryableError(err)) {
@@ -1342,19 +1398,6 @@ async function parsePayload(data, ws) {
                         createFolder: sieveResult.create || false
                       }
                     );
-                    try {
-                      await increaseRateLimiting(
-                        this.client,
-                        date,
-                        sender,
-                        root,
-                        byteLength
-                      );
-                    } catch (err) {
-                      err.payload = _.omit(payload, 'raw');
-                      logger.fatal(err);
-                    }
-
                     // Successfully wrote to main DB, skip tmp fallback
                     // send user push notification
                     sendApn(this.client, alias.id, targetFolder || 'INBOX')
@@ -1771,28 +1814,22 @@ async function parsePayload(data, ws) {
                     err.payload = _.omit(payload, 'raw');
                     logger.fatal(err);
                   }
-
-                  //
-                  // increase rate limiting size and count
-                  //
-                  try {
-                    await increaseRateLimiting(
-                      this.client,
-                      date,
-                      sender,
-                      root,
-                      byteLength
-                    );
-                  } catch (err) {
-                    err.isCodeBug = true;
-                    err.payload = _.omit(payload, 'raw');
-                    logger.fatal(err);
-                  }
                 } catch (_err) {
                   err = _err;
                   err.isCodeBug = true;
                   err.payload = _.omit(payload, 'raw');
                   logger.fatal(err);
+
+                  // Decrement rate-limit counters since storage failed
+                  if (rateLimitIncremented) {
+                    decrementRateLimiting(
+                      this.client,
+                      date,
+                      sender,
+                      root,
+                      byteLength
+                    ).catch((err_) => logger.fatal(err_));
+                  }
                 }
 
                 // NOTE: tmpDb lifecycle managed by temporaryDatabaseMap LRU

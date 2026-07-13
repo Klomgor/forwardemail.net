@@ -5220,6 +5220,9 @@ MX-palvelimillamme on päivittäiset rajat saapuville sähköposteille, jotka va
   * [Sallittuihin listoihin](#do-you-have-an-allowlist) kuuluvat `Senders` saavat lähettää enintään 10 GB päivässä.
   * Kaikki muut `Senders` saavat lähettää enintään 1 GB ja/tai 1000 viestiä päivässä.
 * Meillä on erityinen raja kullekin `Sender`-lähettäjälle ja `yourdomain.com`-verkkotunnukselle, joka on 1 GB ja/tai 1000 viestiä päivässä.
+* Meillä on purskeen raja 50 viestiä `Sender`-lähettäjää ja `yourdomain.com`-verkkotunnusta kohden minuutissa. Tämä estää roskapostittajia tulvimasta verkkotunnusta sadoilla viesteillä sekunnissa, vaikka päivittäistä rajaa ei olisi saavutettu.
+
+Kaikki nopeusrajat pakotetaan atomisesti — laskurit kasvatetaan ennen viestin tallentamista, mikä eliminoi kilpailutilanteet, joissa samanaikaiset pyynnöt voisivat ohittaa rajat.
 
 MX-palvelimet rajoittavat myös viestien edelleenlähetystä yhdelle tai useammalle vastaanottajalle nopeusrajoituksen avulla – mutta tämä koskee vain `Senders`-lähettäjiä, jotka eivät ole [sallitulla listalla](#do-you-have-an-allowlist):
 

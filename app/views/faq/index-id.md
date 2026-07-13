@@ -5221,6 +5221,9 @@ Server MX kami memiliki batas harian untuk email masuk yang diterima untuk [peny
   * `Senders` yang [terdaftar dalam daftar izinkan](#do-you-have-an-allowlist) dibatasi mengirim 10 GB per hari.
   * Semua `Senders` lainnya dibatasi mengirim 1 GB dan/atau 1000 pesan per hari.
 * Kami memiliki batas spesifik per `Sender` dan `yourdomain.com` sebesar 1 GB dan/atau 1000 pesan setiap hari.
+* Kami memiliki batas burst sebesar 50 pesan per `Sender` dan `yourdomain.com` per menit. Ini mencegah spammer membanjiri domain dengan ratusan pesan per detik bahkan ketika batas harian belum tercapai.
+
+Semua batas kecepatan diterapkan secara atomik — penghitung dinaikkan sebelum pesan disimpan, menghilangkan kondisi balapan di mana permintaan bersamaan dapat melewati batas.
 
 Server MX juga membatasi pesan yang diteruskan ke satu atau lebih penerima melalui pembatasan laju – tetapi ini hanya berlaku untuk `Senders` yang tidak ada dalam [daftar izinkan](#do-you-have-an-allowlist):
 

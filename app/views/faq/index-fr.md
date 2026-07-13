@@ -5222,6 +5222,9 @@ Nos serveurs MX ont des limites quotidiennes pour le courrier entrant reçu pour
   * Les `Expéditeurs` qui sont [sur liste blanche](#do-you-have-an-allowlist) sont limités à l'envoi de 10 Go par jour.
   * Tous les autres `Expéditeurs` sont limités à l'envoi de 1 Go et/ou 1000 messages par jour.
 * Nous avons une limite spécifique par `Expéditeur` et `votredomaine.com` de 1 Go et/ou 1000 messages par jour.
+* Nous avons une limite de rafale de 50 messages par `Expéditeur` et `votredomaine.com` par minute. Cela empêche les spammeurs d'inonder un domaine avec des centaines de messages par seconde même lorsque la limite quotidienne n'a pas été atteinte.
+
+Toutes les limites de débit sont appliquées de manière atomique — les compteurs sont incrémentés avant le stockage du message, éliminant les conditions de concurrence où des requêtes simultanées pourraient contourner les limites.
 
 Les serveurs MX limitent également les messages transférés à un ou plusieurs destinataires via la limitation de débit – mais cela ne s'applique qu'aux `Expéditeurs` qui ne sont pas sur la [liste blanche](#do-you-have-an-allowlist) :
 

@@ -488,11 +488,27 @@ function syncStripePaymentIntent(user) {
           payment.reference = checkoutSession.client_reference_id;
         }
 
-        await Payments.create(payment);
-
-        logger.info(
-          `Successfully created new payment for stripe payment_intent ${paymentIntent.id}`
-        );
+        try {
+          await Payments.create(payment);
+          logger.info(
+            `Successfully created new payment for stripe payment_intent ${paymentIntent.id}`
+          );
+        } catch (err) {
+          // Handle duplicate key error from concurrent webhook/sync race
+          if (err.code === 11000) {
+            logger.warn(
+              `Duplicate payment prevented for stripe payment_intent ${paymentIntent.id} (concurrent creation race)`
+            );
+            // Re-fetch the existing payment so downstream logic still works
+            payment = await Payments.findOne({
+              ...q,
+              stripe_payment_intent_id: paymentIntent.id
+            });
+            if (!payment) throw err; // should not happen, re-throw if it does
+          } else {
+            throw err;
+          }
+        }
       }
 
       // Find and save the associated user

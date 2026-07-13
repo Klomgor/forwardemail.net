@@ -5222,6 +5222,9 @@ Vores MX-servere har daglige grænser for indgående mail modtaget til [kryptere
   * `Senders`, der er [tilladte](#do-you-have-an-allowlist), er begrænset til at sende 10 GB pr. dag.
   * Alle andre `Senders` er begrænset til at sende 1 GB og/eller 1000 beskeder pr. dag.
 * Vi har en specifik grænse pr. `Sender` og `yourdomain.com` på 1 GB og/eller 1000 beskeder dagligt.
+* Vi har en burst-grænse på 50 beskeder pr. `Sender` og `yourdomain.com` pr. minut. Dette forhindrer spammere i at oversvømme et domæne med hundredvis af beskeder pr. sekund, selv når den daglige grænse ikke er nået.
+
+Alle hastighedsgrænser håndhæves atomisk — tællere øges før beskeden gemmes, hvilket eliminerer kapløbstilstande hvor samtidige anmodninger kunne omgå grænserne.
 
 MX-serverne begrænser også beskeder, der videresendes til en eller flere modtagere gennem ratebegrænsning – men dette gælder kun for `Senders`, der ikke er på [tilladelseslisten](#do-you-have-an-allowlist):
 

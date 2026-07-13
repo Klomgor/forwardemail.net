@@ -5221,6 +5221,9 @@ Unsere MX-Server haben tägliche Limits für eingehende E-Mails, die für [versc
   * `Sender`, die auf der [Erlaubnisliste](#do-you-have-an-allowlist) stehen, dürfen 10 GB pro Tag senden.
   * Alle anderen `Sender` dürfen 1 GB und/oder 1000 Nachrichten pro Tag senden.
 * Wir haben ein spezifisches Limit pro `Sender` und `yourdomain.com` von 1 GB und/oder 1000 Nachrichten täglich.
+* Wir haben ein Burst-Limit von 50 Nachrichten pro `Sender` und `yourdomain.com` pro Minute. Dies verhindert, dass Spammer eine Domain mit Hunderten von Nachrichten pro Sekunde überfluten, selbst wenn das Tageslimit noch nicht erreicht wurde.
+
+Alle Ratenlimits werden atomar durchgesetzt — Zähler werden vor der Speicherung der Nachricht erhöht, wodurch Race Conditions eliminiert werden, bei denen gleichzeitige Anfragen die Limits umgehen könnten.
 
 Die MX-Server begrenzen auch Nachrichten, die an einen oder mehrere Empfänger weitergeleitet werden, durch Ratenbegrenzung – dies gilt jedoch nur für `Sender`, die nicht auf der [Erlaubnisliste](#do-you-have-an-allowlist) stehen:
 

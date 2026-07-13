@@ -5221,6 +5221,9 @@ MX sunucularımız, [şifreli IMAP depolama](/blog/docs/best-quantum-safe-encryp
   * [İzin verilenler listesinde](#do-you-have-an-allowlist) olan `Gönderen`ler günlük 10 GB gönderimle sınırlıdır.
   * Diğer tüm `Gönderen`ler günlük 1 GB ve/veya 1000 mesajla sınırlıdır.
 * Her `Gönderen` ve `yourdomain.com` için özel bir limit vardır: günlük 1 GB ve/veya 1000 mesaj.
+* Her `Gönderen` ve `yourdomain.com` için dakikada 50 mesajlık bir anlık limit vardır. Bu, günlük limite ulaşılmamış olsa bile spam gönderenlerin saniyede yüzlerce mesajla bir alan adını doldurmasını önler.
+
+Tüm hız sınırları atomik olarak uygulanır — sayaçlar mesaj depolanmadan önce artırılır, eşzamanlı isteklerin sınırları aşabileceği yarış koşulları ortadan kaldırılır.
 
 MX sunucuları ayrıca, bir veya daha fazla alıcıya iletilen mesajları oran sınırlaması yoluyla sınırlar – ancak bu sadece [izin verilenler listesinde](#do-you-have-an-allowlist) olmayan `Gönderen`lere uygulanır:
 

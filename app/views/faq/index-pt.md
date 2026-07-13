@@ -5221,6 +5221,9 @@ Nossos servidores MX têm limites diários para o correio recebido para [armazen
   * `Senders` que estão [na lista de permissão](#do-you-have-an-allowlist) são limitados a enviar 10 GB por dia.
   * Todos os outros `Senders` são limitados a enviar 1 GB e/ou 1000 mensagens por dia.
 * Temos um limite específico por `Sender` e `yourdomain.com` de 1 GB e/ou 1000 mensagens diárias.
+* Temos um limite de rajada de 50 mensagens por `Sender` e `yourdomain.com` por minuto. Isso impede que spammers inundem um domínio com centenas de mensagens por segundo, mesmo quando o limite diário não foi atingido.
+
+Todos os limites de taxa são aplicados atomicamente — os contadores são incrementados antes da mensagem ser armazenada, eliminando condições de corrida onde requisições simultâneas poderiam contornar os limites.
 
 Os servidores MX também limitam mensagens encaminhadas para um ou mais destinatários por meio de limitação de taxa – mas isso se aplica apenas a `Senders` que não estão na [lista de permissão](#do-you-have-an-allowlist):
 

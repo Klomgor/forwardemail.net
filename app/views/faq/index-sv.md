@@ -5221,6 +5221,9 @@ Våra MX-servrar har dagliga gränser för inkommande e-post mottagen för [kryp
   * `Senders` som är [tillåtna](#do-you-have-an-allowlist) är begränsade till att skicka 10 GB per dag.
   * Alla andra `Senders` är begränsade till att skicka 1 GB och/eller 1000 meddelanden per dag.
 * Vi har en specifik gräns per `Sender` och `yourdomain.com` på 1 GB och/eller 1000 meddelanden dagligen.
+* Vi har en burst-gräns på 50 meddelanden per `Sender` och `yourdomain.com` per minut. Detta förhindrar spammare från att översvämma en domän med hundratals meddelanden per sekund även när den dagliga gränsen inte har nåtts.
+
+Alla hastighetsgränser tillämpas atomiskt — räknare ökas innan meddelandet lagras, vilket eliminerar kapplöpningsförhållanden där samtidiga förfrågningar kunde kringgå gränserna.
 
 MX-servrarna begränsar också meddelanden som vidarebefordras till en eller flera mottagare genom hastighetsbegränsning – men detta gäller endast `Senders` som inte finns på [tillåtlistan](#do-you-have-an-allowlist):
 

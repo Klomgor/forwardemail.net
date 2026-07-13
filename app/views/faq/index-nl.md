@@ -5221,6 +5221,9 @@ Onze MX-servers hebben dagelijkse limieten voor binnenkomende mail die wordt ont
   * `Senders` die [allowlisted](#do-you-have-an-allowlist) zijn mogen maximaal 10 GB per dag verzenden.
   * Alle andere `Senders` mogen maximaal 1 GB en/of 1000 berichten per dag verzenden.
 * We hebben een specifieke limiet per `Sender` en `yourdomain.com` van 1 GB en/of 1000 berichten per dag.
+* We hebben een burst-limiet van 50 berichten per `Sender` en `yourdomain.com` per minuut. Dit voorkomt dat spammers een domein overspoelen met honderden berichten per seconde, zelfs wanneer de dagelijkse limiet nog niet is bereikt.
+
+Alle snelheidslimieten worden atomisch afgedwongen — tellers worden verhoogd voordat het bericht wordt opgeslagen, waardoor race-condities worden geëlimineerd waarbij gelijktijdige verzoeken de limieten zouden kunnen omzeilen.
 
 De MX-servers beperken ook het aantal berichten dat wordt doorgestuurd naar een of meer ontvangers via rate limiting – maar dit geldt alleen voor `Senders` die niet op de [allowlist](#do-you-have-an-allowlist) staan:
 

@@ -5221,6 +5221,9 @@ MX szervereink napi korlátokat állítanak be a bejövő levelekre, amelyeket [
   * Azokat a `Sender`-eket, amelyek [engedélyezettek](#do-you-have-an-allowlist), napi 10 GB küldésre korlátozzuk.
   * Minden más `Sender` napi 1 GB és/vagy 1000 üzenet küldésére korlátozott.
 * Egyedi korlát van beállítva minden `Sender` és `yourdomain.com` esetén napi 1 GB és/vagy 1000 üzenet küldésére.
+* Van egy burst korlátunk, amely percenként 50 üzenetre korlátozza a `Sender` és `yourdomain.com` kombinációt. Ez megakadályozza, hogy a spammerek másodpercenként több száz üzenettel árasszák el a domaint, még akkor is, ha a napi korlátot nem érték el.
+
+Minden sebességkorlát atomikusan érvényesül — a számlálók az üzenet tárolása előtt növekednek, kiküszöbölve a versenyhelyzeteket, ahol egyidejű kérések megkerülhetnék a korlátokat.
 
 Az MX szerverek a továbbított üzeneteket is korlátozzák sebességkorlátozással – de ez csak azokra a `Sender`-ekre vonatkozik, amelyek nincsenek rajta a [engedélyezett listán](#do-you-have-an-allowlist):
 

@@ -5295,6 +5295,9 @@ Our MX servers have daily limits for inbound mail received for [encrypted IMAP s
   * `Senders` that are [allowlisted](#do-you-have-an-allowlist) are limited to sending 10 GB per day.
   * All other `Senders` are limited to sending 1 GB and/or 1000 messages per day.
 * We have a specific limit per `Sender` and `yourdomain.com` of 1 GB and/or 1000 messages daily.
+* We have a burst limit of 50 messages per `Sender` and `yourdomain.com` per minute.  This prevents spammers from flooding a domain with hundreds of messages per second even when the daily limit has not been reached.
+
+All rate limits are enforced atomically — counters are incremented before the message is stored, eliminating race conditions where concurrent requests could bypass limits.
 
 The MX servers also limit messages being forwarded to one or more recipients through rate limiting – but this only applies to `Senders` not on the [allowlist](#do-you-have-an-allowlist):
 

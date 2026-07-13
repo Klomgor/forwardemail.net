@@ -272,7 +272,17 @@ async function syncSubscriptionPayments(
           };
 
           console.log(`Creating new payment for transaction ${transaction.id}`);
-          await Payments.create(newPayment);
+          try {
+            await Payments.create(newPayment);
+          } catch (err) {
+            if (err.code === 11000) {
+              console.log(
+                `Duplicate payment prevented for transaction ${transaction.id} (already exists)`
+              );
+            } else {
+              throw err;
+            }
+          }
         }
 
         // Update user to refresh plan_expires_at

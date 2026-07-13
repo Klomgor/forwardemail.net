@@ -5221,6 +5221,9 @@ Naše MX servery mají denní limity pro příchozí poštu přijatou pro [šifr
   * `Senders`, kteří jsou [na seznamu povolených](#do-you-have-an-allowlist), jsou omezeni na odeslání 10 GB za den.
   * Všichni ostatní `Senders` jsou omezeni na odeslání 1 GB a/nebo 1000 zpráv za den.
 * Máme specifický limit na `Sender` a `yourdomain.com` ve výši 1 GB a/nebo 1000 zpráv denně.
+* Máme limit pro nárazové odesílání 50 zpráv na `Sender` a `yourdomain.com` za minutu. To brání spammerům v zahlcení domény stovkami zpráv za sekundu, i když denní limit nebyl dosažen.
+
+Všechny limity jsou vynucovány atomicky — počítadla se zvyšují před uložením zprávy, čímž se eliminují závodní podmínky, kdy by souběžné požadavky mohly obejít limity.
 
 MX servery také omezují zprávy přeposílané jednomu nebo více příjemcům pomocí omezení rychlosti – ale to platí pouze pro `Senders`, kteří nejsou na [seznamu povolených](#do-you-have-an-allowlist):
 

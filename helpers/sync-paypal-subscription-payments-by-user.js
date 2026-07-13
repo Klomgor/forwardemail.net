@@ -297,7 +297,19 @@ async function syncPayPalSubscriptionPaymentsByUser(
                 stack: new Error('stack').stack
               };
               logger.info('creating new payment');
-              await Payments.create(payment);
+              try {
+                await Payments.create(payment);
+              } catch (err) {
+                // Handle duplicate key error from concurrent sync race
+                if (err.code === 11000) {
+                  logger.warn(
+                    `Duplicate payment prevented for paypal_transaction_id ${transaction.id} (concurrent creation race)`
+                  );
+                  return; // Payment already exists, skip
+                }
+
+                throw err;
+              }
             }
 
             // find and save the associated user

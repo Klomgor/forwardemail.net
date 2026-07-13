@@ -770,30 +770,44 @@ async function retrieveDomainBilling(ctx) {
           if (payment) {
             ctx.logger.info('stripe payment existed', { payment });
           } else {
-            payment = await Payments.create({
-              user: ctx.state.user._id,
-              reference: session.client_reference_id,
-              amount: session.amount_total,
-              method,
-              exp_month: expMonth,
-              exp_year: expYear,
-              last4,
-              stripe_session_id: session.id,
-              stripe_payment_intent_id: paymentIntentId,
-              duration: ms(key),
-              plan: ctx.query.plan,
-              kind: subscription ? 'subscription' : 'one-time',
-              invoice_at: paymentIntent
-                ? dayjs.unix(paymentIntent.created).toDate()
-                : now,
-              stripe_invoice_id: invoiceId,
-              stripe_subscription_id: subscription?.id,
-              is_apple_pay: isApplePay,
-              is_google_pay: isGooglePay,
-              stack: new Error('stack').stack
-            });
-            // log the payment just for sanity
-            ctx.logger.info('stripe payment created', { payment });
+            try {
+              payment = await Payments.create({
+                user: ctx.state.user._id,
+                reference: session.client_reference_id,
+                amount: session.amount_total,
+                method,
+                exp_month: expMonth,
+                exp_year: expYear,
+                last4,
+                stripe_session_id: session.id,
+                stripe_payment_intent_id: paymentIntentId,
+                duration: ms(key),
+                plan: ctx.query.plan,
+                kind: subscription ? 'subscription' : 'one-time',
+                invoice_at: paymentIntent
+                  ? dayjs.unix(paymentIntent.created).toDate()
+                  : now,
+                stripe_invoice_id: invoiceId,
+                stripe_subscription_id: subscription?.id,
+                is_apple_pay: isApplePay,
+                is_google_pay: isGooglePay,
+                stack: new Error('stack').stack
+              });
+              // log the payment just for sanity
+              ctx.logger.info('stripe payment created', { payment });
+            } catch (err) {
+              if (err.code === 11000) {
+                ctx.logger.warn(
+                  `Duplicate stripe payment prevented for payment_intent ${paymentIntentId} (concurrent creation race)`
+                );
+                payment = await Payments.findOne({
+                  user: ctx.state.user._id,
+                  stripe_payment_intent_id: paymentIntentId
+                });
+              } else {
+                throw err;
+              }
+            }
           }
 
           //
@@ -1360,21 +1374,36 @@ ${encode(safeStringify(parseErr(err), null, 2))}</code></pre>`
           if (payment) {
             ctx.logger.info('paypal payment existed', { payment });
           } else {
-            payment = await Payments.create({
-              user: ctx.state.user._id,
-              // NOTE: paypal subscriptions don't allow you to pass a reference
-              amount: Number.parseInt(amount * 100, 10), // convert to cents for consistency with stripe
-              method: 'paypal',
-              duration: ms(duration),
-              plan: ctx.query.plan,
-              kind: 'subscription',
-              paypal_subscription_id: body.id,
-              paypal_transaction_id: transactionId,
-              invoice_at: now,
-              stack: new Error('stack').stack
-            });
-            // log the payment just for sanity
-            ctx.logger.info('paypal payment created', { payment });
+            try {
+              payment = await Payments.create({
+                user: ctx.state.user._id,
+                // NOTE: paypal subscriptions don't allow you to pass a reference
+                amount: Number.parseInt(amount * 100, 10), // convert to cents for consistency with stripe
+                method: 'paypal',
+                duration: ms(duration),
+                plan: ctx.query.plan,
+                kind: 'subscription',
+                paypal_subscription_id: body.id,
+                paypal_transaction_id: transactionId,
+                invoice_at: now,
+                stack: new Error('stack').stack
+              });
+              // log the payment just for sanity
+              ctx.logger.info('paypal payment created', { payment });
+            } catch (err) {
+              if (
+                err.code === 11000 ||
+                err.message?.includes('PAYMENT_ALREADY_EXISTS')
+              ) {
+                ctx.logger.warn(
+                  `Duplicate paypal subscription payment prevented for transaction ${transactionId} (concurrent creation race)`
+                );
+                payment = await Payments.findOne({ $or });
+                if (!payment) throw err;
+              } else {
+                throw err;
+              }
+            }
           }
 
           //

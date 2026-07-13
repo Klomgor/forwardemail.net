@@ -5222,6 +5222,9 @@ I nostri server MX hanno limiti giornalieri per la posta in arrivo ricevuta per 
   * I `Mittenti` che sono [allowlistati](#do-you-have-an-allowlist) sono limitati a inviare 10 GB al giorno.
   * Tutti gli altri `Mittenti` sono limitati a inviare 1 GB e/o 1000 messaggi al giorno.
 * Abbiamo un limite specifico per ogni `Mittente` e `tuodominio.com` di 1 GB e/o 1000 messaggi giornalieri.
+* Abbiamo un limite burst di 50 messaggi per `Mittente` e `tuodominio.com` al minuto. Questo impedisce agli spammer di inondare un dominio con centinaia di messaggi al secondo anche quando il limite giornaliero non è stato raggiunto.
+
+Tutti i limiti di velocità sono applicati in modo atomico — i contatori vengono incrementati prima che il messaggio venga memorizzato, eliminando le condizioni di gara in cui richieste concorrenti potrebbero aggirare i limiti.
 
 I server MX limitano anche i messaggi inoltrati a uno o più destinatari tramite limitazione di velocità – ma questo si applica solo ai `Mittenti` non presenti nella [allowlist](#do-you-have-an-allowlist):
 
