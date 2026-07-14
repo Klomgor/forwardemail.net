@@ -30,6 +30,14 @@ function parseXmlReport(xmlContent) {
   try {
     const xmlString =
       typeof xmlContent === 'string' ? xmlContent : xmlContent.toString('utf8');
+
+    // Defense-in-depth: reject XML with DOCTYPE or ENTITY declarations
+    // to prevent potential XXE attacks from malicious DMARC reports.
+    if (xmlString.includes('<!ENTITY') || xmlString.includes('<!DOCTYPE')) {
+      logger.warn('DMARC report rejected: contains DOCTYPE or ENTITY');
+      return null;
+    }
+
     const parsed = xmlParser.parse(xmlString);
 
     // Handle both 'feedback' (standard) and root element variations

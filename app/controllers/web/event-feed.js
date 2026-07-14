@@ -6,6 +6,7 @@
 const ms = require('ms');
 const striptags = require('striptags');
 
+const _ = require('#helpers/lodash');
 const config = require('#config');
 const getGitHubReleases = require('#helpers/get-github-releases');
 const getStatusIncidents = require('#helpers/get-status-incidents');
@@ -94,7 +95,7 @@ async function getAllEvents(client) {
       title = title.slice(0, 97) + '...';
     }
 
-    title = striptags(title);
+    title = _.escape(striptags(title));
 
     events.push({
       type: 'xpost',
@@ -120,7 +121,7 @@ async function getAllEvents(client) {
 
     events.push({
       type: 'incident',
-      title: `${statusPrefix} ${incident.title}`,
+      title: `${statusPrefix} ${_.escape(incident.title)}`,
       description: incident.body || incident.title,
       date: new Date(incident.createdAt),
       publishedDate: new Date(incident.createdAt),
@@ -142,7 +143,7 @@ async function getAllEvents(client) {
   // Add GitHub releases
   for (const release of releases) {
     const prereleasePrefix = release.prerelease ? '[Pre-release] ' : '';
-    const title = release.name || `Release ${release.tagName}`;
+    const title = _.escape(release.name || `Release ${release.tagName}`);
 
     // Create a description from release body (first 200 chars)
     let description = release.body || `Release ${release.tagName}`;

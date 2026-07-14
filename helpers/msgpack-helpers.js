@@ -158,7 +158,10 @@ function decodeAttachmentBody(value) {
   // Check for new compressed format with magic header
   if (Buffer.isBuffer(value) && hasBrotliMagic(value)) {
     try {
-      return zlib.brotliDecompressSync(value.subarray(ATTACHMENT_MAGIC.length));
+      return zlib.brotliDecompressSync(
+        value.subarray(ATTACHMENT_MAGIC.length),
+        { maxOutputLength: 64 * 1024 * 1024 }
+      );
     } catch {
       // If decompression fails, return as-is (shouldn't happen)
       return value;
@@ -242,7 +245,9 @@ function decodeMetadata(value, recursivelyParse) {
   // New format: brotli-compressed Buffer
   if (Buffer.isBuffer(value)) {
     try {
-      const decompressed = zlib.brotliDecompressSync(value);
+      const decompressed = zlib.brotliDecompressSync(value, {
+        maxOutputLength: 64 * 1024 * 1024
+      });
       const json = decompressed.toString('utf8');
       return recursivelyParse(json);
     } catch {
