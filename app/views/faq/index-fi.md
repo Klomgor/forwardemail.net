@@ -2011,6 +2011,10 @@ Toisin kuin postijärjestelmät kuten `postfix` (esim. jotka käyttävät `sieve
 
 6. Emme lähetä, jos viestissä oli kirjainkoolla merkityksetön `content-type`-otsikko, jonka arvo oli `multipart/report`.
 
+7. Emme lähetä, jos viestissä on `Feedback-Type`-otsake (joka ilmaisee ARF-väärinkäyttöraportin [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) mukaisesti).
+
+8. Emme lähetä, jos MAIL FROM -osoite vastaa ARF-palauteraporttien lähettäjäkuviota (esim. `feedback@arf.mail.yahoo.com`).
+
 ### Kuinka määritän SPF:n Forward Emailille {#how-do-i-set-up-spf-for-forward-email}
 
 Käytä rekisteröijäsi DNS-hallintasivua ja lisää seuraava <strong class="notranslate">TXT</strong>-tietue:
@@ -4070,15 +4074,15 @@ Yritysasiakkaille, jotka tarvitsevat räätälöityjä DPA-ehtoja tai erityisiä
 Forward Email on nimennyt GDPR-edustajat artiklan 27 mukaisesti:
 
 **EU-edustaja:**
-Osano International Compliance Services Limited  
-ATTN: LFHC  
-3 Dublin Landings, North Wall Quay  
+Osano International Compliance Services Limited
+ATTN: LFHC
+3 Dublin Landings, North Wall Quay
 Dublin 1, D01C4E0
 
 **UK-edustaja:**
-Osano UK Compliance LTD  
-ATTN: LFHC  
-42-46 Fountain Street, Belfast  
+Osano UK Compliance LTD
+ATTN: LFHC
+42-46 Fountain Street, Belfast
 Antrim, BT1 - 5EF
 
 Yritysasiakkaille, jotka tarvitsevat erityisiä häiriöilmoitus-SLA-sopimuksia, nämä tulisi käsitellä osana **Enterprise License** -sopimusta.
@@ -4125,15 +4129,15 @@ Lähteet:
 
 ### Miten varmistatte korkean käytettävyyden {#how-do-you-ensure-high-availability}
 
-> \[!IMPORTANT]  
+> \[!IMPORTANT]
 > Forward Email toteuttaa kattavan redundanssin useiden infrastruktuuritoimittajien välillä.
 
-* **Hajautettu infrastruktuuri**: Useita toimittajia (DigitalOcean, Vultr, DataPacket) eri maantieteellisillä alueilla  
-* **Maantieteellinen kuormantasapaino**: Cloudflare-pohjainen maantieteellisesti sijoitettu kuormantasapaino automaattisella varajärjestelmällä  
-* **Automaattinen skaalaus**: Dynaaminen resurssien säätö kysynnän mukaan  
-* **Monikerroksinen DDoS-suojaus**: DataPacketin Shield-järjestelmän ja Cloudflaren kautta  
-* **Palvelinredundanssi**: Useita palvelimia per alue automaattisella varajärjestelmällä  
-* **Tietokannan replikaatio**: Reaaliaikainen tietojen synkronointi useiden sijaintien välillä  
+* **Hajautettu infrastruktuuri**: Useita toimittajia (DigitalOcean, Vultr, DataPacket) eri maantieteellisillä alueilla
+* **Maantieteellinen kuormantasapaino**: Cloudflare-pohjainen maantieteellisesti sijoitettu kuormantasapaino automaattisella varajärjestelmällä
+* **Automaattinen skaalaus**: Dynaaminen resurssien säätö kysynnän mukaan
+* **Monikerroksinen DDoS-suojaus**: DataPacketin Shield-järjestelmän ja Cloudflaren kautta
+* **Palvelinredundanssi**: Useita palvelimia per alue automaattisella varajärjestelmällä
+* **Tietokannan replikaatio**: Reaaliaikainen tietojen synkronointi useiden sijaintien välillä
 * **Valvonta ja hälytys**: 24/7 valvonta automaattisella häiriötilanteiden käsittelyllä
 
 **Käytettävyystakuu**: 99,9 %+ palvelun saatavuus läpinäkyvällä valvonnalla osoitteessa <https://forwardemail.net>
@@ -4145,7 +4149,7 @@ Lähteet:
 
 ### Oletteko yhteensopivia kansallisen puolustuslupauslain (NDAA) kohdan 889 kanssa {#are-you-compliant-with-section-889-of-the-national-defense-authorization-act-ndaa}
 
-> \[!IMPORTANT]  
+> \[!IMPORTANT]
 > Forward Email on täysin yhteensopiva kohdan 889 kanssa huolellisen infrastruktuurikumppaneiden valinnan ansiosta.
 
 Kyllä, Forward Email on **kohdan 889 mukainen**. Kansallisen puolustuslupauslain (NDAA) kohta 889 kieltää valtion virastoja käyttämästä tai sopimasta tahojen kanssa, jotka käyttävät tietoliikenne- ja videovalvontalaitteita tietyiltä yrityksiltä (Huawei, ZTE, Hikvision, Dahua ja Hytera).
@@ -5279,6 +5283,10 @@ Yleinen syy Backscatterer-listalle päätymiseen on väärin ohjatut palautukset
 6. Emme lähetä, jos From-sähköpostiosoitteen käyttäjänimi oli `mdaemon` ja siinä oli kirjainkoolla erotteleva otsikko `X-MDDSN-Message`.
 
 7. Emme lähetä, jos oli kirjainkoolla erotteleva `content-type`-otsikko `multipart/report`.
+
+8. Emme lähetä, jos viestissä on `Feedback-Type`-otsake (joka ilmaisee ARF-väärinkäyttöraportin [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) mukaisesti).
+
+9. Emme lähetä, jos MAIL FROM -osoite vastaa ARF-palauteraporttien lähettäjäkuviota (esim. `feedback@arf.mail.yahoo.com`).
 
 ### Kuinka määritätte sähköpostin sormenjäljen {#how-do-you-determine-an-email-fingerprint}
 

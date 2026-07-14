@@ -2012,6 +2012,10 @@ In tegenstelling tot mailsystemen zoals `postfix` (bijv. die de `sieve` vacation
 
 6. We sturen niet als er een hoofdletterongevoelige `content-type` header was van `multipart/report`.
 
+7. We verzenden niet als het bericht een `Feedback-Type` header heeft (wat wijst op een ARF abuse feedback report volgens [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. We verzenden niet als het MAIL FROM-adres overeenkomt met een ARF feedback afzenderpatroon (bijv. `feedback@arf.mail.yahoo.com`).
+
 ### Hoe stel ik SPF in voor Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Gebruik de DNS-beheerpagina van je registrar en stel het volgende <strong class="notranslate">TXT</strong> record in:
@@ -5280,6 +5284,10 @@ Een veelvoorkomende reden om op de Backscatterer-lijst te komen is verkeerd geri
 6. We sturen niet als het gebruikersnaamgedeelte van het From-e-mailadres `mdaemon` was en het een ongevoelige header `X-MDDSN-Message` had.
 
 7. We sturen niet als er een ongevoelige `content-type` header was van `multipart/report`.
+
+8. We verzenden niet als het bericht een `Feedback-Type` header heeft (wat wijst op een ARF abuse feedback report volgens [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. We verzenden niet als het MAIL FROM-adres overeenkomt met een ARF feedback afzenderpatroon (bijv. `feedback@arf.mail.yahoo.com`).
 
 ### Hoe bepaal je een e-mail fingerprint {#how-do-you-determine-an-email-fingerprint}
 

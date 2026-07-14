@@ -2012,6 +2012,10 @@ Im Gegensatz zu Mailsystemen wie `postfix` (z. B. die die `sieve`-Vacation-Filte
 
 6. Wir senden nicht, wenn ein Groß-/Kleinschreibung ignorierender `content-type`-Header mit dem Wert `multipart/report` vorhanden war.
 
+7. Wir senden nicht, wenn die Nachricht einen `Feedback-Type`-Header enthält (der auf einen ARF-Missbrauchs-Feedback-Bericht gemäß [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) hinweist).
+
+8. Wir senden nicht, wenn die MAIL FROM-Adresse einem ARF-Feedback-Absendermuster entspricht (z. B. `feedback@arf.mail.yahoo.com`).
+
 ### Wie richte ich SPF für Forward Email ein {#how-do-i-set-up-spf-for-forward-email}
 
 Verwenden Sie die DNS-Verwaltungsseite Ihres Registrars und legen Sie den folgenden <strong class="notranslate">TXT</strong>-Eintrag fest:
@@ -5280,6 +5284,10 @@ Ein häufiger Grund, auf der Backscatterer-Liste zu landen, sind fehlgeleitete B
 6. Wir senden nicht, wenn der Benutzername der From-E-Mail-Adresse `mdaemon` war und ein case-insensitiver Header `X-MDDSN-Message` vorhanden war.
 
 7. Wir senden nicht, wenn ein case-insensitiver `content-type`-Header mit dem Wert `multipart/report` vorhanden war.
+
+8. Wir senden nicht, wenn die Nachricht einen `Feedback-Type`-Header enthält (der auf einen ARF-Missbrauchs-Feedback-Bericht gemäß [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) hinweist).
+
+9. Wir senden nicht, wenn die MAIL FROM-Adresse einem ARF-Feedback-Absendermuster entspricht (z. B. `feedback@arf.mail.yahoo.com`).
 
 ### Wie bestimmen Sie einen E-Mail-Fingerabdruck {#how-do-you-determine-an-email-fingerprint}
 

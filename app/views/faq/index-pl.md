@@ -2011,6 +2011,10 @@ W przeciwieństwie do systemów pocztowych takich jak `postfix` (np. używający
 
 6. Nie wysyłamy, jeśli istniał nagłówek `content-type` o wartości `multipart/report` (bez rozróżniania wielkości liter).
 
+7. Nie wysyłamy, jeśli wiadomość zawiera nagłówek `Feedback-Type` (wskazujący na raport ARF o nadużyciu zgodnie z [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Nie wysyłamy, jeśli adres MAIL FROM pasuje do wzorca nadawcy raportów ARF (np. `feedback@arf.mail.yahoo.com`).
+
 ### Jak skonfigurować SPF dla Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Korzystając ze strony zarządzania DNS u swojego rejestratora, ustaw następujący rekord <strong class="notranslate">TXT</strong>:
@@ -5279,6 +5283,10 @@ Częstą przyczyną znalezienia się na liście Backscatterer są błędnie skie
 6. Nie wysyłamy, jeśli część nazwy użytkownika adresu From to `mdaemon` i posiadał nagłówek `X-MDDSN-Message` (niezależnie od wielkości liter).
 
 7. Nie wysyłamy, jeśli istniał nagłówek `content-type` o wartości `multipart/report` (niezależnie od wielkości liter).
+
+8. Nie wysyłamy, jeśli wiadomość zawiera nagłówek `Feedback-Type` (wskazujący na raport ARF o nadużyciu zgodnie z [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Nie wysyłamy, jeśli adres MAIL FROM pasuje do wzorca nadawcy raportów ARF (np. `feedback@arf.mail.yahoo.com`).
 
 ### Jak określasz odcisk palca e-maila {#how-do-you-determine-an-email-fingerprint}
 

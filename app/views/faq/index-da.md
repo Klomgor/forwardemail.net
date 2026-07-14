@@ -2013,6 +2013,10 @@ I modsætning til mailsystemer som `postfix` (f.eks. der bruger `sieve` feriefil
 
 6. Vi sender ikke, hvis der var en case-insensitiv `content-type` header med værdien `multipart/report`.
 
+7. Vi sender ikke, hvis beskeden har en `Feedback-Type` header (der angiver en ARF abuse feedback-rapport i henhold til [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Vi sender ikke, hvis MAIL FROM-adressen matcher et ARF feedback-afsendermønster (f.eks. `feedback@arf.mail.yahoo.com`).
+
 ### Hvordan opsætter jeg SPF for Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Brug din registrators DNS-administrationsside til at sætte følgende <strong class="notranslate">TXT</strong>-post:
@@ -4155,8 +4159,8 @@ Ja, Forward Email er **Section 889 compliant**. Afsnit 889 i National Defense Au
 
 Forward Email er udelukkende afhængig af to nøgleinfrastrukturudbydere, som ingen af dem bruger udstyr, der er forbudt under Section 889:
 
-1. **Cloudflare**: Vores primære partner for netværkstjenester og email-sikkerhed  
-2. **DataPacket**: Vores primære leverandør af serverinfrastruktur (bruger udelukkende Arista Networks og Cisco-udstyr)  
+1. **Cloudflare**: Vores primære partner for netværkstjenester og email-sikkerhed
+2. **DataPacket**: Vores primære leverandør af serverinfrastruktur (bruger udelukkende Arista Networks og Cisco-udstyr)
 3. **Backup-udbydere**: Vores backup-udbydere Digital Ocean og Vultr er desuden skriftligt bekræftet som værende Section 889-kompatible.
 
 **Cloudflares forpligtelse**: Cloudflare angiver eksplicit i deres Third Party Code of Conduct, at de ikke bruger telekommunikationsudstyr, videoovervågningsprodukter eller tjenester fra nogen enheder, der er forbudt under Section 889.
@@ -5281,6 +5285,10 @@ En almindelig årsag til at blive opført på Backscatterer-listen er fejlagtigt
 6. Vi sender ikke, hvis From e-mailadressen brugernavn var `mdaemon` og den havde en case-insensitiv header `X-MDDSN-Message`.
 
 7. Vi sender ikke, hvis der var en case-insensitiv `content-type` header med værdien `multipart/report`.
+
+8. Vi sender ikke, hvis beskeden har en `Feedback-Type` header (der angiver en ARF abuse feedback-rapport i henhold til [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Vi sender ikke, hvis MAIL FROM-adressen matcher et ARF feedback-afsendermønster (f.eks. `feedback@arf.mail.yahoo.com`).
 
 ### Hvordan bestemmer I et e-mails fingeraftryk {#how-do-you-determine-an-email-fingerprint}
 

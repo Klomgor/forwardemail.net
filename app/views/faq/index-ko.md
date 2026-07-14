@@ -2012,6 +2012,10 @@ Microsoft 365(Outlook)를 사용 중이며 일치하지 않는 모든 별칭을 
 
 6. 대소문자 구분 없이 `content-type` 헤더가 `multipart/report`인 경우 보내지 않습니다.
 
+7. 메시지에 `Feedback-Type` 헤더가 있는 경우 전송하지 않습니다 ([RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)에 따른 ARF 남용 피드백 보고서를 나타냄).
+
+8. MAIL FROM 주소가 ARF 피드백 발신자 패턴과 일치하는 경우 전송하지 않습니다 (예: `feedback@arf.mail.yahoo.com`).
+
 ### Forward Email용 SPF 설정 방법 {#how-do-i-set-up-spf-for-forward-email}
 
 등록기관의 DNS 관리 페이지에서 다음 <strong class="notranslate">TXT</strong> 레코드를 설정하세요:
@@ -5280,6 +5284,10 @@ Backscatterer 목록에 오르는 일반적인 이유는 잘못된 반송 또는
 6. From 이메일 주소의 사용자 이름 부분이 `mdaemon`이고 대소문자 구분 없이 `X-MDDSN-Message` 헤더가 있으면 전송하지 않습니다.
 
 7. 대소문자 구분 없이 `content-type` 헤더가 `multipart/report`인 경우 전송하지 않습니다.
+
+8. 메시지에 `Feedback-Type` 헤더가 있는 경우 전송하지 않습니다 ([RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)에 따른 ARF 남용 피드백 보고서를 나타냄).
+
+9. MAIL FROM 주소가 ARF 피드백 발신자 패턴과 일치하는 경우 전송하지 않습니다 (예: `feedback@arf.mail.yahoo.com`).
 
 ### 이메일 지문은 어떻게 결정합니까? {#how-do-you-determine-an-email-fingerprint}
 

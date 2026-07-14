@@ -2012,6 +2012,10 @@ Till skillnad från mailsystem som `postfix` (t.ex. som använder `sieve`-semest
 
 6. Vi skickar inte om det fanns en skiftlägesokänslig `content-type`-rubrik med värdet `multipart/report`.
 
+7. Vi skickar inte om meddelandet har ett `Feedback-Type`-huvud (vilket indikerar en ARF-missbruksrapport enligt [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Vi skickar inte om MAIL FROM-adressen matchar ett mönster för en ARF-feedbackavsändare (t.ex. `feedback@arf.mail.yahoo.com`).
+
 ### Hur ställer jag in SPF för Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Använd din registrators DNS-hanteringssida och skapa följande <strong class="notranslate">TXT</strong>-post:
@@ -5280,6 +5284,10 @@ En vanlig anledning till att hamna på Backscatterer-listan är felriktade studs
 6. Vi skickar inte om From e-postadressens användardel var `mdaemon` och den hade en case-insensitive header `X-MDDSN-Message`.
 
 7. Vi skickar inte om det fanns en case-insensitive `content-type` header med värdet `multipart/report`.
+
+8. Vi skickar inte om meddelandet har ett `Feedback-Type`-huvud (vilket indikerar en ARF-missbruksrapport enligt [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Vi skickar inte om MAIL FROM-adressen matchar ett mönster för en ARF-feedbackavsändare (t.ex. `feedback@arf.mail.yahoo.com`).
 
 ### Hur bestämmer ni ett e-postfingeravtryck {#how-do-you-determine-an-email-fingerprint}
 

@@ -14,6 +14,12 @@ function isAutoReplyOrMailingList(headers) {
     (headers.hasHeader('content-type') &&
       /^multipart\/report\b/i.test(headers.getFirst('content-type'))) ||
     //
+    // don't send bounces/vacation for ARF abuse feedback reports (RFC 5965)
+    // these have a Feedback-Type header in the message/feedback-report MIME part,
+    // but some providers (e.g. Yahoo) also include it as a top-level header
+    //
+    headers.hasHeader('feedback-type') ||
+    //
     // if the message had any of these headers then don't send bounce
     // <https://www.jitbit.com/maxblog/18-detecting-outlook-autoreplyout-of-office-emails-and-x-auto-response-suppress-header/>
     // <https://github.com/nodemailer/smtp-server/issues/129>

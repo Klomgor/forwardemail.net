@@ -2012,6 +2012,10 @@ Ao contrário de sistemas de e-mail como `postfix` (por exemplo, que usam a exte
 
 6. Não enviamos se houver um cabeçalho `content-type` com valor `multipart/report` (sem diferenciar maiúsculas de minúsculas).
 
+7. Não enviamos se a mensagem tiver um cabeçalho `Feedback-Type` (indicando um relatório de feedback de abuso ARF conforme a [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Não enviamos se o endereço MAIL FROM corresponder a um padrão de remetente de feedback ARF (por exemplo, `feedback@arf.mail.yahoo.com`).
+
 ### Como configurar SPF para Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Usando a página de gerenciamento DNS do seu registrador, configure o seguinte registro <strong class="notranslate">TXT</strong>:
@@ -5280,6 +5284,10 @@ Uma razão comum para ser listado na lista Backscatterer é rejeições mal dire
 6. Não enviamos se a parte do nome de usuário do endereço de e-mail From for `mdaemon` e tiver um cabeçalho case-insensitive `X-MDDSN-Message`.
 
 7. Não enviamos se houver um cabeçalho case-insensitive `content-type` com valor `multipart/report`.
+
+8. Não enviamos se a mensagem tiver um cabeçalho `Feedback-Type` (indicando um relatório de feedback de abuso ARF conforme a [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Não enviamos se o endereço MAIL FROM corresponder a um padrão de remetente de feedback ARF (por exemplo, `feedback@arf.mail.yahoo.com`).
 
 ### Como você determina a impressão digital de um e-mail {#how-do-you-determine-an-email-fingerprint}
 

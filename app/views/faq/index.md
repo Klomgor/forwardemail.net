@@ -2036,6 +2036,10 @@ Unlike mail systems such as `postfix` (e.g. that use the `sieve` vacation filter
 
 6. We don't send if there was a case-insensitive `content-type` header of `multipart/report`.
 
+7. We don't send if the message has a `Feedback-Type` header (indicating an ARF abuse feedback report per [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. We don't send if the MAIL FROM address matches an ARF feedback sender pattern (e.g. `feedback@arf.mail.yahoo.com`).
+
 ### How do I set up SPF for Forward Email
 
 Using your registrar's DNS management page, set the following <strong class="notranslate">TXT</strong> record:
@@ -5355,6 +5359,10 @@ A common reason for getting listed on the Backscatterer list is misdirected boun
 6. We don't send if the From email address username portion was `mdaemon` and it had a case-insensitive header of `X-MDDSN-Message`.
 
 7. We don't send if there was a case-insensitive `content-type` header of `multipart/report`.
+
+8. We don't send if the message has a `Feedback-Type` header (indicating an ARF abuse feedback report per [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. We don't send if the MAIL FROM address matches an ARF feedback sender pattern (e.g. `feedback@arf.mail.yahoo.com`).
 
 ### How do you determine an email fingerprint
 

@@ -2011,6 +2011,10 @@ Drafts/
 
 6. เราไม่ส่งถ้ามีหัวข้อ `content-type` เป็น `multipart/report` (ไม่สนใจตัวพิมพ์)
 
+7. เราไม่ส่งหากข้อความมีส่วนหัว `Feedback-Type` (ซึ่งบ่งชี้ว่าเป็นรายงานข้อร้องเรียนการใช้งานในทางที่ผิดแบบ ARF ตาม [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. เราไม่ส่งหากที่อยู่ MAIL FROM ตรงกับรูปแบบผู้ส่งฟีดแบ็ก ARF (เช่น `feedback@arf.mail.yahoo.com`).
+
 ### ฉันจะตั้งค่า SPF สำหรับ Forward Email ได้อย่างไร {#how-do-i-set-up-spf-for-forward-email}
 
 โดยใช้หน้าการจัดการ DNS ของผู้ลงทะเบียนโดเมนของคุณ ให้ตั้งค่าระเบียน <strong class="notranslate">TXT</strong> ดังนี้:
@@ -5279,6 +5283,10 @@ Bounces คืออีเมลที่บ่งชี้ว่าการส
 6. เราจะไม่ส่งถ้าชื่อผู้ใช้อีเมล From เป็น `mdaemon` และมีหัวข้อ `X-MDDSN-Message` (ไม่สนใจตัวพิมพ์เล็ก-ใหญ่)
 
 7. เราจะไม่ส่งถ้ามีหัวข้อ `content-type` เป็น `multipart/report` (ไม่สนใจตัวพิมพ์เล็ก-ใหญ่)
+
+8. เราไม่ส่งหากข้อความมีส่วนหัว `Feedback-Type` (ซึ่งบ่งชี้ว่าเป็นรายงานข้อร้องเรียนการใช้งานในทางที่ผิดแบบ ARF ตาม [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. เราไม่ส่งหากที่อยู่ MAIL FROM ตรงกับรูปแบบผู้ส่งฟีดแบ็ก ARF (เช่น `feedback@arf.mail.yahoo.com`).
 
 ### วิธีการกำหนดลายนิ้วมืออีเมล {#how-do-you-determine-an-email-fingerprint}
 

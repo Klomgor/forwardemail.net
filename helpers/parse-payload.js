@@ -900,7 +900,14 @@ async function parsePayload(data, ws) {
                 rateLimitIncremented = true;
 
                 // 5) Burst limit: reject if more than 50 messages/min to this domain
-                if (burstCount > BURST_LIMIT_PER_MINUTE) {
+                //    (exempt truth sources and allowlisted senders since they
+                //    already have generous daily limits and high burst is normal
+                //    for large providers like yahoo.com, gmail.com, etc.)
+                if (
+                  burstCount > BURST_LIMIT_PER_MINUTE &&
+                  !config.truthSources.has(sender) &&
+                  !payload.allowlistValue
+                ) {
                   const err = new SMTPError(
                     `${sender} burst limited to ${BURST_LIMIT_PER_MINUTE} messages/min to ${root} (current: ${burstCount})`,
                     { responseCode: 421 }

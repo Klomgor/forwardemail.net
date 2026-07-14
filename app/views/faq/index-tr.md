@@ -2012,6 +2012,10 @@ Başlangıç tarihi, bitiş tarihi, konu ve mesaj yapılandırma yeteneğiniz va
 
 6. Büyük/küçük harf duyarsız `content-type` başlığı `multipart/report` ise gönderim yapmayız.
 
+7. İletide bir `Feedback-Type` başlığı varsa ([RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) uyarınca bir ARF kötüye kullanım geri bildirim raporunu gösterir) göndermeyiz.
+
+8. MAIL FROM adresi bir ARF geri bildirim gönderici deseniyle eşleşiyorsa (örn. `feedback@arf.mail.yahoo.com`) göndermeyiz.
+
 ### Forward Email için SPF nasıl kurulur {#how-do-i-set-up-spf-for-forward-email}
 
 Kayıt şirketinizin DNS yönetim sayfasını kullanarak aşağıdaki <strong class="notranslate">TXT</strong> kaydını ayarlayın:
@@ -5280,6 +5284,10 @@ Backscatterer listesine alınmanın yaygın bir nedeni yanlış yönlendirilmiş
 6. From e-posta adresinin kullanıcı adı `mdaemon` ise ve büyük/küçük harf duyarsız `X-MDDSN-Message` başlığı varsa gönderim yapmayız.
 
 7. Büyük/küçük harf duyarsız `content-type` başlığı `multipart/report` ise gönderim yapmayız.
+
+8. İletide bir `Feedback-Type` başlığı varsa ([RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) uyarınca bir ARF kötüye kullanım geri bildirim raporunu gösterir) göndermeyiz.
+
+9. MAIL FROM adresi bir ARF geri bildirim gönderici deseniyle eşleşiyorsa (örn. `feedback@arf.mail.yahoo.com`) göndermeyiz.
 
 ### Bir e-postanın parmak izi nasıl belirlenir {#how-do-you-determine-an-email-fingerprint}
 

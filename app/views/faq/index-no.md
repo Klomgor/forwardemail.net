@@ -2013,6 +2013,10 @@ I motsetning til e-postsystemer som `postfix` (f.eks. som bruker `sieve` feriefi
 
 6. Vi sender ikke hvis det var en case-insensitiv `content-type`-overskrift med verdi `multipart/report`.
 
+7. Vi sender ikke hvis meldingen har en `Feedback-Type`-header (som indikerer en ARF-tilbakemeldingsrapport om misbruk i henhold til [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Vi sender ikke hvis MAIL FROM-adressen samsvarer med et avsendermønster for ARF-tilbakemeldinger (f.eks. `feedback@arf.mail.yahoo.com`).
+
 ### Hvordan setter jeg opp SPF for Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Bruk registrarens DNS-administrasjonsside og sett følgende <strong class="notranslate">TXT</strong>-post:
@@ -5281,6 +5285,10 @@ En vanlig grunn til å bli oppført på Backscatterer-listen er feilrettede avvi
 6. Vi sender ikke hvis From e-postadresse brukernavnsdel var `mdaemon` og den hadde en case-insensitiv header `X-MDDSN-Message`.
 
 7. Vi sender ikke hvis det var en case-insensitiv `content-type` header med verdi `multipart/report`.
+
+8. Vi sender ikke hvis meldingen har en `Feedback-Type`-header (som indikerer en ARF-tilbakemeldingsrapport om misbruk i henhold til [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Vi sender ikke hvis MAIL FROM-adressen samsvarer med et avsendermønster for ARF-tilbakemeldinger (f.eks. `feedback@arf.mail.yahoo.com`).
 
 ### Hvordan bestemmer dere et e-postfingeravtrykk {#how-do-you-determine-an-email-fingerprint}
 

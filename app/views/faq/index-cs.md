@@ -2012,6 +2012,10 @@ Na rozdíl od poštovních systémů jako `postfix` (např. které používají 
 
 6. Neodesíláme, pokud byla bez ohledu na velikost písmen hlavička `content-type` s hodnotou `multipart/report`.
 
+7. Neodesíláme, pokud zpráva obsahuje hlavičku `Feedback-Type` (indikující ARF hlášení o zneužití podle [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Neodesíláme, pokud adresa MAIL FROM odpovídá vzoru odesílatele ARF zpětné vazby (např. `feedback@arf.mail.yahoo.com`).
+
 ### Jak nastavit SPF pro Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Pomocí stránky pro správu DNS u vašeho registrátora nastavte následující <strong class="notranslate">TXT</strong> záznam:
@@ -5280,6 +5284,10 @@ Běžným důvodem zařazení na seznam Backscatterer jsou nesprávně směrovan
 6. Neodesíláme, pokud uživatelská část e-mailové adresy From byla `mdaemon` a obsahovala bez ohledu na velikost písmen hlavičku `X-MDDSN-Message`.
 
 7. Neodesíláme, pokud byla bez ohledu na velikost písmen hlavička `content-type` s hodnotou `multipart/report`.
+
+8. Neodesíláme, pokud zpráva obsahuje hlavičku `Feedback-Type` (indikující ARF hlášení o zneužití podle [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Neodesíláme, pokud adresa MAIL FROM odpovídá vzoru odesílatele ARF zpětné vazby (např. `feedback@arf.mail.yahoo.com`).
 
 ### Jak určujete otisk e-mailu {#how-do-you-determine-an-email-fingerprint}
 

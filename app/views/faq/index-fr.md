@@ -2013,6 +2013,10 @@ Contrairement aux systèmes de messagerie tels que `postfix` (par exemple ceux q
 
 6. Nous n’envoyons pas s’il y avait un en-tête insensible à la casse `content-type` de type `multipart/report`.
 
+7. Nous n'envoyons pas si le message contient un en-tête `Feedback-Type` (indiquant un rapport de signalement d'abus ARF selon la [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Nous n'envoyons pas si l'adresse MAIL FROM correspond à un modèle d'expéditeur de signalement ARF (par ex. `feedback@arf.mail.yahoo.com`).
+
 ### Comment configurer SPF pour Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 En utilisant la page de gestion DNS de votre registrar, ajoutez l’enregistrement <strong class="notranslate">TXT</strong> suivant :
@@ -4064,40 +4068,40 @@ Pour les clients entreprise nécessitant des conditions DPA personnalisées ou d
 
 > \[!NOTE]
 > L'architecture zero-knowledge de Forward Email limite considérablement l'impact des violations.
-* **Exposition limitée des données** : Impossible d'accéder au contenu des emails chiffrés en raison de l'architecture zero-knowledge  
-* **Collecte minimale de données** : Seules les informations de base des abonnés et des journaux IP limités pour la sécurité sont collectées  
-* **Cadres des sous-traitants** : DigitalOcean, GitHub et Vultr maintiennent des procédures de réponse aux incidents conformes au RGPD  
+* **Exposition limitée des données** : Impossible d'accéder au contenu des emails chiffrés en raison de l'architecture zero-knowledge
+* **Collecte minimale de données** : Seules les informations de base des abonnés et des journaux IP limités pour la sécurité sont collectées
+* **Cadres des sous-traitants** : DigitalOcean, GitHub et Vultr maintiennent des procédures de réponse aux incidents conformes au RGPD
 
-**Informations sur le représentant RGPD :**  
+**Informations sur le représentant RGPD :**
 Forward Email a désigné des représentants RGPD conformément à l'article 27 :
 
-**Représentant UE :**  
-Osano International Compliance Services Limited  
-ATTN : LFHC  
-3 Dublin Landings, North Wall Quay  
-Dublin 1, D01C4E0  
+**Représentant UE :**
+Osano International Compliance Services Limited
+ATTN : LFHC
+3 Dublin Landings, North Wall Quay
+Dublin 1, D01C4E0
 
-**Représentant UK :**  
-Osano UK Compliance LTD  
-ATTN : LFHC  
-42-46 Fountain Street, Belfast  
-Antrim, BT1 - 5EF  
+**Représentant UK :**
+Osano UK Compliance LTD
+ATTN : LFHC
+42-46 Fountain Street, Belfast
+Antrim, BT1 - 5EF
 
 Pour les clients entreprise nécessitant des SLA spécifiques de notification de violation, ceux-ci doivent être discutés dans le cadre d'un accord de **Licence Entreprise**.
 
 Sources :
 
-* <https://forwardemail.net/technical-whitepaper.pdf#page=59>  
-* <https://forwardemail.net/gdpr>  
+* <https://forwardemail.net/technical-whitepaper.pdf#page=59>
+* <https://forwardemail.net/gdpr>
 
 ### Proposez-vous un environnement de test {#do-you-offer-a-test-environment}
 
 La documentation technique de Forward Email ne décrit pas explicitement un mode bac à sable dédié. Cependant, les approches potentielles de test incluent :
 
-* **Option d'auto-hébergement** : Capacités complètes d'auto-hébergement pour créer des environnements de test  
-* **Interface API** : Potentiel de test programmatique des configurations  
-* **Open Source** : Code 100 % open source permettant aux clients d'examiner la logique de transfert  
-* **Domaines multiples** : Support de plusieurs domaines pouvant permettre la création de domaines de test  
+* **Option d'auto-hébergement** : Capacités complètes d'auto-hébergement pour créer des environnements de test
+* **Interface API** : Potentiel de test programmatique des configurations
+* **Open Source** : Code 100 % open source permettant aux clients d'examiner la logique de transfert
+* **Domaines multiples** : Support de plusieurs domaines pouvant permettre la création de domaines de test
 
 Pour les clients entreprise nécessitant des capacités formelles de bac à sable, cela doit être discuté dans le cadre d'un accord de **Licence Entreprise**.
 
@@ -4109,45 +4113,45 @@ Forward Email fournit une surveillance en temps réel avec certaines limitations
 
 **Disponible :**
 
-* **Surveillance de la livraison en temps réel** : Indicateurs de performance visibles publiquement pour les principaux fournisseurs d'email  
-* **Alertes automatiques** : Équipe d'ingénierie alertée lorsque les délais de livraison dépassent 10 secondes  
-* **Surveillance transparente** : Systèmes de surveillance 100 % open source  
-* **Surveillance de l'infrastructure** : Détection automatique des anomalies et journalisation complète des audits  
+* **Surveillance de la livraison en temps réel** : Indicateurs de performance visibles publiquement pour les principaux fournisseurs d'email
+* **Alertes automatiques** : Équipe d'ingénierie alertée lorsque les délais de livraison dépassent 10 secondes
+* **Surveillance transparente** : Systèmes de surveillance 100 % open source
+* **Surveillance de l'infrastructure** : Détection automatique des anomalies et journalisation complète des audits
 
 **Limitations :**
 
-* Les webhooks orientés client ou notifications de statut de livraison basées sur API ne sont pas explicitement documentés  
+* Les webhooks orientés client ou notifications de statut de livraison basées sur API ne sont pas explicitement documentés
 
 Pour les clients entreprise nécessitant des webhooks détaillés de statut de livraison ou des intégrations de surveillance personnalisées, ces capacités peuvent être disponibles via des accords de **Licence Entreprise**.
 
 Sources :
 
-* <https://forwardemail.net> (Affichage de la surveillance en temps réel)  
-* <https://github.com/forwardemail/forwardemail.net> (Implémentation de la surveillance)  
+* <https://forwardemail.net> (Affichage de la surveillance en temps réel)
+* <https://github.com/forwardemail/forwardemail.net> (Implémentation de la surveillance)
 
 ### Comment assurez-vous une haute disponibilité {#how-do-you-ensure-high-availability}
 
-> \[!IMPORTANT]  
+> \[!IMPORTANT]
 > Forward Email met en œuvre une redondance complète via plusieurs fournisseurs d'infrastructure.
 
-* **Infrastructure distribuée** : Plusieurs fournisseurs (DigitalOcean, Vultr, DataPacket) répartis géographiquement  
-* **Répartition géographique de la charge** : Équilibrage de charge géolocalisé basé sur Cloudflare avec basculement automatique  
-* **Mise à l'échelle automatique** : Ajustement dynamique des ressources selon la demande  
-* **Protection DDoS multi-couches** : Via le système Shield de DataPacket et Cloudflare  
-* **Redondance des serveurs** : Plusieurs serveurs par région avec basculement automatique  
-* **Réplication de base de données** : Synchronisation des données en temps réel sur plusieurs sites  
-* **Surveillance et alertes** : Surveillance 24/7 avec réponse automatique aux incidents  
+* **Infrastructure distribuée** : Plusieurs fournisseurs (DigitalOcean, Vultr, DataPacket) répartis géographiquement
+* **Répartition géographique de la charge** : Équilibrage de charge géolocalisé basé sur Cloudflare avec basculement automatique
+* **Mise à l'échelle automatique** : Ajustement dynamique des ressources selon la demande
+* **Protection DDoS multi-couches** : Via le système Shield de DataPacket et Cloudflare
+* **Redondance des serveurs** : Plusieurs serveurs par région avec basculement automatique
+* **Réplication de base de données** : Synchronisation des données en temps réel sur plusieurs sites
+* **Surveillance et alertes** : Surveillance 24/7 avec réponse automatique aux incidents
 
 **Engagement de disponibilité** : Disponibilité du service supérieure à 99,9 % avec surveillance transparente disponible sur <https://forwardemail.net>
 
 Sources :
 
-* <https://forwardemail.net/technical-whitepaper.pdf#page=18>  
-* <https://www.datapacket.com/datacenters/denver>  
+* <https://forwardemail.net/technical-whitepaper.pdf#page=18>
+* <https://www.datapacket.com/datacenters/denver>
 
 ### Êtes-vous conforme à la Section 889 du National Defense Authorization Act (NDAA) {#are-you-compliant-with-section-889-of-the-national-defense-authorization-act-ndaa}
 
-> \[!IMPORTANT]  
+> \[!IMPORTANT]
 > Forward Email est entièrement conforme à la Section 889 grâce à une sélection rigoureuse des partenaires d'infrastructure.
 
 Oui, Forward Email est **conforme à la Section 889**. La Section 889 du National Defense Authorization Act (NDAA) interdit aux agences gouvernementales d'utiliser ou de contracter avec des entités utilisant des équipements de télécommunications et de vidéosurveillance de certaines entreprises (Huawei, ZTE, Hikvision, Dahua et Hytera).
@@ -5281,6 +5285,10 @@ Une raison courante d'être listé sur la liste Backscatterer est les rebonds ma
 6. Nous n'envoyons pas si la partie nom d'utilisateur de l'adresse email From était `mdaemon` et qu'il y avait un en-tête `X-MDDSN-Message` sans tenir compte de la casse.
 
 7. Nous n'envoyons pas s'il y avait un en-tête `content-type` sans tenir compte de la casse avec la valeur `multipart/report`.
+
+8. Nous n'envoyons pas si le message contient un en-tête `Feedback-Type` (indiquant un rapport de signalement d'abus ARF selon la [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Nous n'envoyons pas si l'adresse MAIL FROM correspond à un modèle d'expéditeur de signalement ARF (par ex. `feedback@arf.mail.yahoo.com`).
 
 ### Comment déterminez-vous l'empreinte d'un email {#how-do-you-determine-an-email-fingerprint}
 

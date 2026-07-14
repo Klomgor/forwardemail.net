@@ -2013,6 +2013,10 @@ A differenza di sistemi di posta come `postfix` (ad esempio che usano l'estensio
 
 6. Non inviamo se era presente un header case-insensitive `content-type` con valore `multipart/report`.
 
+7. Non inviamo se il messaggio ha un'intestazione `Feedback-Type` (che indica una segnalazione di abuso ARF secondo [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Non inviamo se l'indirizzo MAIL FROM corrisponde a un modello di mittente di feedback ARF (ad es. `feedback@arf.mail.yahoo.com`).
+
 ### Come configuro SPF per Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Usando la pagina di gestione DNS del tuo registrar, imposta il seguente record <strong class="notranslate">TXT</strong>:
@@ -5281,6 +5285,10 @@ Una ragione comune per essere inseriti nella lista Backscatterer è il rimbalzo 
 6. Non inviamo se la parte username dell'indirizzo email From era `mdaemon` e aveva un header case-insensitive `X-MDDSN-Message`.
 
 7. Non inviamo se era presente un header case-insensitive `content-type` di tipo `multipart/report`.
+
+8. Non inviamo se il messaggio ha un'intestazione `Feedback-Type` (che indica una segnalazione di abuso ARF secondo [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Non inviamo se l'indirizzo MAIL FROM corrisponde a un modello di mittente di feedback ARF (ad es. `feedback@arf.mail.yahoo.com`).
 
 ### Come determini l'impronta di un'email {#how-do-you-determine-an-email-fingerprint}
 

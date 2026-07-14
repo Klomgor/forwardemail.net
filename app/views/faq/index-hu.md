@@ -2012,6 +2012,10 @@ Ellentétben olyan levelezőrendszerekkel, mint a `postfix` (pl. amelyek a `siev
 
 6. Nem küldünk, ha volt kis- és nagybetűtől független `content-type` fejléc `multipart/report` értékkel.
 
+7. Nem küldünk üzenetet, ha az tartalmaz egy `Feedback-Type` fejlécet (ami egy ARF visszaélés-jelentést jelez az [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) szerint).
+
+8. Nem küldünk, ha a MAIL FROM cím megfelel egy ARF visszajelző feladó mintának (pl. `feedback@arf.mail.yahoo.com`).
+
 ### Hogyan állítsam be az SPF-et a Forward Emailhez {#how-do-i-set-up-spf-for-forward-email}
 
 A regisztrátorod DNS kezelő oldalán állítsd be a következő <strong class="notranslate">TXT</strong> rekordot:
@@ -4071,15 +4075,15 @@ Vállalati ügyfelek számára, akik egyedi DPA feltételeket vagy specifikus sz
 A Forward Email a 27. cikknek megfelelően GDPR képviselőket nevezett ki:
 
 **EU képviselő:**
-Osano International Compliance Services Limited  
-ATTN: LFHC  
-3 Dublin Landings, North Wall Quay  
+Osano International Compliance Services Limited
+ATTN: LFHC
+3 Dublin Landings, North Wall Quay
 Dublin 1, D01C4E0
 
 **UK képviselő:**
-Osano UK Compliance LTD  
-ATTN: LFHC  
-42-46 Fountain Street, Belfast  
+Osano UK Compliance LTD
+ATTN: LFHC
+42-46 Fountain Street, Belfast
 Antrim, BT1 - 5EF
 
 Vállalati ügyfelek számára, akik specifikus adatvédelmi incidens értesítési SLA-kat igényelnek, ezekről az **Enterprise License** megállapodás részeként kell egyeztetni.
@@ -5280,6 +5284,10 @@ A Backscatterer listára kerülés egyik gyakori oka a tévesen irányított vis
 6. Nem küldünk, ha a From e-mail cím felhasználóneve `mdaemon` volt, és volt egy kis- és nagybetűtől független `X-MDDSN-Message` fejléc.
 
 7. Nem küldünk, ha volt egy kis- és nagybetűtől független `content-type` fejléc, amely `multipart/report` értékű volt.
+
+8. Nem küldünk üzenetet, ha az tartalmaz egy `Feedback-Type` fejlécet (ami egy ARF visszaélés-jelentést jelez az [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) szerint).
+
+9. Nem küldünk, ha a MAIL FROM cím megfelel egy ARF visszajelző feladó mintának (pl. `feedback@arf.mail.yahoo.com`).
 
 ### Hogyan határozzuk meg egy e-mail ujjlenyomatát {#how-do-you-determine-an-email-fingerprint}
 

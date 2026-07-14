@@ -2011,6 +2011,10 @@ Không giống như các hệ thống mail như `postfix` (ví dụ: sử dụng
 
 6. Chúng tôi không gửi nếu có tiêu đề `content-type` không phân biệt chữ hoa chữ thường là `multipart/report`.
 
+7. Chúng tôi không gửi nếu thư có header `Feedback-Type` (biểu thị báo cáo phản hồi lạm dụng ARF theo [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Chúng tôi không gửi nếu địa chỉ MAIL FROM khớp với mẫu người gửi phản hồi ARF (ví dụ: `feedback@arf.mail.yahoo.com`).
+
 ### Làm thế nào để tôi thiết lập SPF cho Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Sử dụng trang quản lý DNS của nhà đăng ký của bạn, thiết lập bản ghi <strong class="notranslate">TXT</strong> sau:
@@ -5279,6 +5283,10 @@ Một lý do phổ biến khiến bị liệt kê trong danh sách Backscatterer
 6. Chúng tôi không gửi nếu phần tên người dùng của địa chỉ email From là `mdaemon` và có header `X-MDDSN-Message` không phân biệt chữ hoa chữ thường.
 
 7. Chúng tôi không gửi nếu có header `content-type` không phân biệt chữ hoa chữ thường là `multipart/report`.
+
+8. Chúng tôi không gửi nếu thư có header `Feedback-Type` (biểu thị báo cáo phản hồi lạm dụng ARF theo [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Chúng tôi không gửi nếu địa chỉ MAIL FROM khớp với mẫu người gửi phản hồi ARF (ví dụ: `feedback@arf.mail.yahoo.com`).
 
 ### Làm thế nào để xác định dấu vân tay email {#how-do-you-determine-an-email-fingerprint}
 

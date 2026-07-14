@@ -2012,6 +2012,10 @@ Berbeda dengan sistem mail seperti `postfix` (misalnya yang menggunakan ekstensi
 
 6. Kami tidak mengirim jika ada header `content-type` yang tidak peka huruf besar/kecil dengan nilai `multipart/report`.
 
+7. Kami tidak mengirim jika pesan memiliki header `Feedback-Type` (yang menunjukkan laporan umpan balik penyalahgunaan ARF sesuai [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. Kami tidak mengirim jika alamat MAIL FROM cocok dengan pola pengirim umpan balik ARF (mis. `feedback@arf.mail.yahoo.com`).
+
 ### Bagaimana cara mengatur SPF untuk Forward Email {#how-do-i-set-up-spf-for-forward-email}
 
 Menggunakan halaman manajemen DNS registrar Anda, atur catatan <strong class="notranslate">TXT</strong> berikut:
@@ -5280,6 +5284,10 @@ Alasan umum untuk masuk ke daftar Backscatterer adalah bounce yang salah arah at
 6. Kami tidak mengirim jika bagian username alamat email From adalah `mdaemon` dan memiliki header `X-MDDSN-Message` (tidak peka huruf besar/kecil).
 
 7. Kami tidak mengirim jika ada header `content-type` dengan nilai `multipart/report` (tidak peka huruf besar/kecil).
+
+8. Kami tidak mengirim jika pesan memiliki header `Feedback-Type` (yang menunjukkan laporan umpan balik penyalahgunaan ARF sesuai [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. Kami tidak mengirim jika alamat MAIL FROM cocok dengan pola pengirim umpan balik ARF (mis. `feedback@arf.mail.yahoo.com`).
 
 ### Bagaimana Anda menentukan sidik jari email {#how-do-you-determine-an-email-fingerprint}
 

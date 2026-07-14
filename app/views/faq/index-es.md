@@ -2013,6 +2013,10 @@ A diferencia de sistemas de correo como `postfix` (por ejemplo, que usan la exte
 
 6. No enviamos si había un encabezado `content-type` sin distinguir mayúsculas de tipo `multipart/report`.
 
+7. No enviamos si el mensaje tiene un encabezado `Feedback-Type` (que indica un informe de abuso ARF según [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+8. No enviamos si la dirección MAIL FROM coincide con un patrón de remitente de ARF (p. ej., `feedback@arf.mail.yahoo.com`).
+
 ### ¿Cómo configuro SPF para Forward Email? {#how-do-i-set-up-spf-for-forward-email}
 
 Usando la página de gestión DNS de tu registrador, configura el siguiente registro <strong class="notranslate">TXT</strong>:
@@ -4064,91 +4068,91 @@ Para clientes empresariales que requieran términos personalizados de DPA o acue
 
 > \[!NOTE]
 > La arquitectura de conocimiento cero de Forward Email limita significativamente el impacto de las violaciones.
-* **Exposición limitada de datos**: No puede acceder al contenido de correos electrónicos cifrados debido a la arquitectura de conocimiento cero  
-* **Recopilación mínima de datos**: Solo información básica del suscriptor y registros limitados de IP para seguridad  
-* **Marcos de subprocesadores**: DigitalOcean, GitHub y Vultr mantienen procedimientos de respuesta a incidentes compatibles con GDPR  
+* **Exposición limitada de datos**: No puede acceder al contenido de correos electrónicos cifrados debido a la arquitectura de conocimiento cero
+* **Recopilación mínima de datos**: Solo información básica del suscriptor y registros limitados de IP para seguridad
+* **Marcos de subprocesadores**: DigitalOcean, GitHub y Vultr mantienen procedimientos de respuesta a incidentes compatibles con GDPR
 
-**Información del representante GDPR:**  
-Forward Email ha designado representantes GDPR de acuerdo con el Artículo 27:  
+**Información del representante GDPR:**
+Forward Email ha designado representantes GDPR de acuerdo con el Artículo 27:
 
-**Representante de la UE:**  
-Osano International Compliance Services Limited  
-ATTN: LFHC  
-3 Dublin Landings, North Wall Quay  
-Dublín 1, D01C4E0  
+**Representante de la UE:**
+Osano International Compliance Services Limited
+ATTN: LFHC
+3 Dublin Landings, North Wall Quay
+Dublín 1, D01C4E0
 
-**Representante del Reino Unido:**  
-Osano UK Compliance LTD  
-ATTN: LFHC  
-42-46 Fountain Street, Belfast  
-Antrim, BT1 - 5EF  
+**Representante del Reino Unido:**
+Osano UK Compliance LTD
+ATTN: LFHC
+42-46 Fountain Street, Belfast
+Antrim, BT1 - 5EF
 
-Para clientes empresariales que requieran SLA específicos de notificación de brechas, estos deben discutirse como parte de un acuerdo de **Licencia Empresarial**.  
+Para clientes empresariales que requieran SLA específicos de notificación de brechas, estos deben discutirse como parte de un acuerdo de **Licencia Empresarial**.
 
-Fuentes:  
+Fuentes:
 
-* <https://forwardemail.net/technical-whitepaper.pdf#page=59>  
-* <https://forwardemail.net/gdpr>  
+* <https://forwardemail.net/technical-whitepaper.pdf#page=59>
+* <https://forwardemail.net/gdpr>
 
-### ¿Ofrecen un entorno de prueba {#do-you-offer-a-test-environment}  
+### ¿Ofrecen un entorno de prueba {#do-you-offer-a-test-environment}
 
-La documentación técnica de Forward Email no describe explícitamente un modo sandbox dedicado. Sin embargo, los enfoques potenciales para pruebas incluyen:  
+La documentación técnica de Forward Email no describe explícitamente un modo sandbox dedicado. Sin embargo, los enfoques potenciales para pruebas incluyen:
 
-* **Opción de autoalojamiento**: Capacidades completas de autoalojamiento para crear entornos de prueba  
-* **Interfaz API**: Potencial para pruebas programáticas de configuraciones  
-* **Código abierto**: Código 100% abierto que permite a los clientes examinar la lógica de reenvío  
-* **Múltiples dominios**: Soporte para múltiples dominios que podría permitir la creación de dominios de prueba  
+* **Opción de autoalojamiento**: Capacidades completas de autoalojamiento para crear entornos de prueba
+* **Interfaz API**: Potencial para pruebas programáticas de configuraciones
+* **Código abierto**: Código 100% abierto que permite a los clientes examinar la lógica de reenvío
+* **Múltiples dominios**: Soporte para múltiples dominios que podría permitir la creación de dominios de prueba
 
-Para clientes empresariales que requieran capacidades formales de sandbox, esto debe discutirse como parte de un acuerdo de **Licencia Empresarial**.  
+Para clientes empresariales que requieran capacidades formales de sandbox, esto debe discutirse como parte de un acuerdo de **Licencia Empresarial**.
 
-Fuente: <https://github.com/forwardemail/forwardemail.net> (Detalles del entorno de desarrollo)  
+Fuente: <https://github.com/forwardemail/forwardemail.net> (Detalles del entorno de desarrollo)
 
-### ¿Proveen herramientas de monitoreo y alertas {#do-you-provide-monitoring-and-alerting-tools}  
+### ¿Proveen herramientas de monitoreo y alertas {#do-you-provide-monitoring-and-alerting-tools}
 
-Forward Email ofrece monitoreo en tiempo real con algunas limitaciones:  
+Forward Email ofrece monitoreo en tiempo real con algunas limitaciones:
 
-**Disponible:**  
+**Disponible:**
 
-* **Monitoreo de entrega en tiempo real**: Métricas de rendimiento visibles públicamente para los principales proveedores de correo electrónico  
-* **Alertas automáticas**: Equipo de ingeniería alertado cuando los tiempos de entrega superan los 10 segundos  
-* **Monitoreo transparente**: Sistemas de monitoreo 100% de código abierto  
-* **Monitoreo de infraestructura**: Detección automática de anomalías y registro completo de auditorías  
+* **Monitoreo de entrega en tiempo real**: Métricas de rendimiento visibles públicamente para los principales proveedores de correo electrónico
+* **Alertas automáticas**: Equipo de ingeniería alertado cuando los tiempos de entrega superan los 10 segundos
+* **Monitoreo transparente**: Sistemas de monitoreo 100% de código abierto
+* **Monitoreo de infraestructura**: Detección automática de anomalías y registro completo de auditorías
 
-**Limitaciones:**  
+**Limitaciones:**
 
-* No se documentan explícitamente webhooks orientados al cliente ni notificaciones de estado de entrega basadas en API  
+* No se documentan explícitamente webhooks orientados al cliente ni notificaciones de estado de entrega basadas en API
 
-Para clientes empresariales que requieran webhooks detallados de estado de entrega o integraciones personalizadas de monitoreo, estas capacidades pueden estar disponibles mediante acuerdos de **Licencia Empresarial**.  
+Para clientes empresariales que requieran webhooks detallados de estado de entrega o integraciones personalizadas de monitoreo, estas capacidades pueden estar disponibles mediante acuerdos de **Licencia Empresarial**.
 
-Fuentes:  
+Fuentes:
 
-* <https://forwardemail.net> (Visualización de monitoreo en tiempo real)  
-* <https://github.com/forwardemail/forwardemail.net> (Implementación de monitoreo)  
+* <https://forwardemail.net> (Visualización de monitoreo en tiempo real)
+* <https://github.com/forwardemail/forwardemail.net> (Implementación de monitoreo)
 
-### ¿Cómo aseguran alta disponibilidad {#how-do-you-ensure-high-availability}  
+### ¿Cómo aseguran alta disponibilidad {#how-do-you-ensure-high-availability}
 
-> \[!IMPORTANT]  
-> Forward Email implementa redundancia integral a través de múltiples proveedores de infraestructura.  
+> \[!IMPORTANT]
+> Forward Email implementa redundancia integral a través de múltiples proveedores de infraestructura.
 
-* **Infraestructura distribuida**: Múltiples proveedores (DigitalOcean, Vultr, DataPacket) en regiones geográficas  
-* **Balanceo de carga geográfico**: Balanceo de carga geo-localizado basado en Cloudflare con conmutación por error automática  
-* **Escalado automático**: Ajuste dinámico de recursos según la demanda  
-* **Protección DDoS multicapa**: A través del sistema Shield de DataPacket y Cloudflare  
-* **Redundancia de servidores**: Múltiples servidores por región con conmutación por error automática  
-* **Replicación de bases de datos**: Sincronización de datos en tiempo real en múltiples ubicaciones  
-* **Monitoreo y alertas**: Monitoreo 24/7 con respuesta automática a incidentes  
+* **Infraestructura distribuida**: Múltiples proveedores (DigitalOcean, Vultr, DataPacket) en regiones geográficas
+* **Balanceo de carga geográfico**: Balanceo de carga geo-localizado basado en Cloudflare con conmutación por error automática
+* **Escalado automático**: Ajuste dinámico de recursos según la demanda
+* **Protección DDoS multicapa**: A través del sistema Shield de DataPacket y Cloudflare
+* **Redundancia de servidores**: Múltiples servidores por región con conmutación por error automática
+* **Replicación de bases de datos**: Sincronización de datos en tiempo real en múltiples ubicaciones
+* **Monitoreo y alertas**: Monitoreo 24/7 con respuesta automática a incidentes
 
-**Compromiso de disponibilidad**: Disponibilidad del servicio del 99.9%+ con monitoreo transparente disponible en <https://forwardemail.net>  
+**Compromiso de disponibilidad**: Disponibilidad del servicio del 99.9%+ con monitoreo transparente disponible en <https://forwardemail.net>
 
-Fuentes:  
+Fuentes:
 
-* <https://forwardemail.net/technical-whitepaper.pdf#page=18>  
-* <https://www.datapacket.com/datacenters/denver>  
+* <https://forwardemail.net/technical-whitepaper.pdf#page=18>
+* <https://www.datapacket.com/datacenters/denver>
 
-### ¿Cumplen con la Sección 889 de la Ley de Autorización de Defensa Nacional (NDAA) {#are-you-compliant-with-section-889-of-the-national-defense-authorization-act-ndaa}  
+### ¿Cumplen con la Sección 889 de la Ley de Autorización de Defensa Nacional (NDAA) {#are-you-compliant-with-section-889-of-the-national-defense-authorization-act-ndaa}
 
-> \[!IMPORTANT]  
-> Forward Email cumple plenamente con la Sección 889 mediante la cuidadosa selección de socios de infraestructura.  
+> \[!IMPORTANT]
+> Forward Email cumple plenamente con la Sección 889 mediante la cuidadosa selección de socios de infraestructura.
 
 Sí, Forward Email es **compatible con la Sección 889**. La Sección 889 de la Ley de Autorización de Defensa Nacional (NDAA) prohíbe a las agencias gubernamentales usar o contratar con entidades que utilicen equipos de telecomunicaciones y videovigilancia de compañías específicas (Huawei, ZTE, Hikvision, Dahua y Hytera).
 **Cómo Forward Email cumple con la Sección 889:**
@@ -5281,6 +5285,10 @@ Una razón común para ser listado en la lista de Backscatterer son los rebotes 
 6. No enviamos si la parte del nombre de usuario de la dirección From era `mdaemon` y tenía un encabezado (sin distinguir mayúsculas de minúsculas) `X-MDDSN-Message`.
 
 7. No enviamos si había un encabezado (sin distinguir mayúsculas de minúsculas) `content-type` de tipo `multipart/report`.
+
+8. No enviamos si el mensaje tiene un encabezado `Feedback-Type` (que indica un informe de abuso ARF según [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965)).
+
+9. No enviamos si la dirección MAIL FROM coincide con un patrón de remitente de ARF (p. ej., `feedback@arf.mail.yahoo.com`).
 
 ### ¿Cómo determinan la huella digital de un correo electrónico? {#how-do-you-determine-an-email-fingerprint}
 

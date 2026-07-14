@@ -184,12 +184,39 @@ async function sendSysAdminEmail(template, err, session, headers) {
 //
 // TODO: digest email with parsed FQDN's or IP's parsed from rejected emails
 //
-async function addToDenylist(attr, headers, bounce, _session) {
+async function addToDenylist(attr, headers, bounce, session) {
   // Check if the value is allowlisted before adding to denylist
   // This prevents allowlisted IPs/domains from being incorrectly denylisted
   if (await isAllowlisted(attr, this.client, this.resolver)) {
     logger.debug('skipping denylist for allowlisted value', { attr });
     return;
+  }
+
+  //
+  // if the attr is the session's IP and the session already resolved
+  // a client hostname, check if that hostname (or its root) is allowlisted.
+  // this prevents denylisting IPs from allowlisted infrastructure (e.g.
+  // googleusercontent.com, linodeusercontent.com) when the PTR lookup in
+  // isAllowlisted() above fails transiently due to DNS timeouts.
+  //
+  if (
+    attr === session.remoteAddress &&
+    session.resolvedClientHostname &&
+    isFQDN(session.resolvedClientHostname)
+  ) {
+    const hostnameResult = await isAllowlisted(
+      session.resolvedClientHostname,
+      this.client,
+      this.resolver
+    );
+    if (hostnameResult) {
+      logger.debug('skipping denylist for IP with allowlisted hostname', {
+        attr,
+        hostname: session.resolvedClientHostname,
+        reason: hostnameResult
+      });
+      return;
+    }
   }
 
   await this.client.set(`denylist:${attr}`, true, 'PX', ms('30d'));
@@ -293,7 +320,12 @@ function shouldSendVacationOrBounce(headers, session) {
       isMailerDaemonEmail(checkSRS(session.originalFromAddress)) ||
       // don't send if it was "MDaemon" with "X-MDDSN-Message" header
       (headers.hasHeader('x-mddsn-message') &&
-        parseUsername(checkSRS(session.originalFromAddress)) === 'mdaemon')
+        parseUsername(checkSRS(session.originalFromAddress)) === 'mdaemon') ||
+      // don't send vacation/bounce for ARF abuse feedback reports (RFC 5965)
+      // e.g. feedback@arf.mail.yahoo.com, scomp-feedback@arf.mail.yahoo.com
+      /^[^@]*feedback[^@]*@arf\./i.test(
+        checkSRS(session.envelope.mailFrom.address)
+      )
     )
   );
 }
