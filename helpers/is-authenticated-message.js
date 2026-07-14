@@ -317,6 +317,44 @@ async function isAuthenticatedMessage(headers, body, session, resolver) {
     );
   }
 
+  // NOTE: monitoring mode for DMARC p=quarantine rejection (non-allowlisted senders only)
+  // TODO: uncomment the throw below to enable rejection once logs confirm accuracy
+  if (
+    session.dmarc &&
+    session.dmarc.status &&
+    session.dmarc.status.result === 'fail' &&
+    session.dmarc.policy === 'quarantine' &&
+    !session.isAllowlisted &&
+    !session.hadAlignedAndPassingDKIM &&
+    session.spf.status.result !== 'pass' &&
+    !isLegitDSN &&
+    !isTruthSource
+  ) {
+    console.error('DMARC p=quarantine would reject', {
+      remoteAddress: session.remoteAddress,
+      hostNameAppearsAs: session.hostNameAppearsAs,
+      resolvedClientHostname: session.resolvedClientHostname,
+      resolvedRootClientHostname: session.resolvedRootClientHostname,
+      envelopeMailFrom: session.envelope.mailFrom.address,
+      envelopeRcptTo: session.envelope.rcptTo.map((to) => to.address),
+      originalFromAddress: session.originalFromAddress,
+      subject: session.headers?.subject || session.subject,
+      dmarcPolicy: session.dmarc.policy,
+      dmarcResult: session.dmarc.status.result,
+      spfResult: session.spf.status.result,
+      hadAlignedAndPassingDKIM: session.hadAlignedAndPassingDKIM,
+      isAllowlisted: session.isAllowlisted,
+      isTruthSource,
+      isLegitDSN
+    });
+    // throw new SMTPError(
+    //   `The email sent has failed DMARC validation and is rejected due to the domain's DMARC policy (p=${session.dmarc.policy})`,
+    //   {
+    //     responseCode: session.spf.status.result === 'temperror' ? 421 : 550
+    //   }
+    // );
+  }
+
   // if no DMARC and SPF had hardfail and no aligned DKIM then reject
   // NOTE: it'd be nice if we alerted admins of SPF permerror due to SPF misconfiguration
   if (

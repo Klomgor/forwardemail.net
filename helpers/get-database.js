@@ -629,6 +629,7 @@ async function getDatabase(
           Contacts
         });
 
+        let hasCriticalError = false;
         if (commands.length > 0) {
           for (const command of commands) {
             try {
@@ -652,6 +653,10 @@ async function getDatabase(
                   session,
                   resolver: instance.resolver
                 });
+
+                // if a CREATE TABLE command failed then the database
+                // is in a broken state and we must not cache success
+                if (command.startsWith('CREATE TABLE')) hasCriticalError = true;
               }
 
               // migration support in case existing rows
@@ -677,12 +682,19 @@ async function getDatabase(
           }
         }
 
-        await instance.client.set(
-          `migrate_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('1d')
-        );
+        //
+        // only cache migrate_check as successful if no CREATE TABLE
+        // commands failed; otherwise the next request will re-attempt
+        // migration instead of hitting "no such table" errors
+        //
+        if (!hasCriticalError) {
+          await instance.client.set(
+            `migrate_check:${session.user.alias_id}`,
+            true,
+            'PX',
+            ms('1d')
+          );
+        }
       } catch (err) {
         logger.fatal(err);
       }
