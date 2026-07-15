@@ -18,7 +18,6 @@ const config = require('#config');
 const isEmail = require('#helpers/is-email');
 const isValidPassword = require('#helpers/is-valid-password');
 const { encoder, decoder } = require('#helpers/encoder-decoder');
-const sendPushNotification = require('#helpers/send-push-notification');
 const logger = require('#helpers/logger');
 const {
   checkForNewMailAppRelease,
@@ -607,12 +606,14 @@ class ApiWebSocketHandler {
   }
 
   /**
-   * Handle Redis pub/sub messages and broadcast to connected WebSocket clients.
+   * Handle Redis pub/sub messages and fan out each per-alias event to active
+   * WebSocket clients.
    *
-   * Messages are published to Redis as msgpackr-encoded Buffers for efficiency.
-   * On receipt, the handler decodes the Buffer, extracts the aliasId, and
-   * forwards the payload to each connected client using that client's
-   * preferred encoding (msgpackr binary or JSON text).
+   * `sendNotification` already started push delivery before publishing this
+   * same immutable payload to Redis. This subscriber therefore owns only the
+   * WebSocket half of dual delivery and cannot suppress, duplicate, or delay
+   * push when an alias has zero connected sockets. Messages are msgpackr-
+   * encoded Buffers and are forwarded using each client's preferred encoding.
    *
    * Only messages published to the WS_REDIS_CHANNEL_NAME channel are processed.
    *
@@ -649,24 +650,13 @@ class ApiWebSocketHandler {
       if (!aliasId) return;
 
       const aliasConnections = this.clients.get(aliasId);
-      if (!aliasConnections || aliasConnections.size === 0) {
-        // No active WebSocket connections for this alias —
-        // fall back to push notification delivery (APNs/FCM/UnifiedPush)
-        sendPushNotification(
-          this.client,
-          aliasId,
-          payload.event,
-          payload,
-          this.resolver
-        );
-        return;
-      }
+      if (!aliasConnections || aliasConnections.size === 0) return;
 
       for (const ws of aliasConnections) {
         this._send(ws, payload);
       }
     } catch (err) {
-      logger.error('Error processing WebSocket broadcast message', err);
+      logger.error('Error processing realtime notification message', err);
     }
   }
 

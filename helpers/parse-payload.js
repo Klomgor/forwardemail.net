@@ -61,7 +61,7 @@ const logger = require('#helpers/logger');
 const parseRootDomain = require('#helpers/parse-root-domain');
 const recursivelyParse = require('#helpers/recursively-parse');
 const sendApn = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const ServerShutdownError = require('#helpers/server-shutdown-error');
 const syncTemporaryMailbox = require('#helpers/sync-temporary-mailbox');
 const updateStorageUsed = require('#helpers/update-storage-used');
@@ -1420,29 +1420,24 @@ async function parsePayload(data, ws) {
                         logger.fatal(err, { session, resolver: this.resolver })
                       );
                     // send websocket push notification
-                    sendWebSocketNotification(
-                      this.client,
-                      alias.id,
-                      'newMessage',
-                      {
-                        mailbox: targetFolder || 'INBOX',
-                        message: {
-                          folder_path: targetFolder || 'INBOX',
-                          flags: targetFlags || [],
-                          is_unread: !(targetFlags || []).includes('\\Seen'),
-                          is_flagged: (targetFlags || []).includes('\\Flagged'),
-                          is_deleted: (targetFlags || []).includes('\\Deleted'),
-                          is_draft: (targetFlags || []).includes('\\Draft'),
-                          is_encrypted: false,
-                          eml: Buffer.isBuffer(messageRaw)
-                            ? messageRaw.toString()
-                            : typeof messageRaw === 'string'
-                            ? messageRaw
-                            : '',
-                          object: 'message'
-                        }
+                    sendNotification(this.client, alias.id, 'newMessage', {
+                      mailbox: targetFolder || 'INBOX',
+                      message: {
+                        folder_path: targetFolder || 'INBOX',
+                        flags: targetFlags || [],
+                        is_unread: !(targetFlags || []).includes('\\Seen'),
+                        is_flagged: (targetFlags || []).includes('\\Flagged'),
+                        is_deleted: (targetFlags || []).includes('\\Deleted'),
+                        is_draft: (targetFlags || []).includes('\\Draft'),
+                        is_encrypted: false,
+                        eml: Buffer.isBuffer(messageRaw)
+                          ? messageRaw.toString()
+                          : typeof messageRaw === 'string'
+                          ? messageRaw
+                          : '',
+                        object: 'message'
                       }
-                    );
+                    });
                     // process iMIP (calendar scheduling) if applicable
                     try {
                       const parsedEmail = await simpleParser(payload.raw, {
@@ -1859,7 +1854,7 @@ async function parsePayload(data, ws) {
                 );
 
               // send websocket push notification (enriched payload with eml)
-              sendWebSocketNotification(this.client, alias.id, 'newMessage', {
+              sendNotification(this.client, alias.id, 'newMessage', {
                 mailbox: targetFolder || 'INBOX',
                 message: {
                   folder_path: targetFolder || 'INBOX',

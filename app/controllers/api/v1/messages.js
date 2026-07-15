@@ -25,7 +25,7 @@ const env = require('#config/env');
 const getNodemailerMessageFromRequest = require('#helpers/get-nodemailer-message-from-request');
 const i18n = require('#helpers/i18n');
 const recursivelyParse = require('#helpers/recursively-parse');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const setPaginationHeaders = require('#helpers/set-pagination-headers');
 const { decodeMetadata } = require('#helpers/msgpack-helpers');
 
@@ -1106,7 +1106,7 @@ async function update(ctx) {
   // so they can refresh their local cache. Mirrors the IMAP STORE emit in
   // helpers/imap/on-store.js.
   if (flagsChanged) {
-    sendWebSocketNotification(
+    sendNotification(
       ctx.client,
       ctx.state.session.user.alias_id,
       'flagsUpdated',
@@ -1120,7 +1120,7 @@ async function update(ctx) {
   }
 
   if (labelsChanged) {
-    sendWebSocketNotification(
+    sendNotification(
       ctx.client,
       ctx.state.session.user.alias_id,
       'labelsUpdated',

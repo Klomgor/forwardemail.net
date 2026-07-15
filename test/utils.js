@@ -126,7 +126,8 @@ exports.setupApiServer = async (t) => {
   // Set up WebSocket handler on the API server
   const wsHandler = new ApiWebSocketHandler({
     server: api.server,
-    client
+    client,
+    resolver: sqlite.resolver
   });
   t.context.wsHandler = wsHandler;
 };

@@ -14,9 +14,9 @@ const test = require('ava');
 const utils = require('../utils');
 const config = require('#config');
 const { encoder, decoder } = require('#helpers/encoder-decoder');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 
-const { VALID_EVENTS } = sendWebSocketNotification;
+const { VALID_EVENTS } = sendNotification;
 
 test.before(utils.setupMongoose);
 test.after.always(utils.teardownMongoose);
@@ -198,7 +198,7 @@ function waitForMessage(ws, timeoutMs = 10_000) {
 
 /**
  * Publish a notification via Redis using msgpackr (matching the real
- * sendWebSocketNotification implementation).
+ * sendNotification implementation).
  */
 function publishNotification(client, aliasId, event, data = {}) {
   const packed = encoder.pack({
@@ -319,6 +319,27 @@ test('does not receive notifications for other aliases', async (t) => {
   t.is(msg.data.message.uid, 2);
 
   ws.close();
+});
+
+test('fans out one logical event to an active WebSocket', async (t) => {
+  const { apiURL, client } = t.context;
+  const { alias, domain, pass } = await createTestAlias(t);
+  const wsURL = apiURL.replace(/^http/, 'ws') + '/v1/ws';
+
+  const ws = await connectWebSocket(wsURL, {
+    Authorization: createAliasAuth(`${alias.name}@${domain.name}`, pass)
+  });
+  t.context._openWebSockets.push(ws);
+  await waitForMessage(ws);
+
+  const notificationId = randomUUID();
+  publishNotification(client, alias.id, 'newMessage', {
+    notificationId,
+    data: { mailbox: 'INBOX', message: { uid: 3, object: 'message' } }
+  });
+
+  const message = await waitForMessage(ws);
+  t.is(message.notificationId, notificationId);
 });
 
 test('read-only channel: client messages are silently ignored', async (t) => {
@@ -1398,9 +1419,9 @@ test('msgpackr mode delivers full calendar event payload with ical', async (t) =
   ws.close();
 });
 
-// ─── sendWebSocketNotification Helper Tests ─────────────────────────────────
+// ─── sendNotification Helper Tests ─────────────────────────────────
 
-test('sendWebSocketNotification publishes msgpackr to Redis', async (t) => {
+test('sendNotification publishes msgpackr to Redis', async (t) => {
   const { client } = t.context;
   const subscriber = client.duplicate();
   await subscriber.subscribe(config.WS_REDIS_CHANNEL_NAME);
@@ -1413,7 +1434,8 @@ test('sendWebSocketNotification publishes msgpackr to Redis', async (t) => {
     });
   });
 
-  sendWebSocketNotification(client, 'test-alias-id', 'newMessage', {
+  sendNotification(client, 'test-alias-id', 'newMessage', {
+    notificationId: 'caller-controlled-id',
     data: {
       mailbox: 'INBOX',
       message: { uid: 7, eml: 'raw email', object: 'message' }
@@ -1426,23 +1448,28 @@ test('sendWebSocketNotification publishes msgpackr to Redis', async (t) => {
   t.is(received.payload.data.message.uid, 7);
   t.is(received.payload.data.message.eml, 'raw email');
   t.truthy(received.payload.timestamp);
+  t.regex(
+    received.payload.notificationId,
+    /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i
+  );
+  t.not(received.payload.notificationId, 'caller-controlled-id');
 
   await subscriber.unsubscribe(config.WS_REDIS_CHANNEL_NAME);
   subscriber.disconnect();
 });
 
-test('sendWebSocketNotification gracefully handles missing client', (t) => {
+test('sendNotification gracefully handles missing client', (t) => {
   t.notThrows(() => {
-    sendWebSocketNotification(null, 'alias-id', 'newMessage', {});
-    sendWebSocketNotification(undefined, 'alias-id', 'newMessage', {});
+    sendNotification(null, 'alias-id', 'newMessage', {});
+    sendNotification(undefined, 'alias-id', 'newMessage', {});
   });
 });
 
-test('sendWebSocketNotification gracefully handles missing aliasId', (t) => {
+test('sendNotification gracefully handles missing aliasId', (t) => {
   const { client } = t.context;
   t.notThrows(() => {
-    sendWebSocketNotification(client, null, 'newMessage', {});
-    sendWebSocketNotification(client, '', 'newMessage', {});
+    sendNotification(client, null, 'newMessage', {});
+    sendNotification(client, '', 'newMessage', {});
   });
 });
 
@@ -1526,7 +1553,7 @@ test('truncates oversized payload fields (eml, content, ical)', async (t) => {
   // Create a 2 MB eml string to exceed the 1 MB limit
   const largeEml = 'X'.repeat(2 * 1024 * 1024);
 
-  sendWebSocketNotification(client, alias.id, 'newMessage', {
+  sendNotification(client, alias.id, 'newMessage', {
     data: {
       mailbox: 'INBOX',
       message: {

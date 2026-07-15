@@ -48,3 +48,6 @@ assets/api-spec-en.json
 .caldav-test-credentials.json
 helpers/sieve/parser-generated.js
 firebase-service-account.json
+
+google-services.json
+dev-screenshots/

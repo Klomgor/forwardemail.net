@@ -17,7 +17,7 @@ const davApnsSubscribe = require('#helpers/dav-apns-subscribe');
 const ensureDefaultAddressBook = require('#helpers/ensure-default-address-book');
 const getApnTopic = require('#helpers/get-apn-topic');
 const { sendApnContacts } = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const setupAuthSession = require('#helpers/setup-auth-session');
 const xmlHelpers = require('#helpers/carddav-xml');
 
@@ -518,7 +518,7 @@ davRouter.all('/:user/addressbooks/:addressbook/:contact(.+)', async (ctx) => {
             .catch((err) => ctx.logger.fatal(err));
 
           // send websocket push notification
-          sendWebSocketNotification(
+          sendNotification(
             ctx.instance.client,
             ctx.state.user.alias_id,
             'contactUpdated',
@@ -592,7 +592,7 @@ davRouter.all('/:user/addressbooks/:addressbook/:contact(.+)', async (ctx) => {
           .catch((err) => ctx.logger.fatal(err));
 
         // send websocket push notification
-        sendWebSocketNotification(
+        sendNotification(
           ctx.instance.client,
           ctx.state.user.alias_id,
           'contactCreated',
@@ -713,7 +713,7 @@ davRouter.all('/:user/addressbooks/:addressbook/:contact(.+)', async (ctx) => {
         .catch((err) => ctx.logger.fatal(err));
 
       // send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         ctx.instance.client,
         ctx.state.user.alias_id,
         'contactDeleted',
@@ -978,7 +978,7 @@ davRouter.all('/:user/addressbooks/:addressbook', async (ctx) => {
       });
 
       // send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         ctx.instance.client,
         ctx.state.user.alias_id,
         'addressBookCreated',
@@ -1015,7 +1015,7 @@ davRouter.all('/:user/addressbooks/:addressbook', async (ctx) => {
       // await addressBook.remove();
 
       // send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         ctx.instance.client,
         ctx.state.user.alias_id,
         'addressBookDeleted',

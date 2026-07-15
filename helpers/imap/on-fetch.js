@@ -26,7 +26,7 @@ const Messages = require('#models/messages');
 const getQueryResponse = require('#helpers/get-query-response');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const {
   prepareQuery,
   syncConvertResult
@@ -75,17 +75,12 @@ async function onFetch(mailboxId, options, session, fn) {
           );
 
         // send websocket push notification (implicit \Seen flag change)
-        sendWebSocketNotification(
-          this.client,
-          session.user.alias_id,
-          'flagsUpdated',
-          {
-            mailbox: mailboxId.toString(),
-            action: 'add',
-            flags: ['\\Seen'],
-            uids: entries.map((e) => e.uid)
-          }
-        );
+        sendNotification(this.client, session.user.alias_id, 'flagsUpdated', {
+          mailbox: mailboxId.toString(),
+          action: 'add',
+          flags: ['\\Seen'],
+          uids: entries.map((e) => e.uid)
+        });
       }
     } catch (err) {
       if (err.imapResponse) return fn(null, err.imapResponse);
@@ -443,17 +438,12 @@ async function onFetch(mailboxId, options, session, fn) {
 
     // send websocket push notification (implicit \Seen flag change)
     if (entries.length > 0) {
-      sendWebSocketNotification(
-        this.client,
-        session.user.alias_id,
-        'flagsUpdated',
-        {
-          mailbox: mailboxId.toString(),
-          action: 'add',
-          flags: ['\\Seen'],
-          uids: entries.map((e) => e.uid)
-        }
-      );
+      sendNotification(this.client, session.user.alias_id, 'flagsUpdated', {
+        mailbox: mailboxId.toString(),
+        action: 'add',
+        flags: ['\\Seen'],
+        uids: entries.map((e) => e.uid)
+      });
     }
   } catch (err) {
     fn(refineAndLogError(err, session, true, this));

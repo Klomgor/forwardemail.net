@@ -43,7 +43,7 @@ const isEmail = require('#helpers/is-email');
 const davApnsSubscribe = require('#helpers/dav-apns-subscribe');
 const getApnTopic = require('#helpers/get-apn-topic');
 const { sendApnCalendar } = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const { prepareICSForStorage } = require('#helpers/prepare-ics');
 const setupAuthSession = require('#helpers/setup-auth-session');
 const { processCalendarInvites } = require('#helpers/process-calendar-invites');
@@ -1977,25 +1977,20 @@ class CalDAV extends API {
     });
 
     // send websocket push notification
-    sendWebSocketNotification(
-      this.client,
-      ctx.state.user.alias_id,
-      'calendarCreated',
-      {
-        calendar: {
-          id: created._id.toString(),
-          calendarId: created.calendarId,
-          name: created.name,
-          description: created.description || '',
-          color: created.color || '',
-          order: created.order || 0,
-          timezone: created.timezone || '',
-          readonly: Boolean(created.readonly),
-          synctoken: created.synctoken || '',
-          object: 'calendar'
-        }
+    sendNotification(this.client, ctx.state.user.alias_id, 'calendarCreated', {
+      calendar: {
+        id: created._id.toString(),
+        calendarId: created.calendarId,
+        name: created.name,
+        description: created.description || '',
+        color: created.color || '',
+        order: created.order || 0,
+        timezone: created.timezone || '',
+        readonly: Boolean(created.readonly),
+        synctoken: created.synctoken || '',
+        object: 'calendar'
       }
-    );
+    });
 
     // send apple push notification so iOS Calendar refreshes its
     // calendar-home listing and discovers the new collection.
@@ -2134,7 +2129,7 @@ class CalDAV extends API {
       );
 
       // send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         this.client,
         ctx.state.user.alias_id,
         'calendarUpdated',
@@ -3441,7 +3436,7 @@ class CalDAV extends API {
           .then()
           .catch((err) => ctx.logger.fatal(err));
 
-        sendWebSocketNotification(
+        sendNotification(
           this.client,
           ctx.state.user.alias_id,
           'calendarEventCreated',
@@ -3577,7 +3572,7 @@ class CalDAV extends API {
       .catch((err) => ctx.logger.fatal(err));
 
     // send websocket push notification
-    sendWebSocketNotification(
+    sendNotification(
       this.client,
       ctx.state.user.alias_id,
       'calendarEventCreated',
@@ -3850,7 +3845,7 @@ class CalDAV extends API {
         .catch((err) => ctx.logger.fatal(err));
 
       // send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         this.client,
         ctx.state.user.alias_id,
         'calendarEventUpdated',
@@ -3950,19 +3945,14 @@ class CalDAV extends API {
     });
 
     // send websocket push notification
-    sendWebSocketNotification(
-      this.client,
-      ctx.state.user.alias_id,
-      'calendarDeleted',
-      {
-        calendar: {
-          id: calendar._id.toString(),
-          calendarId,
-          name: calendar.name,
-          object: 'calendar'
-        }
+    sendNotification(this.client, ctx.state.user.alias_id, 'calendarDeleted', {
+      calendar: {
+        id: calendar._id.toString(),
+        calendarId,
+        name: calendar.name,
+        object: 'calendar'
       }
-    );
+    });
 
     // send apple push notification so iOS Calendar removes the deleted
     // collection from its calendar-home listing on the next refresh.
@@ -4162,7 +4152,7 @@ class CalDAV extends API {
         .catch((err) => ctx.logger.fatal(err));
 
       // send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         this.client,
         ctx.state.user.alias_id,
         'calendarEventDeleted',

@@ -47,7 +47,7 @@ const CalendarEvents = require('#models/calendar-events');
 const Calendars = require('#models/calendars');
 const config = require('#config');
 const { sendApnCalendar } = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 
 // Maximum invites to process per CalDAV interaction
 const MAX_INVITES_PER_BATCH = 10;
@@ -335,7 +335,7 @@ async function processReply(instance, ctx, invite, calendars) {
       .catch((err) => ctx.logger.fatal(err));
 
     // Send websocket push notification
-    sendWebSocketNotification(
+    sendNotification(
       instance.client,
       ctx.state.user.alias_id,
       'calendarEventUpdated',
@@ -502,7 +502,7 @@ async function processRequest(instance, ctx, invite, calendars) {
         .catch((err) => ctx.logger.fatal(err));
 
       // Send websocket push notification
-      sendWebSocketNotification(
+      sendNotification(
         instance.client,
         ctx.state.user.alias_id,
         'calendarEventUpdated',
@@ -607,7 +607,7 @@ async function processRequest(instance, ctx, invite, calendars) {
     const wsEventId = createdEvent
       ? createdEvent._id.toString()
       : (existingAll[0] && existingAll[0]._id.toString()) || '';
-    sendWebSocketNotification(
+    sendNotification(
       instance.client,
       ctx.state.user.alias_id,
       createdEvent ? 'calendarEventCreated' : 'calendarEventUpdated',
@@ -710,7 +710,7 @@ async function processCancel(instance, ctx, invite, calendars) {
       .catch((err) => ctx.logger.fatal(err));
 
     // Send websocket push notification
-    sendWebSocketNotification(
+    sendNotification(
       instance.client,
       ctx.state.user.alias_id,
       'calendarEventUpdated',
@@ -799,7 +799,7 @@ async function processAdd(instance, ctx, invite, calendars) {
       .catch((err) => ctx.logger.fatal(err));
 
     // Send websocket push notification
-    sendWebSocketNotification(
+    sendNotification(
       instance.client,
       ctx.state.user.alias_id,
       'calendarEventUpdated',

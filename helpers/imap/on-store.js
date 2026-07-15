@@ -30,7 +30,7 @@ const updateStorageUsed = require('#helpers/update-storage-used');
 
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendApn = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const {
   prepareQuery,
   syncConvertResult
@@ -124,17 +124,12 @@ async function onStore(mailboxId, update, session, fn) {
           );
 
         // send websocket push notification
-        sendWebSocketNotification(
-          this.client,
-          session.user.alias_id,
-          'flagsUpdated',
-          {
-            mailbox: mailboxId.toString(),
-            action: update.action,
-            flags: update.value,
-            uids: entries.map((e) => e.uid)
-          }
-        );
+        sendNotification(this.client, session.user.alias_id, 'flagsUpdated', {
+          mailbox: mailboxId.toString(),
+          action: update.action,
+          flags: update.value,
+          uids: entries.map((e) => e.uid)
+        });
 
         // If the STORE touched any custom (non-system) keywords, also notify
         // listeners that labels may have changed. Skip when the update only
@@ -146,7 +141,7 @@ async function onStore(mailboxId, update, session, fn) {
               typeof f === 'string' && f.trim() && !f.trim().startsWith('\\')
           );
         if (touchedCustomKeyword) {
-          sendWebSocketNotification(
+          sendNotification(
             this.client,
             session.user.alias_id,
             'labelsUpdated',
@@ -636,17 +631,12 @@ async function onStore(mailboxId, update, session, fn) {
 
     // send websocket push notification
     if (entries.length > 0) {
-      sendWebSocketNotification(
-        this.client,
-        session.user.alias_id,
-        'flagsUpdated',
-        {
-          mailbox: mailboxId.toString(),
-          action: update.action,
-          flags: update.value,
-          uids: entries.map((e) => e.uid)
-        }
-      );
+      sendNotification(this.client, session.user.alias_id, 'flagsUpdated', {
+        mailbox: mailboxId.toString(),
+        action: update.action,
+        flags: update.value,
+        uids: entries.map((e) => e.uid)
+      });
 
       // send apple push notification (badge counts / unread sync)
       sendApn(this.client, session.user.alias_id, mailbox.path)
@@ -656,16 +646,11 @@ async function onStore(mailboxId, update, session, fn) {
         );
 
       if (labelsTouched) {
-        sendWebSocketNotification(
-          this.client,
-          session.user.alias_id,
-          'labelsUpdated',
-          {
-            mailbox: mailboxId.toString(),
-            action: update.action,
-            uids: entries.map((e) => e.uid)
-          }
-        );
+        sendNotification(this.client, session.user.alias_id, 'labelsUpdated', {
+          mailbox: mailboxId.toString(),
+          action: update.action,
+          uids: entries.map((e) => e.uid)
+        });
       }
     }
 

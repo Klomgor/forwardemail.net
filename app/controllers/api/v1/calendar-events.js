@@ -28,7 +28,7 @@ const deduplicateCalendarEvents = require('#helpers/deduplicate-calendar-events'
 const { ensureICSTimestamps } = require('#helpers/stamp-ics');
 const { prepareICSForStorage } = require('#helpers/prepare-ics');
 const { sendApnCalendar } = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 
 // Helper function to detect component type from ICS data
 // (mirrors caldav-server.js getComponentType)
@@ -817,7 +817,7 @@ async function create(ctx) {
     .catch((err) => ctx.logger.fatal(err));
 
   // Send websocket push notification
-  sendWebSocketNotification(
+  sendNotification(
     ctx.client,
     ctx.state.session.user.alias_id,
     'calendarEventCreated',
@@ -1034,7 +1034,7 @@ async function update(ctx) {
       .catch((err) => ctx.logger.fatal(err));
 
     // Send websocket push notification
-    sendWebSocketNotification(
+    sendNotification(
       ctx.client,
       ctx.state.session.user.alias_id,
       'calendarEventUpdated',
@@ -1223,7 +1223,7 @@ async function remove(ctx) {
     .catch((err) => ctx.logger.fatal(err));
 
   // Send websocket push notification
-  sendWebSocketNotification(
+  sendNotification(
     ctx.client,
     ctx.state.session.user.alias_id,
     'calendarEventDeleted',

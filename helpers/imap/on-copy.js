@@ -26,7 +26,7 @@ const getAttachments = require('#helpers/get-attachments');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendApn = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const updateStorageUsed = require('#helpers/update-storage-used');
 const { decodeMetadata } = require('#helpers/msgpack-helpers');
 const recursivelyParse = require('#helpers/recursively-parse');
@@ -80,18 +80,13 @@ async function onCopy(connection, mailboxId, update, session, fn) {
           );
 
         // send websocket push notification
-        sendWebSocketNotification(
-          this.client,
-          session.user.alias_id,
-          'messagesCopied',
-          {
-            sourceMailbox: mailboxId.toString(),
-            destinationMailbox: targetMailbox._id.toString(),
-            destinationPath: update.destination,
-            sourceUid: response.sourceUid,
-            destinationUid: response.destinationUid
-          }
-        );
+        sendNotification(this.client, session.user.alias_id, 'messagesCopied', {
+          sourceMailbox: mailboxId.toString(),
+          destinationMailbox: targetMailbox._id.toString(),
+          destinationPath: update.destination,
+          sourceUid: response.sourceUid,
+          destinationUid: response.destinationUid
+        });
       }
     } catch (err) {
       clearTimeout(timeout);
@@ -404,18 +399,13 @@ async function onCopy(connection, mailboxId, update, session, fn) {
 
     // send websocket push notification
     if (copiedMessages > 0) {
-      sendWebSocketNotification(
-        this.client,
-        session.user.alias_id,
-        'messagesCopied',
-        {
-          sourceMailbox: mailboxId.toString(),
-          destinationMailbox: targetMailbox._id.toString(),
-          destinationPath: update.destination,
-          sourceUid,
-          destinationUid
-        }
-      );
+      sendNotification(this.client, session.user.alias_id, 'messagesCopied', {
+        sourceMailbox: mailboxId.toString(),
+        destinationMailbox: targetMailbox._id.toString(),
+        destinationPath: update.destination,
+        sourceUid,
+        destinationUid
+      });
 
       // send apple push notification (destination mailbox got new messages)
       sendApn(this.client, session.user.alias_id, update.destination)

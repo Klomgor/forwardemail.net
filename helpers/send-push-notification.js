@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
-const { Buffer } = require('node:buffer');
 const { readFileSync } = require('node:fs');
 const process = require('node:process');
 
+const apn = require('@parse/node-apn');
+const { GoogleAuth } = require('google-auth-library');
 const ms = require('ms');
 const pMap = require('p-map');
 const revHash = require('rev-hash');
+const webPush = require('web-push');
 
 const PushTokens = require('#models/push-tokens');
 const config = require('#config');
@@ -21,25 +23,27 @@ const safeFetch = require('#helpers/safe-fetch');
 // Push notification delivery helper for the Forward Email Mail App.
 //
 // This module delivers "alert"-style push notifications to registered
-// mobile/desktop devices when a WebSocket event occurs and the target
-// alias has no active WebSocket connection (i.e. the app is backgrounded
-// or closed).
+// mobile/desktop devices for every per-alias realtime notification.
 //
 // Architecture:
-//   1. `sendWebSocketNotification` publishes to Redis pub/sub.
-//   2. The WS handler delivers to connected clients.
-//   3. For aliases with NO connected WS clients, the WS handler calls
-//      `sendPushNotification` (this module) as a fallback to wake the app.
+//   1. `sendNotification` creates one immutable notificationId.
+//   2. It directly starts this helper AND publishes the same payload to Redis
+//      for WebSocket fan-out; neither transport depends on the other.
+//   3. This helper selects every active token for the alias and attempts each
+//      token with bounded parallelism, even when zero sockets are connected.
+//   4. Clients coalesce the two transports by notificationId so foreground
+//      delivery performs exactly one visual notification and one state update.
 //
 // Delivery transports:
 //   * APNs  — via token-based auth (.p8 key) with pushType='alert'.
 //   * FCM   — via Firebase Admin SDK HTTP v1 API.
-//   * UnifiedPush — via plain HTTPS POST to the distributor endpoint.
-//   * Web Push — via web-push library (future).
+//   * UnifiedPush — RFC 8291 encrypted Web Push to the distributor endpoint.
+//   * Web Push — reserved for browser PushSubscription delivery.
 //
-// Rate limiting:
-//   One push per (alias, event) per 30 seconds via Redis to coalesce
-//   rapid-fire mutations (e.g. bulk IMAP STORE) into a single wake-up.
+// Idempotency:
+//   One push fan-out per (alias, notificationId) via an atomic Redis NX key.
+//   Legacy events without an identifier retain the previous (alias, event)
+//   30-second coalescing behavior.
 //
 // Safety:
 //   If env vars are not configured for a given platform, delivery is
@@ -91,10 +95,11 @@ async function validateOutboundUrl(urlString, resolver) {
  */
 function isApnsConfigured() {
   const keyPath =
-    config.pushNotifications?.apnsKeyPath || process.env.APNS_KEY_PATH;
-  const keyId = config.pushNotifications?.apnsKeyId || process.env.APNS_KEY_ID;
+    config.pushNotifications?.appleKeyPath || process.env.APPLE_KEY_PATH;
+  const keyId =
+    config.pushNotifications?.appleKeyId || process.env.APPLE_KEY_ID;
   const teamId =
-    config.pushNotifications?.apnsTeamId || process.env.APNS_TEAM_ID;
+    config.pushNotifications?.appleTeamId || process.env.APPLE_TEAM_ID;
   return Boolean(keyPath && keyId && teamId);
 }
 
@@ -110,6 +115,36 @@ function isFcmConfigured() {
   return Boolean(projectId && serviceAccountPath);
 }
 
+/**
+ * Returns true if the matching UnifiedPush VAPID key pair is configured.
+ */
+function isVapidConfigured() {
+  const subject =
+    config.pushNotifications?.vapidSubject || process.env.VAPID_SUBJECT;
+  const publicKey =
+    config.pushNotifications?.vapidPublicKey || process.env.VAPID_PUBLIC_KEY;
+  const privateKey =
+    config.pushNotifications?.vapidPrivateKey || process.env.VAPID_PRIVATE_KEY;
+  return Boolean(subject && publicKey && privateKey);
+}
+
+function getVapidDetails() {
+  return {
+    subject:
+      config.pushNotifications?.vapidSubject || process.env.VAPID_SUBJECT,
+    publicKey:
+      config.pushNotifications?.vapidPublicKey || process.env.VAPID_PUBLIC_KEY,
+    privateKey:
+      config.pushNotifications?.vapidPrivateKey || process.env.VAPID_PRIVATE_KEY
+  };
+}
+
+function createPermanentPushError(message, cause) {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.isPermanentPushFailure = true;
+  return error;
+}
+
 // Cached APNs provider (reused across requests to avoid connection churn)
 let _apnsProvider = null;
 let _apnsProviderConfig = null;
@@ -119,13 +154,12 @@ let _apnsProviderConfig = null;
  * Recreated if configuration changes.
  */
 function getApnsProvider() {
-  const apn = require('@parse/node-apn');
-
   const keyPath =
-    config.pushNotifications?.apnsKeyPath || process.env.APNS_KEY_PATH;
-  const keyId = config.pushNotifications?.apnsKeyId || process.env.APNS_KEY_ID;
+    config.pushNotifications?.appleKeyPath || process.env.APPLE_KEY_PATH;
+  const keyId =
+    config.pushNotifications?.appleKeyId || process.env.APPLE_KEY_ID;
   const teamId =
-    config.pushNotifications?.apnsTeamId || process.env.APNS_TEAM_ID;
+    config.pushNotifications?.appleTeamId || process.env.APPLE_TEAM_ID;
   const production = config.pushNotifications?.apnsProduction !== false;
 
   const configKey = `${keyPath}:${keyId}:${teamId}:${production}`;
@@ -177,41 +211,84 @@ async function sendPushNotification(
   if (typeof event !== 'string' || !/^[a-zA-Z]{1,64}$/.test(event)) return;
 
   try {
-    // Rate-limit: one push per (alias, event) per PUSH_COALESCE_MS
+    // Claim this logical event atomically so a duplicate producer invocation
+    // cannot fan the same notification out to all active alias tokens twice.
+    const notificationId =
+      typeof data.notificationId === 'string'
+        ? data.notificationId.slice(0, 64)
+        : '';
+    const idempotencyValue = notificationId || event;
     const cacheKey = `push_notify:${revHash(aliasId.toString())}:${revHash(
-      event
+      idempotencyValue
     )}`;
-    const cached = await client.get(cacheKey);
-    if (cached) return;
-    await client.set(cacheKey, '1', 'PX', PUSH_COALESCE_MS);
+    const claimed = await client.set(
+      cacheKey,
+      '1',
+      'PX',
+      PUSH_COALESCE_MS,
+      'NX'
+    );
+    if (claimed !== 'OK') return;
 
     // Find all active tokens for this alias
     const tokens = await PushTokens.findActiveForAlias(aliasId);
     if (!tokens || tokens.length === 0) return;
 
-    // Build the notification payload
-    const payload = buildPayload(event, data);
+    // Build the notification payload with the authoritative alias scope. This
+    // guarantees every active token selected above receives the same alias ID
+    // even when a producer omits or supplies malformed payload metadata.
+    const payload = buildPayload(event, {
+      ...data,
+      aliasId: aliasId.toString()
+    });
 
-    await pMap(
-      tokens,
-      async (tokenDoc) => {
-        try {
-          await deliverToToken(tokenDoc, payload, resolver);
-          await PushTokens.recordSuccess(tokenDoc._id);
-        } catch (err) {
-          logger.warn('Push delivery failed', {
-            token_id: tokenDoc._id,
-            platform: tokenDoc.platform,
-            error: err.message
-          });
-          await PushTokens.recordFailure(tokenDoc._id);
-        }
-      },
-      { concurrency: PUSH_CONCURRENCY }
-    );
+    await fanOutToTokens(tokens, payload, resolver);
   } catch (err) {
     logger.fatal(err, { aliasId, event });
   }
+}
+
+/**
+ * Attempt delivery to every active token with bounded parallelism.
+ * A failure for one token is recorded but never prevents the remaining tokens
+ * from being attempted.
+ *
+ * @param {Array<Object>} tokens - All active token documents for the alias
+ * @param {Object} payload - Normalized push payload shared by every token
+ * @param {Object} [resolver] - Optional Tangerine resolver
+ * @param {Object} [dependencies={}] - Internal dependency injection for tests
+ */
+async function fanOutToTokens(tokens, payload, resolver, dependencies = {}) {
+  const deliver = dependencies.deliverToToken || deliverToToken;
+  const recordSuccess =
+    dependencies.recordSuccess ||
+    ((tokenId) => PushTokens.recordSuccess(tokenId));
+  const recordFailure =
+    dependencies.recordFailure ||
+    ((tokenId) => PushTokens.recordFailure(tokenId));
+  const deleteToken =
+    dependencies.deleteToken ||
+    ((tokenId) => PushTokens.deleteOne({ _id: tokenId }).exec());
+
+  await pMap(
+    tokens,
+    async (tokenDoc) => {
+      try {
+        await deliver(tokenDoc, payload, resolver);
+        await recordSuccess(tokenDoc._id);
+      } catch (err) {
+        logger.warn('Push delivery failed', {
+          token_id: tokenDoc._id,
+          platform: tokenDoc.platform,
+          error: err.message
+        });
+        await (err.isPermanentPushFailure
+          ? deleteToken(tokenDoc._id)
+          : recordFailure(tokenDoc._id));
+      }
+    },
+    { concurrency: PUSH_CONCURRENCY }
+  );
 }
 
 /**
@@ -248,30 +325,13 @@ function buildPayload(event, data) {
 
   // Sanitize body: truncate to prevent oversized payloads
   const MAX_BODY_LENGTH = 256;
-  let body = '';
-  switch ('string') {
-    case typeof data.body: {
-      body = data.body.slice(0, MAX_BODY_LENGTH);
-
-      break;
-    }
-
-    case typeof data.subject: {
-      body = data.subject.slice(0, MAX_BODY_LENGTH);
-
-      break;
-    }
-
-    case typeof data.name: {
-      body = data.name.slice(0, MAX_BODY_LENGTH);
-
-      break;
-    }
-
-    default: {
-      body = `You have a new ${event} event`;
-    }
-  }
+  const bodySource = [data.body, data.subject, data.name].find(
+    (value) => typeof value === 'string'
+  );
+  const body =
+    typeof bodySource === 'string'
+      ? bodySource.slice(0, MAX_BODY_LENGTH)
+      : `You have a new ${event} event`;
 
   // Sanitize data fields: only include known safe identifiers
   const safeAliasId =
@@ -286,6 +346,10 @@ function buildPayload(event, data) {
     typeof data.mailbox === 'string' || typeof data.path === 'string'
       ? String(data.mailbox || data.path).slice(0, 255)
       : '';
+  const safeNotificationId =
+    typeof data.notificationId === 'string'
+      ? data.notificationId.slice(0, 64)
+      : '';
 
   return {
     title,
@@ -295,7 +359,8 @@ function buildPayload(event, data) {
       event,
       alias_id: safeAliasId,
       message_id: safeMessageId,
-      mailbox: safeMailbox
+      mailbox: safeMailbox,
+      notificationId: safeNotificationId
     }
   };
 }
@@ -310,7 +375,7 @@ async function deliverToToken(tokenDoc, payload, resolver) {
     }
 
     case 'fcm': {
-      return deliverFcm(tokenDoc, payload);
+      return deliverFcm(tokenDoc, payload, resolver);
     }
 
     case 'unified-push': {
@@ -342,10 +407,11 @@ async function deliverApns(tokenDoc, payload) {
     return;
   }
 
-  const apn = require('@parse/node-apn');
   const provider = getApnsProvider();
   const bundleId =
-    config.pushNotifications?.apnsBundleId || 'net.forwardemail.app';
+    config.pushNotifications?.apnsBundleId ||
+    process.env.APNS_BUNDLE_ID ||
+    'net.forwardemail.mail';
 
   const note = new apn.Notification();
   note.pushType = 'alert';
@@ -382,13 +448,16 @@ async function deliverApns(tokenDoc, payload) {
  *
  * If FCM env vars are not configured, this is a silent no-op.
  */
-async function deliverFcm(tokenDoc, payload) {
+async function deliverFcm(
+  tokenDoc,
+  payload,
+  resolver,
+  { fetch = safeFetch, GoogleAuthClass = GoogleAuth } = {}
+) {
   if (!isFcmConfigured()) {
     logger.debug('FCM not configured, skipping push delivery');
     return;
   }
-
-  const { GoogleAuth } = require('google-auth-library');
 
   const projectId =
     config.pushNotifications?.fcmProjectId || process.env.FCM_PROJECT_ID;
@@ -401,7 +470,7 @@ async function deliverFcm(tokenDoc, payload) {
     throw new Error('Invalid FCM project ID format');
   }
 
-  const auth = new GoogleAuth({
+  const auth = new GoogleAuthClass({
     keyFile: serviceAccountPath,
     scopes: ['https://www.googleapis.com/auth/firebase.messaging']
   });
@@ -423,7 +492,7 @@ async function deliverFcm(tokenDoc, payload) {
       ),
       android: {
         priority: 'high',
-        notification: { channel_id: 'email_notifications' }
+        notification: { channel_id: 'new-mail' }
       }
     }
   };
@@ -438,41 +507,99 @@ async function deliverFcm(tokenDoc, payload) {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(message)
+    body: JSON.stringify(message),
+    bodyTimeout: 10_000,
+    headersTimeout: 10_000,
+    resolver
   });
 
-  if (!response.ok) {
-    const responseBody = await response.text();
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const responseBody = await response.body.text();
     // 404 = token not found (unregistered)
-    if (response.status === 404) {
+    if (response.statusCode === 404) {
       throw new Error('FCM token not registered (404)');
     }
 
     throw new Error(
-      `FCM delivery failed (${response.status}): ${responseBody.slice(0, 200)}`
+      `FCM delivery failed (${response.statusCode}): ${responseBody.slice(
+        0,
+        200
+      )}`
     );
   }
 }
 
 /**
- * UnifiedPush delivery via plain HTTPS POST.
- *
- * The UnifiedPush spec requires a simple POST to the endpoint URL
- * with the notification payload as the body.
- * <https://unifiedpush.org/spec/server/>
- *
- * No env var configuration needed — the endpoint URL is the token itself.
+ * Parse the canonical RFC 8291 subscription stored for UnifiedPush.
+ * Legacy endpoint-only records are intentionally treated as permanently
+ * invalid because they do not contain the client key material required to
+ * encrypt a payload.
  */
-async function deliverUnifiedPush(tokenDoc, payload, resolver) {
-  const endpointUrl = tokenDoc.token;
-  // Validate URL scheme and credentials before making the request
-  const parsed = new URL(endpointUrl);
+function parseUnifiedPushSubscription(token) {
+  let subscription;
+  try {
+    subscription = JSON.parse(token);
+  } catch (err) {
+    throw createPermanentPushError(
+      'UnifiedPush subscription is not valid JSON',
+      err
+    );
+  }
+
+  if (
+    !subscription ||
+    typeof subscription.endpoint !== 'string' ||
+    !subscription.keys ||
+    typeof subscription.keys.p256dh !== 'string' ||
+    typeof subscription.keys.auth !== 'string'
+  ) {
+    throw createPermanentPushError('UnifiedPush subscription is incomplete');
+  }
+
+  return {
+    endpoint: subscription.endpoint,
+    keys: {
+      p256dh: subscription.keys.p256dh,
+      auth: subscription.keys.auth
+    }
+  };
+}
+
+/**
+ * Deliver an RFC 8291 encrypted payload to a UnifiedPush distributor.
+ *
+ * Android's UnifiedPush connector decrypts the aes128gcm content before the
+ * application callback receives it. VAPID binds delivery to the application
+ * server key whose public half was supplied during connector registration.
+ * The encrypted request is sent through safeFetch so DNS is resolved once,
+ * validated, and pinned to the outbound connection.
+ */
+async function deliverUnifiedPush(
+  tokenDoc,
+  payload,
+  resolver,
+  {
+    generateRequestDetails = webPush.generateRequestDetails,
+    fetch = safeFetch
+  } = {}
+) {
+  if (!isVapidConfigured()) {
+    logger.debug('VAPID not configured, skipping UnifiedPush delivery');
+    return;
+  }
+
+  const subscription = parseUnifiedPushSubscription(tokenDoc.token);
+  const parsed = new URL(subscription.endpoint);
   if (parsed.protocol !== 'https:') {
-    throw new Error('Only HTTPS URLs are allowed for push delivery');
+    throw createPermanentPushError(
+      'Only HTTPS URLs are allowed for push delivery'
+    );
   }
 
   if (parsed.username || parsed.password) {
-    throw new Error('Push endpoint must not contain credentials');
+    throw createPermanentPushError(
+      'Push endpoint must not contain credentials'
+    );
   }
 
   const body = JSON.stringify({
@@ -482,27 +609,48 @@ async function deliverUnifiedPush(tokenDoc, payload, resolver) {
     ...payload.data
   });
 
-  // Use safeFetch with DNS pinning to prevent TOCTOU DNS rebinding attacks.
-  // safeFetch resolves the hostname ONCE, validates it is not a private IP,
-  // then pins the resolved IP at the connection level via a custom undici
-  // Agent — eliminating the window between DNS check and TCP connect.
-  const { statusCode, body: responseBody } = await safeFetch(endpointUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': String(Buffer.byteLength(body))
-    },
-    body,
-    bodyTimeout: 10_000,
-    headersTimeout: 10_000,
-    resolver
-  });
+  try {
+    const request = generateRequestDetails(subscription, body, {
+      TTL: 60,
+      urgency: 'high',
+      contentEncoding: 'aes128gcm',
+      vapidDetails: getVapidDetails()
+    });
+    const response = await fetch(request.endpoint, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      bodyTimeout: 10_000,
+      headersTimeout: 10_000,
+      resolver
+    });
+    const responseBody = await response.body.text();
 
-  if (statusCode < 200 || statusCode >= 300) {
-    const text = await responseBody.text();
-    throw new Error(
-      `UnifiedPush delivery failed (${statusCode}): ${text.slice(0, 200)}`
-    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      const error = new Error('UnifiedPush endpoint returned an error');
+      error.statusCode = response.statusCode;
+      error.body = responseBody;
+      throw error;
+    }
+
+    return { statusCode: response.statusCode };
+  } catch (err) {
+    const statusCode = Number(err.statusCode);
+    const details =
+      typeof err.body === 'string' && err.body
+        ? `: ${err.body.slice(0, 200)}`
+        : '';
+    const message = `UnifiedPush delivery failed (${
+      statusCode || 'network'
+    })${details}`;
+
+    // RFC 8030: 404/410 mean the subscription is no longer valid and must not
+    // be retried. Other statuses retain the normal consecutive-failure policy.
+    if (statusCode === 404 || statusCode === 410) {
+      throw createPermanentPushError(message, err);
+    }
+
+    throw new Error(message, { cause: err });
   }
 }
 
@@ -521,13 +669,18 @@ async function deliverWebPush(tokenDoc) {
 module.exports = sendPushNotification;
 module.exports.sendPushNotification = sendPushNotification;
 module.exports._test = {
+  PUSH_CONCURRENCY,
+  fanOutToTokens,
   buildPayload,
   deliverToToken,
   deliverApns,
   deliverFcm,
   deliverUnifiedPush,
   deliverWebPush,
+  parseUnifiedPushSubscription,
   isApnsConfigured,
   isFcmConfigured,
+  isVapidConfigured,
+  getVapidDetails,
   validateOutboundUrl
 };

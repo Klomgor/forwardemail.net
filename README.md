@@ -26,6 +26,7 @@
   * [macOS](#macos)
   * [Ubuntu](#ubuntu)
 * [Local Development Guide](#local-development-guide)
+* [Push Notifications](#push-notifications)
 * [Server Infrastructure](#server-infrastructure)
   * [Naming Convention](#naming-convention)
   * [Load Balancing](#load-balancing)
@@ -214,6 +215,13 @@ npm start all
 Note that if you open your browser to <http://localhost:3000> and no assets are rendering, then you must have forgotten to run a build beforehand. You can run builds manually by running `npm run build`.
 
 An easy way to kill all existing Node apps running is by typing `killall node`.
+
+
+## Push Notifications
+
+Backend provisioning for APNs, FCM HTTP v1, and UnifiedPush is documented in [`PUSH_NOTIFICATIONS.md`](PUSH_NOTIFICATIONS.md). The guide explains how to obtain every environment value, deploy file-based credentials, copy the required public values to [`mail.forwardemail.net`](https://github.com/forwardemail/mail.forwardemail.net), and validate the completed setup.
+
+APNs reuses the existing `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_KEY_PATH` values used for Sign in with Apple. Do not create separate APNs-specific credential variables.
 
 
 ## Server Infrastructure
@@ -567,6 +575,8 @@ Follow the [Deployment](#deployment) guide below for automatic provisioning and 
     ```sh
     node ansible-playbook ansible/playbooks/certificates.yml --user deploy
     ```
+
+    The [Ansible](https://github.com/ansible/ansible) playbook also prompts for optional local paths to the shared Apple `AuthKey_*.p8` file and Firebase service-account JSON. Each supplied credential is validated and copied with mode `0660` into `/var/www/production`: the Apple key keeps its local basename, while the Firebase credential is installed as `firebase-service-account.json`. Set `APPLE_KEY_PATH` to the deployed Apple key path and use `FCM_SERVICE_ACCOUNT_PATH=/var/www/production/firebase-service-account.json`. See [`PUSH_NOTIFICATIONS.md`](PUSH_NOTIFICATIONS.md) for acquisition and validation steps.
 
     > **Important:** If you renew or change certificates in the future, then after running the previous command, you will subsequently need to reload the processes as such:
 

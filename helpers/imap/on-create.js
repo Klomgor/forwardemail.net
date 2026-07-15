@@ -20,7 +20,7 @@ const config = require('#config');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendApn = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const updateStorageUsed = require('#helpers/update-storage-used');
 
 async function onCreate(path, session, fn) {
@@ -49,15 +49,10 @@ async function onCreate(path, session, fn) {
         );
 
       // send websocket push notification
-      sendWebSocketNotification(
-        this.client,
-        session.user.alias_id,
-        'mailboxCreated',
-        {
-          path,
-          mailbox: mailboxId.toString()
-        }
-      );
+      sendNotification(this.client, session.user.alias_id, 'mailboxCreated', {
+        path,
+        mailbox: mailboxId.toString()
+      });
     } catch (err) {
       if (err.imapResponse) return fn(null, err.imapResponse);
       fn(err);
@@ -134,15 +129,10 @@ async function onCreate(path, session, fn) {
     fn(null, true, mailbox._id, entry);
 
     // send websocket push notification
-    sendWebSocketNotification(
-      this.client,
-      session.user.alias_id,
-      'mailboxCreated',
-      {
-        path,
-        mailbox: mailbox._id.toString()
-      }
-    );
+    sendNotification(this.client, session.user.alias_id, 'mailboxCreated', {
+      path,
+      mailbox: mailbox._id.toString()
+    });
 
     // send apple push notification (folder list changed)
     sendApn(this.client, session.user.alias_id, path)

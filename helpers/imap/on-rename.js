@@ -19,7 +19,7 @@ const Mailboxes = require('#models/mailboxes');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendApn = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 // const updateStorageUsed = require('#helpers/update-storage-used');
 
 async function onRename(path, newPath, session, fn) {
@@ -41,16 +41,11 @@ async function onRename(path, newPath, session, fn) {
       fn(null, bool, mailboxId);
 
       // send websocket push notification
-      sendWebSocketNotification(
-        this.client,
-        session.user.alias_id,
-        'mailboxRenamed',
-        {
-          oldPath: path,
-          newPath,
-          mailbox: mailboxId.toString()
-        }
-      );
+      sendNotification(this.client, session.user.alias_id, 'mailboxRenamed', {
+        oldPath: path,
+        newPath,
+        mailbox: mailboxId.toString()
+      });
     } catch (err) {
       if (err.imapResponse) return fn(null, err.imapResponse);
       fn(err);
@@ -122,16 +117,11 @@ async function onRename(path, newPath, session, fn) {
     fn(null, true, mailbox._id);
 
     // send websocket push notification
-    sendWebSocketNotification(
-      this.client,
-      session.user.alias_id,
-      'mailboxRenamed',
-      {
-        oldPath: path,
-        newPath,
-        mailbox: mailbox._id.toString()
-      }
-    );
+    sendNotification(this.client, session.user.alias_id, 'mailboxRenamed', {
+      oldPath: path,
+      newPath,
+      mailbox: mailbox._id.toString()
+    });
 
     // send apple push notification (folder list changed; signal both old + new path)
     sendApn(this.client, session.user.alias_id, path)

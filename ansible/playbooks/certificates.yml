@@ -7,33 +7,36 @@
   name: Certificates
   vars_prompt:
     - name: input_key
-      prompt: "Enter path to certificate private key file (e.g. /path/to/.ssl-key) [REQUIRED]"
+      prompt: 'Enter path to certificate private key file (e.g. /path/to/.ssl-key) [REQUIRED]'
       private: false
     - name: input_cert
-      prompt: "Enter path to certificate full chain/certificate file (e.g. /path/to/.ssl-cert) [REQUIRED]"
+      prompt: 'Enter path to certificate full chain/certificate file (e.g. /path/to/.ssl-cert) [REQUIRED]'
       private: false
     - name: input_bundle
-      prompt: "Enter path to certificate CA bundle file (e.g. /path/to/.ssl-ca) [REQUIRED]"
+      prompt: 'Enter path to certificate CA bundle file (e.g. /path/to/.ssl-ca) [REQUIRED]'
       private: false
     - name: input_apple_key
-      prompt: "Optional: Leave blank or enter path to Apple K8 certificate key file (e.g. /path/to/AuthKey_00000000000.p8)"
+      prompt: 'Optional: Leave blank or enter path to Apple services .p8 key file (e.g. /path/to/AuthKey_00000000000.p8)'
+      private: false
+    - name: input_firebase_service_account
+      prompt: 'Optional: Leave blank or enter path to Firebase service-account JSON file (e.g. /path/to/firebase-service-account.json)'
       private: false
 
   tasks:
     # Validate required inputs
     - name: Fail if key path is empty
       fail:
-        msg: "Certificate private key path is required. Please re-run the playbook and provide a valid path."
+        msg: 'Certificate private key path is required. Please re-run the playbook and provide a valid path.'
       when: (input_key is not defined) or (input_key | length == 0)
 
     - name: Fail if cert path is empty
       fail:
-        msg: "Certificate file path is required. Please re-run the playbook and provide a valid path."
+        msg: 'Certificate file path is required. Please re-run the playbook and provide a valid path.'
       when: (input_cert is not defined) or (input_cert | length == 0)
 
     - name: Fail if bundle path is empty
       fail:
-        msg: "CA bundle file path is required. Please re-run the playbook and provide a valid path."
+        msg: 'CA bundle file path is required. Please re-run the playbook and provide a valid path.'
       when: (input_bundle is not defined) or (input_bundle | length == 0)
 
     # key file
@@ -43,7 +46,7 @@
       register: local_key_file
     - name: Fail when local key file does not exist
       fail:
-        msg: "key file does not exist: {{ input_key }}"
+        msg: 'key file does not exist: {{ input_key }}'
       when: not local_key_file.stat.exists
 
     # cert file
@@ -54,7 +57,7 @@
 
     - name: Fail when local cert file does not exist
       fail:
-        msg: "cert file does not exist: {{ input_cert }}"
+        msg: 'cert file does not exist: {{ input_cert }}'
       when: not local_cert_file.stat.exists
 
     # bundle file
@@ -65,7 +68,7 @@
 
     - name: Fail when local bundle file does not exist
       fail:
-        msg: "bundle file does not exist: {{ input_bundle }}"
+        msg: 'bundle file does not exist: {{ input_bundle }}'
       when: not local_bundle_file.stat.exists
 
     # apple_key file
@@ -77,8 +80,20 @@
 
     - name: Fail when local apple_key file does not exist
       fail:
-        msg: "apple_key file does not exist: {{ input_apple_key }}"
+        msg: 'Apple services key file does not exist: {{ input_apple_key }}'
       when: (input_apple_key is defined) and (input_apple_key | length > 0) and (not local_apple_key_file.stat.exists)
+
+    # firebase_service_account file
+    - name: Check if firebase_service_account file exists
+      local_action: stat path={{ input_firebase_service_account }}
+      register: local_firebase_service_account_file
+      become: false
+      when: (input_firebase_service_account is defined) and (input_firebase_service_account | length > 0)
+
+    - name: Fail when local firebase_service_account file does not exist
+      fail:
+        msg: 'Firebase service-account JSON file does not exist: {{ input_firebase_service_account }}'
+      when: (input_firebase_service_account is defined) and (input_firebase_service_account | length > 0) and (not local_firebase_service_account_file.stat.exists)
 
     # remote dir
     - name: Check if remote dir exists
@@ -94,36 +109,46 @@
     # copy local key
     - name: Copy local key file to server
       copy:
-        src: "{{ input_key }}"
+        src: '{{ input_key }}'
         dest: /var/www/production/.ssl-key
         owner: deploy
         # https://chmodcommand.com/chmod-660/
-        mode: "0660"
+        mode: '0660'
 
     # copy local cert
     - name: Copy local cert file to server
       copy:
-        src: "{{ input_cert }}"
+        src: '{{ input_cert }}'
         dest: /var/www/production/.ssl-cert
         owner: deploy
         # https://chmodcommand.com/chmod-660/
-        mode: "0660"
+        mode: '0660'
 
     # copy local bundle
     - name: Copy local bundle file to server
       copy:
-        src: "{{ input_bundle }}"
+        src: '{{ input_bundle }}'
         dest: /var/www/production/.ssl-ca
         owner: deploy
         # https://chmodcommand.com/chmod-660/
-        mode: "0660"
+        mode: '0660'
 
     # copy local apple_key
     - name: Copy local apple_key file to server
       copy:
-        src: "{{ input_apple_key }}"
-        dest: "/var/www/production/{{ input_apple_key | basename }}"
+        src: '{{ input_apple_key }}'
+        dest: '/var/www/production/{{ input_apple_key | basename }}'
         owner: deploy
         # https://chmodcommand.com/chmod-660/
-        mode: "0660"
+        mode: '0660'
       when: (input_apple_key is defined) and (input_apple_key | length > 0)
+
+    # copy local firebase_service_account
+    - name: Copy local firebase_service_account file to server
+      copy:
+        src: '{{ input_firebase_service_account }}'
+        dest: /var/www/production/firebase-service-account.json
+        owner: deploy
+        # https://chmodcommand.com/chmod-660/
+        mode: '0660'
+      when: (input_firebase_service_account is defined) and (input_firebase_service_account | length > 0)

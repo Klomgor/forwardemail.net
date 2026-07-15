@@ -17,7 +17,7 @@ const config = require('#config');
 const ensureDefaultAddressBook = require('#helpers/ensure-default-address-book');
 const i18n = require('#helpers/i18n');
 const { sendApnContacts } = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const setPaginationHeaders = require('#helpers/set-pagination-headers');
 const updateStorageUsed = require('#helpers/update-storage-used');
 const xmlHelpers = require('#helpers/carddav-xml');
@@ -449,21 +449,16 @@ REV:${rev}`;
     .catch((err) => ctx.logger.fatal(err));
 
   // Send websocket push notification
-  sendWebSocketNotification(
-    ctx.client,
-    ctx.state.session.user.alias_id,
-    wsEvent,
-    {
-      contact: {
-        contactId,
-        addressBookId: addressBook._id.toString(),
-        fullName: body.full_name || '',
-        content: vCardContent,
-        etag,
-        object: 'contact'
-      }
+  sendNotification(ctx.client, ctx.state.session.user.alias_id, wsEvent, {
+    contact: {
+      contactId,
+      addressBookId: addressBook._id.toString(),
+      fullName: body.full_name || '',
+      content: vCardContent,
+      etag,
+      object: 'contact'
     }
-  );
+  });
 
   // Update storage in background (contacts contribute to storage usage)
   updateStorageUsed(ctx.state.session.user.alias_id, ctx.client)
@@ -808,7 +803,7 @@ REV:${revUpd}`;
       .catch((err) => ctx.logger.fatal(err));
 
     // Send websocket push notification
-    sendWebSocketNotification(
+    sendNotification(
       ctx.client,
       ctx.state.session.user.alias_id,
       'contactUpdated',
@@ -907,7 +902,7 @@ async function remove(ctx) {
     .catch((err) => ctx.logger.fatal(err));
 
   // Send websocket push notification
-  sendWebSocketNotification(
+  sendNotification(
     ctx.client,
     ctx.state.session.user.alias_id,
     'contactDeleted',

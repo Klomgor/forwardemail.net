@@ -18,7 +18,7 @@ const config = require('#config');
 const i18n = require('#helpers/i18n');
 const { buildICS } = require('#helpers/send-calendar-email');
 const { sendApnCalendar } = require('#helpers/send-apn');
-const sendPushNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const setPaginationHeaders = require('#helpers/set-pagination-headers');
 const updateStorageUsed = require('#helpers/update-storage-used');
 
@@ -155,9 +155,9 @@ async function create(ctx) {
   //
   // Send websocket push notification so the webmail UI refreshes its
   // calendar list in real time.  Mirrors caldav-server.js MKCALENDAR
-  // behavior (sendWebSocketNotification at line 1964 of caldav-server.js).
+  // behavior (sendNotification at line 1964 of caldav-server.js).
   //
-  sendPushNotification(
+  sendNotification(
     ctx.client,
     ctx.state.session.user.alias_id,
     'calendarCreated',
@@ -174,7 +174,8 @@ async function create(ctx) {
         synctoken: calendar.synctoken || '',
         object: 'calendar'
       }
-    }
+    },
+    ctx.resolver
   );
 
   // Update storage in background (calendars contribute to storage usage)
@@ -342,9 +343,9 @@ async function update(ctx) {
   //
   // Send websocket push notification so the webmail UI updates in
   // real time.  Mirrors caldav-server.js PROPPATCH behavior
-  // (sendWebSocketNotification at line 2121 of caldav-server.js).
+  // (sendNotification at line 2121 of caldav-server.js).
   //
-  sendPushNotification(
+  sendNotification(
     ctx.client,
     ctx.state.session.user.alias_id,
     'calendarUpdated',
@@ -361,7 +362,8 @@ async function update(ctx) {
         synctoken: calendar.synctoken || '',
         object: 'calendar'
       }
-    }
+    },
+    ctx.resolver
   );
 
   // Update storage in background (calendar size may have changed)
@@ -514,9 +516,9 @@ async function remove(ctx) {
   //
   // Send websocket push notification so the webmail UI removes the
   // deleted calendar in real time.  Mirrors caldav-server.js DELETE
-  // behavior (sendWebSocketNotification at line 3692 of caldav-server.js).
+  // behavior (sendNotification at line 3692 of caldav-server.js).
   //
-  sendPushNotification(
+  sendNotification(
     ctx.client,
     ctx.state.session.user.alias_id,
     'calendarDeleted',
@@ -527,7 +529,8 @@ async function remove(ctx) {
         name: calendar.name || '',
         object: 'calendar'
       }
-    }
+    },
+    ctx.resolver
   );
 
   // Update storage in background (calendar was deleted, reducing storage usage)

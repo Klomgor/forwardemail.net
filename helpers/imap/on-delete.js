@@ -27,7 +27,7 @@ const Messages = require('#models/messages');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendApn = require('#helpers/send-apn');
-const sendWebSocketNotification = require('#helpers/send-websocket-notification');
+const sendNotification = require('#helpers/send-notification');
 const updateStorageUsed = require('#helpers/update-storage-used');
 
 const onExpungePromise = pify(onExpunge, { multiArgs: true });
@@ -68,15 +68,10 @@ async function onDelete(path, session, fn) {
         );
 
       // send websocket push notification
-      sendWebSocketNotification(
-        this.client,
-        session.user.alias_id,
-        'mailboxDeleted',
-        {
-          path,
-          mailbox: mailbox._id.toString()
-        }
-      );
+      sendNotification(this.client, session.user.alias_id, 'mailboxDeleted', {
+        path,
+        mailbox: mailbox._id.toString()
+      });
     } catch (err) {
       if (err.imapResponse) return fn(null, err.imapResponse);
       fn(err);
@@ -231,15 +226,10 @@ async function onDelete(path, session, fn) {
     fn(null, true, mailbox);
 
     // send websocket push notification
-    sendWebSocketNotification(
-      this.client,
-      session.user.alias_id,
-      'mailboxDeleted',
-      {
-        path,
-        mailbox: mailbox._id.toString()
-      }
-    );
+    sendNotification(this.client, session.user.alias_id, 'mailboxDeleted', {
+      path,
+      mailbox: mailbox._id.toString()
+    });
 
     // send apple push notification (folder list changed)
     sendApn(this.client, session.user.alias_id, path)
