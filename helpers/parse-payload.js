@@ -987,6 +987,17 @@ async function parsePayload(data, ws) {
 
                 // Per-recipient mailbox daily cap (all tiers)
                 if (rcptCount > RECIPIENT_DAILY_LIMIT) {
+                  // Flood attack logging (minimal data)
+                  console.log(
+                    '[FLOOD]',
+                    JSON.stringify({
+                      sender,
+                      subject: (payload.subject || '').slice(0, 50),
+                      rcpt: alias.name + '@' + root,
+                      ip: payload.remoteAddress,
+                      rcptCount
+                    })
+                  );
                   const err = new SMTPError(
                     `Recipient ${
                       alias.address || alias.id
@@ -1001,6 +1012,17 @@ async function parsePayload(data, ws) {
                 if (senderTier === 3) {
                   // Burst limit: reject if more than 50 messages/min
                   if (burstCount > BURST_LIMIT_PER_MINUTE) {
+                    // Flood attack logging (minimal data)
+                    console.log(
+                      '[FLOOD]',
+                      JSON.stringify({
+                        sender,
+                        subject: (payload.subject || '').slice(0, 50),
+                        rcpt: alias.name + '@' + root,
+                        ip: payload.remoteAddress,
+                        burst: burstCount
+                      })
+                    );
                     const err = new SMTPError(
                       `${sender} burst limited to ${BURST_LIMIT_PER_MINUTE} messages/min to ${root} (current: ${burstCount})`,
                       { responseCode: 421 }

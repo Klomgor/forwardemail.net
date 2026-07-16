@@ -4,7 +4,7 @@
       "name": "sqlite",
       "script": "sqlite.js",
       "max_restarts": 999,
-      "max_memory_restart": "80G",
+      "max_memory_restart": "8G",
       "kill_timeout": 30000,
       "wait_ready": true,
       "exec_mode": "cluster",

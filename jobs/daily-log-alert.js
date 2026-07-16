@@ -75,7 +75,10 @@ const HIGH_PRIORITY_CATEGORIES = [
 // The multiplanner can timeout when evaluating many candidate indexes
 // Using explicit hints forces MongoDB to use specific indexes
 //
-const MAX_TIME_MS = ms('10s');
+// NOTE: maxTimeMS applies to each individual getMore batch, not the total cursor lifetime.
+// noCursorTimeout prevents the cursor from being killed for inactivity.
+// 60s is generous enough for large result sets while still preventing runaway queries.
+const MAX_TIME_MS = ms('60s');
 
 const INDEX_HINTS = {
   // For queries on domains + created_at (base query pattern)

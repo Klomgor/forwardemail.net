@@ -95,6 +95,16 @@ async function onStore(mailboxId, update, session, fn) {
       // RFC 3501: Clear all pending responses
       // We must not send partial FETCH responses for a failed operation
       if (err) {
+        // Handle soft error sentinel from sqlite-server transaction rollback.
+        // errInfo = { _storeError: true } is a plain object (not an Error)
+        // and must not be thrown.  Pass it through fn() so callers (e.g.
+        // POP3 onUpdate) can detect storeResult[0]._storeError and skip
+        // EXPUNGE -- matching the local (non-WSP) code path behavior.
+        if (err._storeError) {
+          fn(null, err, false, modified, [], []);
+          return;
+        }
+
         if (modified && modified.length > 0) {
           fn(null, false, modified);
           return;

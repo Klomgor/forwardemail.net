@@ -224,12 +224,16 @@ async function mapper(user) {
           group: 'admin'
         }
       }
-    }).lean();
+    })
+      .select('has_smtp smtp_verified_at has_catchall is_api')
+      .lean();
 
     // Get all aliases for this user
     const userAliases = await Aliases.find({
       user: user._id
-    }).lean();
+    })
+      .select('has_imap has_pgp public_key vacation_responder is_api')
+      .lean();
 
     // Determine feature usage
     const featureUsage = {
@@ -333,7 +337,11 @@ async function mapper(user) {
         }
       ]
     })
-      .cursor()
+      .select(
+        '_id email locale plan ' + config.userFields.featureReminderSentAt
+      )
+      .lean()
+      .cursor({ batchSize: 100 })
       .addCursorFlag('noCursorTimeout', true)) {
       // break if cancelled
       if (isCancelled) break;

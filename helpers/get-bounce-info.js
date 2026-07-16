@@ -47,7 +47,11 @@ function getBounceInfo(err) {
 
   // set bounce info on the error object (useful for debugging)
   const response =
-    typeof err.response === 'string' ? err.response : err.message;
+    typeof err.response === 'string'
+      ? err.response
+      : typeof err.message === 'string'
+      ? err.message
+      : '';
   const lc = response.toLowerCase();
   const bounceInfo = zoneMTABounces.check(response);
   if (typeof bounceInfo.category !== 'string') bounceInfo.category = 'other';
