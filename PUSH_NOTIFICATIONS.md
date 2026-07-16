@@ -79,7 +79,7 @@ APNS_PRODUCTION=true
 
 ## FCM HTTP v1
 
-FCM is optional and is used only by the mail repository's Google Play profile. The default and F-Droid profiles use UnifiedPush without Firebase or Google Play Services.
+FCM is optional for Google-free downstream builds, but the mail repository's GitHub release uses one dual-provider Play build containing both FCM and UnifiedPush. That release defaults to FCM at runtime until the user explicitly selects a UnifiedPush distributor. The mail repository's default and F-Droid build commands remain UnifiedPush-only and do not require Firebase or Google Play Services.
 
 To obtain the two backend values:
 
