@@ -155,20 +155,60 @@ const STATEMENT_OPERATIONS = new Set(['prepare', 'run', 'get', 'all', 'pluck']);
 const SIXTY_FOUR_MB_IN_BYTES = bytes('64MB');
 
 //
-// Burst rate limit: max messages per sender+domain per minute.
-// This prevents spammers from flooding a domain with hundreds of
-// messages per second even when the daily limit hasn't been reached.
+// Rate limiting constants.
 //
+// Burst limit: max messages per sender+domain per minute (fixed window).
 const BURST_LIMIT_PER_MINUTE = 50;
 const BURST_LIMIT_TTL_MS = 60_000; // 1 minute
 
+// Per-recipient mailbox daily cap (prevents flooding a single mailbox
+// from multiple senders). Gmail allows ~86,400/day; we use 100,000 as a
+// generous default that is higher than Gmail while still preventing abuse.
+const RECIPIENT_DAILY_LIMIT = 100_000;
+
+//
+// Lua script: atomic increment with fixed-window TTL.
+// Only sets PEXPIRE when the counter transitions from 0→1 (first message
+// in the window). Subsequent increments within the window do NOT extend
+// the TTL, ensuring a true fixed-window burst limiter.
+//
+const BURST_INCR_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
+
+//
+// Lua script: safe decrement that floors at zero.
+// Prevents counters from going negative when keys expire between
+// the original increment and a subsequent failure-triggered decrement.
+//
+const SAFE_DECR_SCRIPT = `
+local v = redis.call('GET', KEYS[1])
+if v and tonumber(v) > 0 then
+  return redis.call('DECR', KEYS[1])
+end
+return 0
+`;
+
+const SAFE_DECRBY_SCRIPT = `
+local v = redis.call('GET', KEYS[1])
+if v and tonumber(v) >= tonumber(ARGV[1]) then
+  return redis.call('DECRBY', KEYS[1], ARGV[1])
+end
+return 0
+`;
+
 //
 // Atomic rate-limit increment.
-// Increments all four counters (global size, global count, specific size,
-// specific count) AND the per-minute burst counter in a single pipeline
-// BEFORE the message is stored.  Returns the new counter values so the
-// caller can check limits immediately — eliminating the TOCTOU race
-// where concurrent requests all read count=0 and all pass.
+// Increments daily counters (global size, global count, specific size,
+// specific count), the per-minute burst counter (fixed window via Lua),
+// and the per-recipient daily counter in a single call.
+// Returns the new counter values so the caller can check limits
+// immediately — eliminating the TOCTOU race where concurrent requests
+// all read count=0 and all pass.
 //
 // eslint-disable-next-line max-params
 async function atomicRateLimitIncrement(
@@ -176,40 +216,57 @@ async function atomicRateLimitIncrement(
   date,
   sender,
   root,
-  byteLength
+  byteLength,
+  aliasId
 ) {
   const sizeKey = `imap_limit_size_${config.env}:${date}:${sender}`;
   const countKey = `imap_limit_count_${config.env}:${date}:${sender}`;
   const specificSizeKey = `imap_limit_size_${config.env}:${date}:${sender}:${root}`;
   const specificCountKey = `imap_limit_count_${config.env}:${date}:${sender}:${root}`;
-  const burstKey = `imap_burst_${config.env}:${sender}:${root}`;
+  const rcptKey = `imap_rcpt_count_${config.env}:${date}:${aliasId}`;
+
+  // Pipeline for daily counters (TTL always refreshed to 1d)
   const results = await client
     .pipeline()
     .incrby(sizeKey, byteLength) // [0] global size
     .incr(countKey) // [1] global count
     .incrby(specificSizeKey, byteLength) // [2] specific size
     .incr(specificCountKey) // [3] specific count
-    .incr(burstKey) // [4] burst count (per minute)
+    .incr(rcptKey) // [4] recipient daily count
     // TODO: all ansible servers should be set to use utc timezone
     .pexpire(sizeKey, ms('1d'))
     .pexpire(countKey, ms('1d'))
     .pexpire(specificSizeKey, ms('1d'))
     .pexpire(specificCountKey, ms('1d'))
-    .pexpire(burstKey, BURST_LIMIT_TTL_MS)
+    .pexpire(rcptKey, ms('1d'))
     .exec();
+
+  // Burst counter uses Lua script for fixed-window semantics:
+  // TTL is only set on the first increment (count==1), not on every message.
+  const burstKey = `imap_burst_${config.env}:${sender}:${root}`;
+  const burstCount = await client.eval(
+    BURST_INCR_SCRIPT,
+    1,
+    burstKey,
+    BURST_LIMIT_TTL_MS
+  );
+
   return {
     size: results[0][1],
     count: results[1][1],
     specificSize: results[2][1],
     specificCount: results[3][1],
-    burstCount: results[4][1]
+    rcptCount: results[4][1],
+    burstCount
   };
 }
 
 //
 // Decrement rate-limit counters when storage fails after increment.
-// This keeps counters accurate so legitimate messages are not blocked
-// by phantom counts from failed deliveries.
+// Uses Lua scripts to prevent counters from going negative (which would
+// give senders "credit" for future messages). The burst counter is NOT
+// decremented because it expires in 60s and decrementing it could allow
+// burst-limit bypass.
 //
 // eslint-disable-next-line max-params
 async function decrementRateLimiting(client, date, sender, root, byteLength) {
@@ -217,21 +274,17 @@ async function decrementRateLimiting(client, date, sender, root, byteLength) {
   const countKey = `imap_limit_count_${config.env}:${date}:${sender}`;
   const specificSizeKey = `imap_limit_size_${config.env}:${date}:${sender}:${root}`;
   const specificCountKey = `imap_limit_count_${config.env}:${date}:${sender}:${root}`;
-  const burstKey = `imap_burst_${config.env}:${sender}:${root}`;
+  // Use safe decrement scripts to prevent negative values
   await client
     .pipeline()
-    .decrby(sizeKey, byteLength)
-    .decr(countKey)
-    .decrby(specificSizeKey, byteLength)
-    .decr(specificCountKey)
-    .decr(burstKey)
-    // Set TTL on all keys to prevent orphaned negative-value keys
-    // if the originals expired before this decrement was called
-    .pexpire(sizeKey, ms('1d'))
-    .pexpire(countKey, ms('1d'))
-    .pexpire(specificSizeKey, ms('1d'))
-    .pexpire(specificCountKey, ms('1d'))
-    .pexpire(burstKey, BURST_LIMIT_TTL_MS)
+    .eval(SAFE_DECRBY_SCRIPT, 1, sizeKey, byteLength)
+    .eval(SAFE_DECR_SCRIPT, 1, countKey)
+    .eval(SAFE_DECRBY_SCRIPT, 1, specificSizeKey, byteLength)
+    .eval(SAFE_DECR_SCRIPT, 1, specificCountKey)
+    // NOTE: burst counter is intentionally NOT decremented.
+    // It expires in 60s and decrementing could allow burst-limit bypass.
+    // NOTE: recipient counter is intentionally NOT decremented.
+    // It protects the mailbox from flooding regardless of delivery outcome.
     .exec();
 }
 
@@ -881,100 +934,123 @@ async function parsePayload(data, ws) {
                 //       (but we should keep parity with key names and such)
                 //       (moving it to MX server would prevent an unnecessary websocket request)
                 //
-                // 1) Senders that we consider to be "trusted" as a source of truth
-                //    (e.g. gmail.com, microsoft.com, apple.com) are limited to sending 100 GB per day.
-                // 2) Senders that are allowlisted are limited to sending 10 GB per day.
-                // 3) All other Senders are limited to sending 1 GB and/or 1000 messages per day.
-                // 4) We have a specific limit per Sender and yourdomain.com of 1 GB and/or 1000 messages daily.
-                // 5) Burst limit: max 50 messages per Sender+domain per minute.
+                // Rate limiting is tiered by sender trust level:
+                //
+                // Tier 1 - Truth sources (gmail.com, microsoft.com, apple.com, etc.):
+                //   - Global daily limit: 100 GB
+                //   - Per-domain limit: EXEMPT (only global applies)
+                //   - Burst limit: EXEMPT
+                //
+                // Tier 2 - Allowlisted senders:
+                //   - Global daily limit: 10 GB
+                //   - Per-domain limit: EXEMPT (only global applies)
+                //   - Burst limit: EXEMPT
+                //
+                // Tier 3 - All other senders:
+                //   - Global daily limit: 1 GB and/or 1000 messages
+                //   - Per-domain limit: 1 GB and/or 1000 messages
+                //   - Burst limit: 50 messages/min per sender+domain (fixed window)
+                //
+                // Per-recipient mailbox cap (applies to ALL tiers):
+                //   - 10,000 messages/day per recipient alias
+                //
+
+                // Determine sender trust tier upfront
+                let senderTier = 3; // default: untrusted
+                if (isFQDN(sender) && config.truthSources.has(sender)) {
+                  senderTier = 1;
+                } else if (
+                  payload.allowlistValue ||
+                  (isFQDN(sender) &&
+                    (await isAllowlisted(sender, this.client, this.resolver)))
+                ) {
+                  senderTier = 2;
+                }
 
                 // Atomically increment all counters and get new values
-                const { size, count, specificSize, specificCount, burstCount } =
-                  await atomicRateLimitIncrement(
-                    this.client,
-                    date,
-                    sender,
-                    root,
-                    byteLength
-                  );
+                const {
+                  size,
+                  count,
+                  specificSize,
+                  specificCount,
+                  rcptCount,
+                  burstCount
+                } = await atomicRateLimitIncrement(
+                  this.client,
+                  date,
+                  sender,
+                  root,
+                  byteLength,
+                  alias.id
+                );
                 rateLimitIncremented = true;
 
-                // 5) Burst limit: reject if more than 50 messages/min to this domain
-                //    (exempt truth sources and allowlisted senders since they
-                //    already have generous daily limits and high burst is normal
-                //    for large providers like yahoo.com, gmail.com, etc.)
-                if (
-                  burstCount > BURST_LIMIT_PER_MINUTE &&
-                  !config.truthSources.has(sender) &&
-                  !payload.allowlistValue
-                ) {
+                // Per-recipient mailbox daily cap (all tiers)
+                if (rcptCount > RECIPIENT_DAILY_LIMIT) {
                   const err = new SMTPError(
-                    `${sender} burst limited to ${BURST_LIMIT_PER_MINUTE} messages/min to ${root} (current: ${burstCount})`,
+                    `Recipient ${
+                      alias.address || alias.id
+                    } limited to ${RECIPIENT_DAILY_LIMIT} messages/day (current: ${rcptCount})`,
                     { responseCode: 421 }
                   );
                   err.payload = payload;
                   throw err;
                 }
 
-                // 4) Per sender+domain: 1 GB and/or 1000 messages daily
-                if (specificSize > bytes('1GB') || specificCount > 1000) {
-                  const err = new SMTPError(
-                    `${sender} limited with current of ${bytes(
-                      specificSize
-                    )} from ${specificCount} messages to ${root}`,
-                    { responseCode: 421 }
-                  );
-                  err.payload = payload;
-                  throw err;
-                }
-
-                if (isFQDN(sender)) {
-                  if (config.truthSources.has(sender)) {
-                    // 1) Senders that we consider to be "trusted" as a source of truth
-                    if (size > bytes('100GB')) {
-                      const err = new SMTPError(
-                        `${sender} limited to 100 GB with current of ${bytes(
-                          size
-                        )} from ${count} messages`,
-                        { responseCode: 421 }
-                      );
-                      err.payload = payload;
-                      throw err;
-                    }
-                  } else {
-                    const allowlisted = await isAllowlisted(
-                      sender,
-                      this.client,
-                      this.resolver
+                // Tier 3 only: burst limit and per-domain limit
+                if (senderTier === 3) {
+                  // Burst limit: reject if more than 50 messages/min
+                  if (burstCount > BURST_LIMIT_PER_MINUTE) {
+                    const err = new SMTPError(
+                      `${sender} burst limited to ${BURST_LIMIT_PER_MINUTE} messages/min to ${root} (current: ${burstCount})`,
+                      { responseCode: 421 }
                     );
-                    if (allowlisted) {
-                      // 2) Senders that are allowlisted are limited to sending 10 GB per day.
-                      if (size > bytes('10GB')) {
-                        const err = new SMTPError(
-                          `${sender} limited to 10 GB with current of ${bytes(
-                            size
-                          )} from ${count} messages`,
-                          { responseCode: 421 }
-                        );
-                        err.payload = payload;
-                        throw err;
-                      }
-                      // 3) All other Senders are limited to sending 1 GB and/or 1000 messages per day.
-                    } else if (size > bytes('1GB') || count > 1000) {
-                      const err = new SMTPError(
-                        `#3 ${sender} limited with current of ${bytes(
-                          size
-                        )} from ${count} messages`,
-                        { responseCode: 421 }
-                      );
-                      err.payload = payload;
-                      throw err;
-                    }
+                    err.payload = payload;
+                    throw err;
+                  }
+
+                  // Per sender+domain: 1 GB and/or 1000 messages daily
+                  if (specificSize > bytes('1GB') || specificCount > 1000) {
+                    const err = new SMTPError(
+                      `${sender} limited with current of ${bytes(
+                        specificSize
+                      )} from ${specificCount} messages to ${root}`,
+                      { responseCode: 421 }
+                    );
+                    err.payload = payload;
+                    throw err;
+                  }
+                }
+
+                // Global daily limits (tiered)
+                if (senderTier === 1) {
+                  // Truth sources: 100 GB/day
+                  if (size > bytes('100GB')) {
+                    const err = new SMTPError(
+                      `${sender} limited to 100 GB with current of ${bytes(
+                        size
+                      )} from ${count} messages`,
+                      { responseCode: 421 }
+                    );
+                    err.payload = payload;
+                    throw err;
+                  }
+                } else if (senderTier === 2) {
+                  // Allowlisted: 10 GB/day
+                  if (size > bytes('10GB')) {
+                    const err = new SMTPError(
+                      `${sender} limited to 10 GB with current of ${bytes(
+                        size
+                      )} from ${count} messages`,
+                      { responseCode: 421 }
+                    );
+                    err.payload = payload;
+                    throw err;
                   }
                 } else if (size > bytes('1GB') || count > 1000) {
-                  // 3) All other Senders are limited to sending 1 GB and/or 1000 messages per day.
+                  // Tier 3: 1 GB and/or 1000 messages/day
                   const err = new SMTPError(
-                    `#3 ${sender} limited with current of ${bytes(
+                    `${sender} limited with current of ${bytes(
                       size
                     )} from ${count} messages`,
                     { responseCode: 421 }

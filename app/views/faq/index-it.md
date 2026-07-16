@@ -5216,23 +5216,23 @@ I mittenti rilevati come inviatori di spam o contenuti virus saranno aggiunti al
 
 ### Avete un limite di velocità {#do-you-have-rate-limiting}
 
-Il limite di velocità del mittente è basato o sul dominio root ottenuto da una ricerca PTR inversa sull'indirizzo IP del mittente – oppure, se ciò non produce risultati, utilizza semplicemente l'indirizzo IP del mittente. Nota che ci riferiamo a questo come `Mittente` di seguito.
+Il limite di velocità del mittente è basato o sul dominio root ottenuto da una ricerca PTR inversa sull'indirizzo IP del mittente – oppure, se ciò non produce risultati, utilizza semplicemente l'indirizzo IP del mittente. Nota che ci riferiamo a questo come `Sender` di seguito.
 
 I nostri server MX hanno limiti giornalieri per la posta in arrivo ricevuta per [archiviazione IMAP crittografata](/blog/docs/best-quantum-safe-encrypted-email-service):
 
-* Invece di limitare la posta in arrivo ricevuta su base alias individuale (es. `tuo@tuodominio.com`) – limitiamo la velocità in base al nome di dominio dell'alias stesso (es. `tuodominio.com`). Questo impedisce ai `Mittenti` di inondare contemporaneamente le caselle di posta di tutti gli alias del tuo dominio.
-* Abbiamo limiti generali che si applicano a tutti i `Mittenti` del nostro servizio indipendentemente dal destinatario:
-  * I `Mittenti` che consideriamo "affidabili" come fonte di verità (es. `gmail.com`, `microsoft.com`, `apple.com`) sono limitati a inviare 100 GB al giorno.
-  * I `Mittenti` che sono [allowlistati](#do-you-have-an-allowlist) sono limitati a inviare 10 GB al giorno.
-  * Tutti gli altri `Mittenti` sono limitati a inviare 1 GB e/o 1000 messaggi al giorno.
-* Abbiamo un limite specifico per ogni `Mittente` e `tuodominio.com` di 1 GB e/o 1000 messaggi giornalieri.
-* Abbiamo un limite burst di 50 messaggi per `Mittente` e `tuodominio.com` al minuto. Questo impedisce agli spammer di inondare un dominio con centinaia di messaggi al secondo anche quando il limite giornaliero non è stato raggiunto.
+* Invece di limitare la posta in arrivo ricevuta su base alias individuale (es. `you@yourdomain.com`) – limitiamo la velocità in base al nome di dominio dell'alias stesso (es. `yourdomain.com`). Questo impedisce ai `Senders` di inondare contemporaneamente le caselle di posta di tutti gli alias del tuo dominio.
+* I limiti di velocità sono applicati utilizzando un sistema a livelli basato sul livello di fiducia del mittente:
+  * **Livello 1 – Fonti di verità** (es. `gmail.com`, `microsoft.com`, `apple.com`): limitati a 100 GB al giorno a livello globale. Esenti dai limiti per dominio e burst.
+  * **Livello 2 – Mittenti [allowlistati](#do-you-have-an-allowlist)**: limitati a 10 GB al giorno a livello globale. Esenti dai limiti per dominio e burst.
+  * **Livello 3 – Tutti gli altri mittenti**: limitati a 1 GB e/o 1000 messaggi al giorno a livello globale, 1 GB e/o 1000 messaggi per `Sender`+dominio al giorno, e un limite burst di 50 messaggi per `Sender`+dominio al minuto.
+* Il limite burst utilizza un contatore a finestra fissa (60 secondi). La finestra inizia quando arriva il primo messaggio e scade dopo 60 secondi indipendentemente dai messaggi successivi — non scorre né si azzera ad ogni messaggio.
+* Abbiamo un limite giornaliero per casella di posta del destinatario di 100,000 messaggi. Questo si applica a tutti i livelli e impedisce che una singola casella di posta venga inondata indipendentemente dal livello di fiducia del mittente.
 
-Tutti i limiti di velocità sono applicati in modo atomico — i contatori vengono incrementati prima che il messaggio venga memorizzato, eliminando le condizioni di gara in cui richieste concorrenti potrebbero aggirare i limiti.
+Tutti i limiti di velocità sono applicati in modo atomico — i contatori vengono incrementati prima che il messaggio venga memorizzato, eliminando le condizioni di gara in cui richieste concorrenti potrebbero aggirare i limiti. Le operazioni di decremento (utilizzate quando la memorizzazione fallisce dopo l'incremento) utilizzano script Lua sicuri che impediscono ai contatori di diventare negativi.
 
-I server MX limitano anche i messaggi inoltrati a uno o più destinatari tramite limitazione di velocità – ma questo si applica solo ai `Mittenti` non presenti nella [allowlist](#do-you-have-an-allowlist):
+I server MX limitano anche i messaggi inoltrati a uno o più destinatari tramite limitazione di velocità – ma questo si applica solo ai `Senders` non presenti nella [allowlist](#do-you-have-an-allowlist):
 
-* Permettiamo solo fino a 100 connessioni all'ora, per dominio root FQDN risolto del `Mittente` (o) indirizzo IP remoto del `Mittente` (se non è disponibile un PTR inverso), e per destinatario in busta. Conserviamo la chiave per la limitazione di velocità come hash crittografico nel nostro database Redis.
+* Permettiamo solo fino a 100 connessioni all'ora, per dominio root FQDN risolto del `Sender` (o) indirizzo IP remoto del `Sender` (se non è disponibile un PTR inverso), e per destinatario in busta. Conserviamo la chiave per la limitazione di velocità come hash crittografico nel nostro database Redis.
 
 * Se invii email tramite il nostro sistema, assicurati di avere un PTR inverso configurato per tutti i tuoi indirizzi IP (altrimenti ogni dominio root FQDN unico o indirizzo IP da cui invii sarà soggetto a limitazione di velocità).
 
@@ -5240,11 +5240,12 @@ I server MX limitano anche i messaggi inoltrati a uno o più destinatari tramite
 
 * Se invii da un dominio come `test.abc.123.example.com`, il limite di velocità sarà imposto su `example.com`. Molti spammer usano centinaia di sottodomini per aggirare i filtri antispam comuni che limitano solo i nomi host unici anziché i domini root FQDN unici.
 
-* I `Mittenti` che superano il limite di velocità saranno rifiutati con un errore 421.
+* I `Senders` che superano il limite di velocità saranno rifiutati con un errore 421.
 
 I nostri server IMAP e SMTP limitano i tuoi alias a non avere più di `60` connessioni concorrenti contemporaneamente.
 
 I nostri server MX limitano i mittenti [non allowlistati](#do-you-have-an-allowlist) a non stabilire più di 10 connessioni concorrenti (con scadenza della cache del contatore di 3 minuti, che rispecchia il timeout socket di 3 minuti).
+
 
 ### Come proteggete contro il backscatter {#how-do-you-protect-against-backscatter}
 

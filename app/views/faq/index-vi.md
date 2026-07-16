@@ -5219,14 +5219,14 @@ Giới hạn tốc độ người gửi được thực hiện theo tên miền 
 Máy chủ MX của chúng tôi có giới hạn hàng ngày cho thư đến nhận được cho [lưu trữ IMAP được mã hóa](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Thay vì giới hạn tốc độ thư đến nhận được trên từng bí danh riêng lẻ (ví dụ `you@yourdomain.com`) – chúng tôi giới hạn theo tên miền của bí danh đó (ví dụ `yourdomain.com`). Điều này ngăn chặn `Senders` gửi tràn vào hộp thư của tất cả các bí danh trên toàn bộ tên miền của bạn cùng lúc.
-* Chúng tôi có các giới hạn chung áp dụng cho tất cả `Senders` trên toàn dịch vụ bất kể người nhận:
-  * `Senders` mà chúng tôi coi là "đáng tin cậy" như nguồn thông tin chính xác (ví dụ `gmail.com`, `microsoft.com`, `apple.com`) bị giới hạn gửi 100 GB mỗi ngày.
-  * `Senders` được [cho phép trong danh sách trắng](#do-you-have-an-allowlist) bị giới hạn gửi 10 GB mỗi ngày.
-  * Tất cả các `Senders` khác bị giới hạn gửi 1 GB và/hoặc 1000 tin nhắn mỗi ngày.
-* Chúng tôi có giới hạn cụ thể cho từng `Sender` và `yourdomain.com` là 1 GB và/hoặc 1000 tin nhắn mỗi ngày.
-* Chúng tôi có giới hạn burst là 50 tin nhắn cho mỗi `Sender` và `yourdomain.com` mỗi phút. Điều này ngăn chặn spammer gửi hàng trăm tin nhắn mỗi giây vào một tên miền ngay cả khi giới hạn hàng ngày chưa đạt đến.
+* Giới hạn tốc độ được áp dụng bằng hệ thống phân cấp dựa trên mức độ tin cậy của người gửi:
+  * **Cấp 1 – Nguồn thông tin chính xác** (ví dụ `gmail.com`, `microsoft.com`, `apple.com`): giới hạn ở mức 100 GB mỗi ngày trên toàn cầu. Được miễn các giới hạn theo tên miền và giới hạn burst.
+  * **Cấp 2 – Người gửi được [cho phép trong danh sách trắng](#do-you-have-an-allowlist)**: giới hạn ở mức 10 GB mỗi ngày trên toàn cầu. Được miễn các giới hạn theo tên miền và giới hạn burst.
+  * **Cấp 3 – Tất cả các người gửi khác**: giới hạn ở mức 1 GB và/hoặc 1000 tin nhắn mỗi ngày trên toàn cầu, 1 GB và/hoặc 1000 tin nhắn cho mỗi `Sender`+tên miền hàng ngày, và giới hạn burst là 50 tin nhắn cho mỗi `Sender`+tên miền mỗi phút.
+* Giới hạn burst sử dụng bộ đếm cửa sổ cố định (60 giây). Cửa sổ bắt đầu khi tin nhắn đầu tiên đến và hết hạn sau 60 giây bất kể các tin nhắn tiếp theo — nó không trượt hoặc đặt lại trên mỗi tin nhắn.
+* Chúng tôi có giới hạn hàng ngày cho mỗi hộp thư người nhận là 100,000 tin nhắn. Điều này áp dụng cho tất cả các cấp và ngăn chặn bất kỳ hộp thư đơn lẻ nào bị tràn ngập bất kể mức độ tin cậy của người gửi.
 
-Tất cả giới hạn tốc độ được thực thi một cách nguyên tử — bộ đếm được tăng trước khi tin nhắn được lưu trữ, loại bỏ các điều kiện đua nơi các yêu cầu đồng thời có thể vượt qua giới hạn.
+Tất cả giới hạn tốc độ được thực thi một cách nguyên tử — bộ đếm được tăng trước khi tin nhắn được lưu trữ, loại bỏ các điều kiện đua nơi các yêu cầu đồng thời có thể vượt qua giới hạn. Các thao tác giảm (được sử dụng khi lưu trữ thất bại sau khi tăng) sử dụng các tập lệnh Lua an toàn để ngăn bộ đếm trở thành số âm.
 
 Máy chủ MX cũng giới hạn tin nhắn được chuyển tiếp đến một hoặc nhiều người nhận thông qua giới hạn tốc độ – nhưng điều này chỉ áp dụng cho `Senders` không có trong [danh sách trắng](#do-you-have-an-allowlist):
 
@@ -5243,6 +5243,7 @@ Máy chủ MX cũng giới hạn tin nhắn được chuyển tiếp đến mộ
 Máy chủ IMAP và SMTP của chúng tôi giới hạn bí danh của bạn không được có hơn `60` kết nối đồng thời cùng lúc.
 
 Máy chủ MX của chúng tôi giới hạn các người gửi [không có trong danh sách trắng](#do-you-have-an-allowlist) không được thiết lập hơn 10 kết nối đồng thời (với thời gian lưu bộ đếm trong bộ nhớ cache là 3 phút, tương ứng với thời gian chờ socket của chúng tôi là 3 phút).
+
 
 ### Làm thế nào bạn bảo vệ chống lại backscatter {#how-do-you-protect-against-backscatter}
 

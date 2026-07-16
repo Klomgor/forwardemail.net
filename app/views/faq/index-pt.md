@@ -5220,14 +5220,14 @@ A limitação de taxa do remetente é feita pelo domínio raiz extraído de uma 
 Nossos servidores MX têm limites diários para o correio recebido para [armazenamento IMAP criptografado](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Em vez de limitar a taxa do correio recebido em uma base individual de alias (ex.: `you@yourdomain.com`) – limitamos pela própria nome de domínio do alias (ex.: `yourdomain.com`). Isso impede que `Senders` inundem as caixas de entrada de todos os aliases em seu domínio de uma só vez.
-* Temos limites gerais que se aplicam a todos os `Senders` em nosso serviço independentemente do destinatário:
-  * `Senders` que consideramos "confiáveis" como fonte de verdade (ex.: `gmail.com`, `microsoft.com`, `apple.com`) são limitados a enviar 100 GB por dia.
-  * `Senders` que estão [na lista de permissão](#do-you-have-an-allowlist) são limitados a enviar 10 GB por dia.
-  * Todos os outros `Senders` são limitados a enviar 1 GB e/ou 1000 mensagens por dia.
-* Temos um limite específico por `Sender` e `yourdomain.com` de 1 GB e/ou 1000 mensagens diárias.
-* Temos um limite de rajada de 50 mensagens por `Sender` e `yourdomain.com` por minuto. Isso impede que spammers inundem um domínio com centenas de mensagens por segundo, mesmo quando o limite diário não foi atingido.
+* Os limites de taxa são aplicados usando um sistema de níveis baseado no nível de confiança do remetente:
+  * **Nível 1 – Fontes de verdade** (ex.: `gmail.com`, `microsoft.com`, `apple.com`): limitados a 100 GB por dia globalmente. Isentos de limites por domínio e de rajada.
+  * **Nível 2 – Remetentes [na lista de permissão](#do-you-have-an-allowlist)**: limitados a 10 GB por dia globalmente. Isentos de limites por domínio e de rajada.
+  * **Nível 3 – Todos os outros remetentes**: limitados a 1 GB e/ou 1000 mensagens por dia globalmente, 1 GB e/ou 1000 mensagens por `Sender`+domínio diariamente, e um limite de rajada de 50 mensagens por `Sender`+domínio por minuto.
+* O limite de rajada usa um contador de janela fixa (60 segundos). A janela começa quando a primeira mensagem chega e expira após 60 segundos independentemente de mensagens subsequentes — ela não desliza ou zera a cada mensagem.
+* Temos um limite diário de caixa de correio por destinatário de 100,000 mensagens. Isso se aplica a todos os níveis e impede que qualquer caixa de correio única seja inundada independentemente do nível de confiança do remetente.
 
-Todos os limites de taxa são aplicados atomicamente — os contadores são incrementados antes da mensagem ser armazenada, eliminando condições de corrida onde requisições simultâneas poderiam contornar os limites.
+Todos os limites de taxa são aplicados atomicamente — os contadores são incrementados antes da mensagem ser armazenada, eliminando condições de corrida onde requisições simultâneas poderiam contornar os limites. Operações de decremento (usadas quando o armazenamento falha após o incremento) usam scripts Lua seguros que impedem que os contadores fiquem negativos.
 
 Os servidores MX também limitam mensagens encaminhadas para um ou mais destinatários por meio de limitação de taxa – mas isso se aplica apenas a `Senders` que não estão na [lista de permissão](#do-you-have-an-allowlist):
 
@@ -5243,7 +5243,8 @@ Os servidores MX também limitam mensagens encaminhadas para um ou mais destinat
 
 Nossos servidores IMAP e SMTP limitam seus aliases a não terem mais de `60` conexões simultâneas ao mesmo tempo.
 
-Nossos servidores MX limitam `Senders` [não na lista de permissão](#do-you-have-an-allowlist) a estabelecerem mais de 10 conexões simultâneas (com expiração de cache de 3 minutos para o contador, que espelha nosso tempo limite de socket de 3 minutos).
+Nossos servidores MX limitam remetentes [não na lista de permissão](#do-you-have-an-allowlist) a estabelecerem mais de 10 conexões simultâneas (com expiração de cache de 3 minutos para o contador, que espelha nosso tempo limite de socket de 3 minutos).
+
 
 ### Como você protege contra backscatter {#how-do-you-protect-against-backscatter}
 

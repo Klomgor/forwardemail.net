@@ -5221,14 +5221,14 @@ Avsenderhastighetsbegrensning skjer enten basert på rot-domenet hentet fra en o
 Våre MX-servere har daglige grenser for innkommende e-post mottatt for [kryptert IMAP-lagring](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * I stedet for å begrense innkommende e-post på individuell alias-basis (f.eks. `you@yourdomain.com`) – begrenser vi etter aliasets domenenavn (f.eks. `yourdomain.com`). Dette forhindrer at `Senders` oversvømmer innboksene til alle aliaser på domenet ditt samtidig.
-* Vi har generelle grenser som gjelder for alle `Senders` på tvers av tjenesten vår uavhengig av mottaker:
-  * `Senders` som vi anser som "pålitelig" som sannhetskilde (f.eks. `gmail.com`, `microsoft.com`, `apple.com`) er begrenset til å sende 100 GB per dag.
-  * `Senders` som er [tillatelseslistet](#do-you-have-an-allowlist) er begrenset til å sende 10 GB per dag.
-  * Alle andre `Senders` er begrenset til å sende 1 GB og/eller 1000 meldinger per dag.
-* Vi har en spesifikk grense per `Sender` og `yourdomain.com` på 1 GB og/eller 1000 meldinger daglig.
-* Vi har en burst-grense på 50 meldinger per `Sender` og `yourdomain.com` per minutt. Dette forhindrer spammere fra å oversvømme et domene med hundrevis av meldinger per sekund selv når den daglige grensen ikke er nådd.
+* Hastighetsgrenser brukes med et nivåbasert system basert på avsenderens tillitsnivå:
+  * **Nivå 1 – Sannhetskilder** (f.eks. `gmail.com`, `microsoft.com`, `apple.com`): begrenset til 100 GB per dag globalt. Unntatt fra per-domene og burst-grenser.
+  * **Nivå 2 – [Tillatelseslistede](#do-you-have-an-allowlist) avsendere**: begrenset til 10 GB per dag globalt. Unntatt fra per-domene og burst-grenser.
+  * **Nivå 3 – Alle andre avsendere**: begrenset til 1 GB og/eller 1000 meldinger per dag globalt, 1 GB og/eller 1000 meldinger per `Sender`+domene daglig, og en burst-grense på 50 meldinger per `Sender`+domene per minutt.
+* Burst-grensen bruker en teller med fast vindu (60 sekunder). Vinduet starter når den første meldingen ankommer og utløper etter 60 sekunder uavhengig av påfølgende meldinger — det forskyves ikke eller nullstilles ved hver melding.
+* Vi har en daglig grense per mottakerpostkasse på 100,000 meldinger. Dette gjelder for alle nivåer og forhindrer at en enkelt postkasse blir oversvømmet uavhengig av avsenderens tillitsnivå.
 
-Alle hastighetsgrenser håndheves atomisk — tellere økes før meldingen lagres, noe som eliminerer kappløpstilstander der samtidige forespørsler kunne omgå grensene.
+Alle hastighetsgrenser håndheves atomisk — tellere økes før meldingen lagres, noe som eliminerer kappløpstilstander der samtidige forespørsler kunne omgå grensene. Dekrementeringsoperasjoner (brukes når lagring mislykkes etter inkrementering) bruker sikre Lua-skript som forhindrer at tellere blir negative.
 
 MX-serverne begrenser også meldinger som videresendes til en eller flere mottakere gjennom hastighetsbegrensning – men dette gjelder kun `Senders` som ikke er på [tillatelseslisten](#do-you-have-an-allowlist):
 
@@ -5245,6 +5245,7 @@ MX-serverne begrenser også meldinger som videresendes til en eller flere mottak
 Våre IMAP- og SMTP-servere begrenser aliasene dine til ikke å ha mer enn `60` samtidige tilkoblinger samtidig.
 
 Våre MX-servere begrenser [ikke-tillatelseslistede](#do-you-have-an-allowlist) sendere fra å etablere mer enn 10 samtidige tilkoblinger (med 3 minutters cache-utløp for telleren, som speiler vår socket timeout på 3 minutter).
+
 
 ### Hvordan beskytter dere mot backscatter {#how-do-you-protect-against-backscatter}
 

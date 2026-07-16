@@ -5220,14 +5220,14 @@ Gönderen oran sınırlaması, gönderenin IP adresi üzerinde ters PTR sorgulam
 MX sunucularımız, [şifreli IMAP depolama](/blog/docs/best-quantum-safe-encrypted-email-service) için alınan gelen postalar için günlük limitlere sahiptir:
 
 * Gelen postaları bireysel takma ad bazında (örneğin `you@yourdomain.com`) oran sınırlamak yerine – takma adın alan adı bazında (örneğin `yourdomain.com`) oran sınırlaması yapıyoruz. Bu, `Gönderen`lerin tüm alanınızdaki tüm takma adların gelen kutularını aynı anda doldurmasını engeller.
-* Alıcıdan bağımsız olarak hizmetimizdeki tüm `Gönderen`lere uygulanan genel limitlerimiz vardır:
-  * Gerçek kaynağı olarak "güvenilir" kabul ettiğimiz `Gönderen`ler (örneğin `gmail.com`, `microsoft.com`, `apple.com`) günlük 100 GB gönderimle sınırlıdır.
-  * [İzin verilenler listesinde](#do-you-have-an-allowlist) olan `Gönderen`ler günlük 10 GB gönderimle sınırlıdır.
-  * Diğer tüm `Gönderen`ler günlük 1 GB ve/veya 1000 mesajla sınırlıdır.
-* Her `Gönderen` ve `yourdomain.com` için özel bir limit vardır: günlük 1 GB ve/veya 1000 mesaj.
-* Her `Gönderen` ve `yourdomain.com` için dakikada 50 mesajlık bir anlık limit vardır. Bu, günlük limite ulaşılmamış olsa bile spam gönderenlerin saniyede yüzlerce mesajla bir alan adını doldurmasını önler.
+* Oran sınırları, gönderen güven düzeyine dayalı kademeli bir sistem kullanılarak uygulanır:
+  * **Kademe 1 – Gerçek kaynaklar** (örneğin `gmail.com`, `microsoft.com`, `apple.com`): genel olarak günlük 100 GB ile sınırlıdır. Alan adı başına ve anlık limitlerden muaftır.
+  * **Kademe 2 – [İzin verilenler listesinde](#do-you-have-an-allowlist) olan gönderenler**: genel olarak günlük 10 GB ile sınırlıdır. Alan adı başına ve anlık limitlerden muaftır.
+  * **Kademe 3 – Diğer tüm gönderenler**: genel olarak günlük 1 GB ve/veya 1000 mesajla, her `Gönderen`+alan adı için günlük 1 GB ve/veya 1000 mesajla ve her `Gönderen`+alan adı için dakikada 50 mesajlık bir anlık limitle sınırlıdır.
+* Anlık limit, sabit pencereli bir sayaç (60 saniye) kullanır. Pencere, ilk mesaj geldiğinde başlar ve sonraki mesajlardan bağımsız olarak 60 saniye sonra sona erer — her mesajda kaymaz veya sıfırlanmaz.
+* Alıcı başına günlük 100,000 mesajlık bir posta kutusu sınırımız vardır. Bu, tüm kademeler için geçerlidir ve gönderen güven düzeyinden bağımsız olarak herhangi bir posta kutusunun doldurulmasını önler.
 
-Tüm hız sınırları atomik olarak uygulanır — sayaçlar mesaj depolanmadan önce artırılır, eşzamanlı isteklerin sınırları aşabileceği yarış koşulları ortadan kaldırılır.
+Tüm hız sınırları atomik olarak uygulanır — sayaçlar mesaj depolanmadan önce artırılır, eşzamanlı isteklerin sınırları aşabileceği yarış koşulları ortadan kaldırılır. Azaltma işlemleri (artırımdan sonra depolama başarısız olduğunda kullanılır), sayaçların negatife düşmesini önleyen güvenli Lua komut dosyaları kullanır.
 
 MX sunucuları ayrıca, bir veya daha fazla alıcıya iletilen mesajları oran sınırlaması yoluyla sınırlar – ancak bu sadece [izin verilenler listesinde](#do-you-have-an-allowlist) olmayan `Gönderen`lere uygulanır:
 
@@ -5244,6 +5244,7 @@ MX sunucuları ayrıca, bir veya daha fazla alıcıya iletilen mesajları oran s
 IMAP ve SMTP sunucularımız, takma adlarınızın aynı anda `60`'tan fazla eşzamanlı bağlantıya sahip olmasını sınırlar.
 
 MX sunucularımız, [izin verilmeyen](#do-you-have-an-allowlist) gönderenlerin 10'dan fazla eşzamanlı bağlantı kurmasını engeller (sayaç için 3 dakikalık önbellek süresi vardır, bu da 3 dakikalık soket zaman aşımımızla aynıdır).
+
 
 ### Backscatter'a karşı nasıl koruma sağlıyorsunuz {#how-do-you-protect-against-backscatter}
 

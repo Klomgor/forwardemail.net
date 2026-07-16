@@ -5220,14 +5220,14 @@ Avsändarens hastighetsbegränsning sker antingen via rot-domänen som tolkas fr
 Våra MX-servrar har dagliga gränser för inkommande e-post mottagen för [krypterad IMAP-lagring](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Istället för att hastighetsbegränsa inkommande e-post mottagen på individuell aliasnivå (t.ex. `you@yourdomain.com`) – begränsar vi efter aliasets domännamn i sig (t.ex. `yourdomain.com`). Detta förhindrar att `Senders` översvämmar inkorgarna för alla alias över din domän samtidigt.
-* Vi har generella gränser som gäller för alla `Senders` över vår tjänst oavsett mottagare:
-  * `Senders` som vi anser vara "pålitliga" som sanningskälla (t.ex. `gmail.com`, `microsoft.com`, `apple.com`) är begränsade till att skicka 100 GB per dag.
-  * `Senders` som är [tillåtna](#do-you-have-an-allowlist) är begränsade till att skicka 10 GB per dag.
-  * Alla andra `Senders` är begränsade till att skicka 1 GB och/eller 1000 meddelanden per dag.
-* Vi har en specifik gräns per `Sender` och `yourdomain.com` på 1 GB och/eller 1000 meddelanden dagligen.
-* Vi har en burst-gräns på 50 meddelanden per `Sender` och `yourdomain.com` per minut. Detta förhindrar spammare från att översvämma en domän med hundratals meddelanden per sekund även när den dagliga gränsen inte har nåtts.
+* Hastighetsgränser tillämpas med ett nivåsystem baserat på avsändarens förtroendenivå:
+  * **Nivå 1 – Sanningskällor** (t.ex. `gmail.com`, `microsoft.com`, `apple.com`): begränsat till 100 GB per dag globalt. Undantagna från per-domän- och burst-gränser.
+  * **Nivå 2 – [Tillåtna](#do-you-have-an-allowlist) avsändare**: begränsat till 10 GB per dag globalt. Undantagna från per-domän- och burst-gränser.
+  * **Nivå 3 – Alla andra avsändare**: begränsat till 1 GB och/eller 1000 meddelanden per dag globalt, 1 GB och/eller 1000 meddelanden per `Sender`+domän dagligen, och en burst-gräns på 50 meddelanden per `Sender`+domän per minut.
+* Burst-gränsen använder en räknare med fast fönster (60 sekunder). Fönstret startar när det första meddelandet anländer och löper ut efter 60 sekunder oavsett efterföljande meddelanden — det förskjuts inte eller återställs vid varje meddelande.
+* Vi har ett dagligt tak på 100,000 meddelanden per mottagarinkorg. Detta gäller för alla nivåer och förhindrar att en enskild inkorg översvämmas oavsett avsändarens förtroendenivå.
 
-Alla hastighetsgränser tillämpas atomiskt — räknare ökas innan meddelandet lagras, vilket eliminerar kapplöpningsförhållanden där samtidiga förfrågningar kunde kringgå gränserna.
+Alla hastighetsgränser tillämpas atomiskt — räknare ökas innan meddelandet lagras, vilket eliminerar kapplöpningsförhållanden där samtidiga förfrågningar kunde kringgå gränserna. Minskningsoperationer (som används när lagring misslyckas efter ökning) använder säkra Lua-skript som förhindrar att räknare blir negativa.
 
 MX-servrarna begränsar också meddelanden som vidarebefordras till en eller flera mottagare genom hastighetsbegränsning – men detta gäller endast `Senders` som inte finns på [tillåtlistan](#do-you-have-an-allowlist):
 
@@ -5244,6 +5244,7 @@ MX-servrarna begränsar också meddelanden som vidarebefordras till en eller fle
 Våra IMAP- och SMTP-servrar begränsar dina alias från att ha mer än `60` samtidiga anslutningar samtidigt.
 
 Våra MX-servrar begränsar [icke-tillåtna](#do-you-have-an-allowlist) avsändare från att upprätta mer än 10 samtidiga anslutningar (med 3 minuters cacheutgång för räknaren, vilket speglar vår socket timeout på 3 minuter).
+
 
 ### Hur skyddar ni mot backscatter {#how-do-you-protect-against-backscatter}
 

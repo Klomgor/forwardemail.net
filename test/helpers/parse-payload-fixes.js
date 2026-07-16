@@ -154,3 +154,129 @@ test('get-temporary-database > cache_size override is 2MB for temp databases', (
       content.includes('cache_size=-2048')
   );
 });
+
+// --- Rate limiting overhaul ---
+
+test('rate limiting > BURST_LIMIT_PER_MINUTE is 50', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  t.true(content.includes('const BURST_LIMIT_PER_MINUTE = 50;'));
+});
+
+test('rate limiting > RECIPIENT_DAILY_LIMIT is 100,000', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  t.true(content.includes('const RECIPIENT_DAILY_LIMIT = 100_000;'));
+});
+
+test('rate limiting > BURST_INCR_SCRIPT only sets TTL on first increment', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  // The Lua script checks "if count == 1 then" before setting PEXPIRE
+  // This ensures TTL is only set on the first message (fixed window)
+  t.true(content.includes('if count == 1 then'));
+  t.true(content.includes("redis.call('PEXPIRE', KEYS[1], ARGV[1])"));
+  // Verify it's inside the BURST_INCR_SCRIPT constant
+  const scriptStart = content.indexOf('const BURST_INCR_SCRIPT');
+  const scriptEnd = content.indexOf('`;', scriptStart);
+  // eslint-disable-next-line unicorn/prefer-set-has
+  const script = content.slice(scriptStart, scriptEnd);
+  t.true(script.includes('if count == 1 then'));
+  t.true(script.includes('PEXPIRE'));
+});
+
+test('rate limiting > SAFE_DECR_SCRIPT floors at zero', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  // The Lua script checks "if v and tonumber(v) > 0" before decrementing
+  // If the value is 0 or nil, it returns 0 instead of going negative
+  const scriptStart = content.indexOf('const SAFE_DECR_SCRIPT');
+  const scriptEnd = content.indexOf('`;', scriptStart);
+  // eslint-disable-next-line unicorn/prefer-set-has
+  const script = content.slice(scriptStart, scriptEnd);
+  t.true(script.includes('tonumber(v) > 0'));
+  t.true(script.includes("redis.call('DECR', KEYS[1])"));
+  t.true(script.includes('return 0'));
+});
+
+test('rate limiting > SAFE_DECRBY_SCRIPT floors at zero', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  // The Lua script checks "if v and tonumber(v) >= tonumber(ARGV[1])"
+  const scriptStart = content.indexOf('const SAFE_DECRBY_SCRIPT');
+  const scriptEnd = content.indexOf('`;', scriptStart);
+  // eslint-disable-next-line unicorn/prefer-set-has
+  const script = content.slice(scriptStart, scriptEnd);
+  t.true(script.includes('tonumber(v) >= tonumber(ARGV[1])'));
+  t.true(script.includes("redis.call('DECRBY', KEYS[1], ARGV[1])"));
+  t.true(script.includes('return 0'));
+});
+
+test('rate limiting > enforcement block determines senderTier upfront', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  // Verify the tiered system is implemented
+  t.true(content.includes('let senderTier = 3;'));
+  t.true(content.includes('senderTier = 1;'));
+  t.true(content.includes('senderTier = 2;'));
+  // Tier 3 only gets burst + per-domain
+  t.true(content.includes('if (senderTier === 3)'));
+});
+
+test('rate limiting > per-recipient cap uses rcptCount and RECIPIENT_DAILY_LIMIT', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  t.true(content.includes('rcptCount > RECIPIENT_DAILY_LIMIT'));
+  // Verify the rcptKey uses aliasId
+  t.true(content.includes('imap_rcpt_count_'));
+  // eslint-disable-next-line no-template-curly-in-string
+  t.true(content.includes('${aliasId}'));
+});
+
+test('rate limiting > decrementRateLimiting does NOT decrement burst or recipient', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const content = fs.readFileSync(
+    path.join(__dirname, '../../helpers/parse-payload.js'),
+    'utf8'
+  );
+  // Find the decrementRateLimiting function
+  const fnStart = content.indexOf('async function decrementRateLimiting');
+  const fnEnd = content.indexOf('\n}', fnStart) + 2;
+  // eslint-disable-next-line unicorn/prefer-set-has
+  const fn = content.slice(fnStart, fnEnd);
+  // Should NOT contain burstKey or rcptKey
+  t.false(fn.includes('burstKey'));
+  t.false(fn.includes('rcptKey'));
+  // Should use SAFE_DECR and SAFE_DECRBY scripts
+  t.true(fn.includes('SAFE_DECRBY_SCRIPT'));
+  t.true(fn.includes('SAFE_DECR_SCRIPT'));
+});

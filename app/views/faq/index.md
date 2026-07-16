@@ -5294,14 +5294,14 @@ Sender rate limiting is either by the root domain parsed from a reverse PTR look
 Our MX servers have daily limits for inbound mail received for [encrypted IMAP storage](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Instead of rate limiting inbound mail received on an individual alias basis (e.g. `you@yourdomain.com`) – we rate limit by the alias's domain name itself (e.g. `yourdomain.com`). This prevents `Senders` from flooding the inboxes of all aliases across your domain at once.
-* We have general limits that apply to all `Senders` across our service regardless of recipient:
-  * `Senders` that we consider to be "trusted" as a source of truth (e.g. `gmail.com`, `microsoft.com`, `apple.com`) are limited to sending 100 GB per day.
-  * `Senders` that are [allowlisted](#do-you-have-an-allowlist) are limited to sending 10 GB per day.
-  * All other `Senders` are limited to sending 1 GB and/or 1000 messages per day.
-* We have a specific limit per `Sender` and `yourdomain.com` of 1 GB and/or 1000 messages daily.
-* We have a burst limit of 50 messages per `Sender` and `yourdomain.com` per minute.  This prevents spammers from flooding a domain with hundreds of messages per second even when the daily limit has not been reached.
+* Rate limits are applied using a tiered system based on sender trust level:
+  * **Tier 1 – Truth sources** (e.g. `gmail.com`, `microsoft.com`, `apple.com`): limited to 100 GB per day globally.  Exempt from per-domain and burst limits.
+  * **Tier 2 – [Allowlisted](#do-you-have-an-allowlist) senders**: limited to 10 GB per day globally.  Exempt from per-domain and burst limits.
+  * **Tier 3 – All other senders**: limited to 1 GB and/or 1000 messages per day globally, 1 GB and/or 1000 messages per `Sender`+domain daily, and a burst limit of 50 messages per `Sender`+domain per minute.
+* The burst limit uses a fixed-window counter (60 seconds).  The window starts when the first message arrives and expires after 60 seconds regardless of subsequent messages — it does not slide or reset on each message.
+* We have a per-recipient mailbox daily cap of 100,000 messages.  This applies to all tiers and prevents any single mailbox from being flooded regardless of sender trust level.
 
-All rate limits are enforced atomically — counters are incremented before the message is stored, eliminating race conditions where concurrent requests could bypass limits.
+All rate limits are enforced atomically — counters are incremented before the message is stored, eliminating race conditions where concurrent requests could bypass limits.  Decrement operations (used when storage fails after increment) use safe Lua scripts that prevent counters from going negative.
 
 The MX servers also limit messages being forwarded to one or more recipients through rate limiting – but this only applies to `Senders` not on the [allowlist](#do-you-have-an-allowlist):
 

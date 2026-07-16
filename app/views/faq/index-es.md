@@ -5221,14 +5221,14 @@ La limitación de tasa del remitente es ya sea por el dominio raíz obtenido de 
 Nuestros servidores MX tienen límites diarios para el correo entrante recibido para [almacenamiento IMAP cifrado](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * En lugar de limitar la tasa del correo entrante recibido en base a un alias individual (por ejemplo, `you@yourdomain.com`) – limitamos la tasa por el nombre de dominio del alias mismo (por ejemplo, `yourdomain.com`). Esto previene que los `Senders` inunden los buzones de todos los alias en tu dominio a la vez.
-* Tenemos límites generales que aplican a todos los `Senders` en nuestro servicio sin importar el destinatario:
-  * Los `Senders` que consideramos "confiables" como fuente de verdad (por ejemplo, `gmail.com`, `microsoft.com`, `apple.com`) están limitados a enviar 100 GB por día.
-  * Los `Senders` que están [en la lista blanca](#do-you-have-an-allowlist) están limitados a enviar 10 GB por día.
-  * Todos los demás `Senders` están limitados a enviar 1 GB y/o 1000 mensajes por día.
-* Tenemos un límite específico por `Sender` y `yourdomain.com` de 1 GB y/o 1000 mensajes diarios.
-* Tenemos un límite de ráfaga de 50 mensajes por `Sender` y `yourdomain.com` por minuto. Esto previene que los spammers inunden un dominio con cientos de mensajes por segundo incluso cuando el límite diario no se ha alcanzado.
+* Los límites de tasa se aplican usando un sistema de niveles basado en el nivel de confianza del remitente:
+  * **Nivel 1 – Fuentes de verdad** (por ejemplo, `gmail.com`, `microsoft.com`, `apple.com`): limitados a 100 GB por día globalmente. Exentos de límites por dominio y de ráfaga.
+  * **Nivel 2 – Remitentes [en la lista blanca](#do-you-have-an-allowlist)**: limitados a 10 GB por día globalmente. Exentos de límites por dominio y de ráfaga.
+  * **Nivel 3 – Todos los demás remitentes**: limitados a 1 GB y/o 1000 mensajes por día globalmente, 1 GB y/o 1000 mensajes por `Sender`+dominio diariamente, y un límite de ráfaga de 50 mensajes por `Sender`+dominio por minuto.
+* El límite de ráfaga usa un contador de ventana fija (60 segundos). La ventana comienza cuando llega el primer mensaje y expira después de 60 segundos independientemente de los mensajes posteriores — no se desliza ni se reinicia con cada mensaje.
+* Tenemos un límite diario por buzón de destinatario de 100,000 mensajes. Esto aplica a todos los niveles y previene que cualquier buzón individual sea inundado sin importar el nivel de confianza del remitente.
 
-Todos los límites de tasa se aplican de forma atómica — los contadores se incrementan antes de almacenar el mensaje, eliminando condiciones de carrera donde solicitudes concurrentes podrían evadir los límites.
+Todos los límites de tasa se aplican de forma atómica — los contadores se incrementan antes de almacenar el mensaje, eliminando condiciones de carrera donde solicitudes concurrentes podrían evadir los límites. Las operaciones de decremento (usadas cuando el almacenamiento falla después del incremento) usan scripts Lua seguros que previenen que los contadores se vuelvan negativos.
 
 Los servidores MX también limitan los mensajes que se reenvían a uno o más destinatarios mediante limitación de tasa – pero esto solo aplica a `Senders` que no están en la [lista blanca](#do-you-have-an-allowlist):
 
@@ -5245,6 +5245,7 @@ Los servidores MX también limitan los mensajes que se reenvían a uno o más de
 Nuestros servidores IMAP y SMTP limitan que tus alias tengan más de `60` conexiones concurrentes a la vez.
 
 Nuestros servidores MX limitan a los remitentes [no en la lista blanca](#do-you-have-an-allowlist) a establecer más de 10 conexiones concurrentes (con expiración de caché de 3 minutos para el contador, que refleja nuestro tiempo de espera de socket de 3 minutos).
+
 
 ### ¿Cómo protegen contra el backscatter {#how-do-you-protect-against-backscatter}
 

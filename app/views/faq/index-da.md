@@ -5221,14 +5221,14 @@ Afsenderratebegrænsning sker enten efter roddomænet udtrukket fra et reverse P
 Vores MX-servere har daglige grænser for indgående mail modtaget til [krypteret IMAP-lagring](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * I stedet for at ratebegrænse indgående mail modtaget på individuel alias-basis (f.eks. `you@yourdomain.com`) – ratebegrænser vi efter aliasets domænenavn (f.eks. `yourdomain.com`). Dette forhindrer, at `Senders` oversvømmer indbakkerne for alle aliaser på dit domæne på én gang.
-* Vi har generelle grænser, der gælder for alle `Senders` på tværs af vores service uanset modtager:
-  * `Senders`, som vi anser for at være "pålidelige" som sandhedskilde (f.eks. `gmail.com`, `microsoft.com`, `apple.com`) er begrænset til at sende 100 GB pr. dag.
-  * `Senders`, der er [tilladte](#do-you-have-an-allowlist), er begrænset til at sende 10 GB pr. dag.
-  * Alle andre `Senders` er begrænset til at sende 1 GB og/eller 1000 beskeder pr. dag.
-* Vi har en specifik grænse pr. `Sender` og `yourdomain.com` på 1 GB og/eller 1000 beskeder dagligt.
-* Vi har en burst-grænse på 50 beskeder pr. `Sender` og `yourdomain.com` pr. minut. Dette forhindrer spammere i at oversvømme et domæne med hundredvis af beskeder pr. sekund, selv når den daglige grænse ikke er nået.
+* Ratebegrænsninger anvendes ved hjælp af et niveaudelt system baseret på afsenderens tillidsniveau:
+  * **Niveau 1 – Sandhedskilder** (f.eks. `gmail.com`, `microsoft.com`, `apple.com`): begrænset til 100 GB pr. dag globalt. Fritaget for pr.-domæne og burst-grænser.
+  * **Niveau 2 – [Tilladte](#do-you-have-an-allowlist) afsendere**: begrænset til 10 GB pr. dag globalt. Fritaget for pr.-domæne og burst-grænser.
+  * **Niveau 3 – Alle andre afsendere**: begrænset til 1 GB og/eller 1000 beskeder pr. dag globalt, 1 GB og/eller 1000 beskeder pr. `Sender`+domæne dagligt, og en burst-grænse på 50 beskeder pr. `Sender`+domæne pr. minut.
+* Burst-grænsen bruger en tæller med et fast vindue (60 sekunder). Vinduet starter, når den første besked ankommer, og udløber efter 60 sekunder uanset efterfølgende beskeder — det forskydes eller nulstilles ikke ved hver besked.
+* Vi har et dagligt loft pr. modtagerpostkasse på 100,000 beskeder. Dette gælder for alle niveauer og forhindrer, at en enkelt postkasse bliver oversvømmet uanset afsenderens tillidsniveau.
 
-Alle hastighedsgrænser håndhæves atomisk — tællere øges før beskeden gemmes, hvilket eliminerer kapløbstilstande hvor samtidige anmodninger kunne omgå grænserne.
+Alle hastighedsgrænser håndhæves atomisk — tællere øges før beskeden gemmes, hvilket eliminerer kapløbstilstande hvor samtidige anmodninger kunne omgå grænserne. Dekrementeringsoperationer (bruges når lagring fejler efter inkrementering) bruger sikre Lua-scripts, der forhindrer tællere i at blive negative.
 
 MX-serverne begrænser også beskeder, der videresendes til en eller flere modtagere gennem ratebegrænsning – men dette gælder kun for `Senders`, der ikke er på [tilladelseslisten](#do-you-have-an-allowlist):
 
@@ -5245,6 +5245,7 @@ MX-serverne begrænser også beskeder, der videresendes til en eller flere modta
 Vores IMAP- og SMTP-servere begrænser dine aliaser til ikke at have mere end `60` samtidige forbindelser på én gang.
 
 Vores MX-servere begrænser [ikke-tilladte](#do-you-have-an-allowlist) afsendere fra at etablere mere end 10 samtidige forbindelser (med 3 minutters cache-udløb for tælleren, hvilket svarer til vores socket timeout på 3 minutter).
+
 
 ### Hvordan beskytter I mod backscatter {#how-do-you-protect-against-backscatter}
 

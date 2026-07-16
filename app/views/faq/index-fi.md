@@ -5219,14 +5219,14 @@ Lähettäjän nopeusrajoitus perustuu joko lähettäjän IP-osoitteen käänteis
 MX-palvelimillamme on päivittäiset rajat saapuville sähköposteille, jotka vastaanotetaan [salattuun IMAP-tallennukseen](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Sen sijaan, että rajoittaisimme saapuvia sähköposteja yksittäisen aliaksen perusteella (esim. `you@yourdomain.com`), rajoitamme aliaksen verkkotunnuksen mukaan (esim. `yourdomain.com`). Tämä estää `Senders`-lähettäjiä tulvimasta kaikkien aliasten postilaatikoita yhdellä kertaa.
-* Meillä on yleisiä rajoja, jotka koskevat kaikkia `Senders`-lähettäjiä palvelussamme riippumatta vastaanottajasta:
-  * `Senders`, joita pidämme "luotettuina" totuuden lähteinä (esim. `gmail.com`, `microsoft.com`, `apple.com`), saavat lähettää enintään 100 GB päivässä.
-  * [Sallittuihin listoihin](#do-you-have-an-allowlist) kuuluvat `Senders` saavat lähettää enintään 10 GB päivässä.
-  * Kaikki muut `Senders` saavat lähettää enintään 1 GB ja/tai 1000 viestiä päivässä.
-* Meillä on erityinen raja kullekin `Sender`-lähettäjälle ja `yourdomain.com`-verkkotunnukselle, joka on 1 GB ja/tai 1000 viestiä päivässä.
-* Meillä on purskeen raja 50 viestiä `Sender`-lähettäjää ja `yourdomain.com`-verkkotunnusta kohden minuutissa. Tämä estää roskapostittajia tulvimasta verkkotunnusta sadoilla viesteillä sekunnissa, vaikka päivittäistä rajaa ei olisi saavutettu.
+* Nopeusrajat sovelletaan porrastetun järjestelmän avulla, joka perustuu lähettäjän luottamustasoon:
+  * **Taso 1 – Totuuden lähteet** (esim. `gmail.com`, `microsoft.com`, `apple.com`): rajoitettu 100 GB päivässä maailmanlaajuisesti. Vapautettu verkkotunnuskohtaisista ja purskerajoista.
+  * **Taso 2 – [Sallittuihin listoihin](#do-you-have-an-allowlist) kuuluvat lähettäjät**: rajoitettu 10 GB päivässä maailmanlaajuisesti. Vapautettu verkkotunnuskohtaisista ja purskerajoista.
+  * **Taso 3 – Kaikki muut lähettäjät**: rajoitettu 1 GB ja/tai 1000 viestiä päivässä maailmanlaajuisesti, 1 GB ja/tai 1000 viestiä per `Sender`+verkkotunnus päivittäin, ja purskeen raja 50 viestiä per `Sender`+verkkotunnus minuutissa.
+* Purskeen raja käyttää kiinteän ikkunan laskuria (60 sekuntia). Ikkuna alkaa, kun ensimmäinen viesti saapuu, ja päättyy 60 sekunnin kuluttua riippumatta myöhemmistä viesteistä — se ei liuku tai nollaudu jokaisen viestin kohdalla.
+* Meillä on vastaanottajakohtainen postilaatikon päivittäinen raja 100,000 viestiä. Tämä koskee kaikkia tasoja ja estää minkä tahansa yksittäisen postilaatikon tulvimisen riippumatta lähettäjän luottamustasosta.
 
-Kaikki nopeusrajat pakotetaan atomisesti — laskurit kasvatetaan ennen viestin tallentamista, mikä eliminoi kilpailutilanteet, joissa samanaikaiset pyynnöt voisivat ohittaa rajat.
+Kaikki nopeusrajat pakotetaan atomisesti — laskurit kasvatetaan ennen viestin tallentamista, mikä eliminoi kilpailutilanteet, joissa samanaikaiset pyynnöt voisivat ohittaa rajat. Vähennysoperaatiot (joita käytetään, kun tallennus epäonnistuu kasvatuksen jälkeen) käyttävät turvallisia Lua-skriptejä, jotka estävät laskureita menemästä negatiivisiksi.
 
 MX-palvelimet rajoittavat myös viestien edelleenlähetystä yhdelle tai useammalle vastaanottajalle nopeusrajoituksen avulla – mutta tämä koskee vain `Senders`-lähettäjiä, jotka eivät ole [sallitulla listalla](#do-you-have-an-allowlist):
 
@@ -5243,6 +5243,7 @@ MX-palvelimet rajoittavat myös viestien edelleenlähetystä yhdelle tai useamma
 IMAP- ja SMTP-palvelimemme rajoittavat aliaksiasi enintään `60` samanaikaiseen yhteyteen kerrallaan.
 
 MX-palvelimemme rajoittavat [ei-sallittuja](#do-you-have-an-allowlist) lähettäjiä muodostamasta yli 10 samanaikaista yhteyttä (laskurin välimuistin vanhenemisaika on 3 minuuttia, mikä vastaa socket-yhteyden aikakatkaisua 3 minuuttia).
+
 
 ### Kuinka suojaudutte backscatterilta {#how-do-you-protect-against-backscatter}
 

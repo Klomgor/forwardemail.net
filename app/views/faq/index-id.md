@@ -5220,14 +5220,14 @@ Pembatasan laju pengirim dilakukan berdasarkan domain root yang diurai dari penc
 Server MX kami memiliki batas harian untuk email masuk yang diterima untuk [penyimpanan IMAP terenkripsi](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Alih-alih membatasi laju email masuk yang diterima berdasarkan alias individu (misalnya `you@yourdomain.com`) – kami membatasi laju berdasarkan nama domain alias itu sendiri (misalnya `yourdomain.com`). Ini mencegah `Senders` membanjiri kotak masuk semua alias di seluruh domain Anda sekaligus.
-* Kami memiliki batas umum yang berlaku untuk semua `Senders` di seluruh layanan kami tanpa memandang penerima:
-  * `Senders` yang kami anggap "tepercaya" sebagai sumber kebenaran (misalnya `gmail.com`, `microsoft.com`, `apple.com`) dibatasi mengirim 100 GB per hari.
-  * `Senders` yang [terdaftar dalam daftar izinkan](#do-you-have-an-allowlist) dibatasi mengirim 10 GB per hari.
-  * Semua `Senders` lainnya dibatasi mengirim 1 GB dan/atau 1000 pesan per hari.
-* Kami memiliki batas spesifik per `Sender` dan `yourdomain.com` sebesar 1 GB dan/atau 1000 pesan setiap hari.
-* Kami memiliki batas burst sebesar 50 pesan per `Sender` dan `yourdomain.com` per menit. Ini mencegah spammer membanjiri domain dengan ratusan pesan per detik bahkan ketika batas harian belum tercapai.
+* Batas laju diterapkan menggunakan sistem berjenjang berdasarkan tingkat kepercayaan pengirim:
+  * **Tier 1 – Sumber kebenaran** (misalnya `gmail.com`, `microsoft.com`, `apple.com`): dibatasi hingga 100 GB per hari secara global. Dikecualikan dari batas per domain dan burst.
+  * **Tier 2 – Pengirim [terdaftar dalam daftar izinkan](#do-you-have-an-allowlist)**: dibatasi hingga 10 GB per hari secara global. Dikecualikan dari batas per domain dan burst.
+  * **Tier 3 – Semua pengirim lainnya**: dibatasi hingga 1 GB dan/atau 1000 pesan per hari secara global, 1 GB dan/atau 1000 pesan per `Sender`+domain setiap hari, dan batas burst sebesar 50 pesan per `Sender`+domain per menit.
+* Batas burst menggunakan penghitung jendela tetap (60 detik). Jendela dimulai saat pesan pertama tiba dan berakhir setelah 60 detik terlepas dari pesan berikutnya — ini tidak bergeser atau diatur ulang pada setiap pesan.
+* Kami memiliki batas harian kotak surat per penerima sebesar 100,000 pesan. Ini berlaku untuk semua tier dan mencegah kotak surat mana pun dibanjiri terlepas dari tingkat kepercayaan pengirim.
 
-Semua batas kecepatan diterapkan secara atomik — penghitung dinaikkan sebelum pesan disimpan, menghilangkan kondisi balapan di mana permintaan bersamaan dapat melewati batas.
+Semua batas kecepatan diterapkan secara atomik — penghitung dinaikkan sebelum pesan disimpan, menghilangkan kondisi balapan di mana permintaan bersamaan dapat melewati batas. Operasi penurunan (digunakan saat penyimpanan gagal setelah kenaikan) menggunakan skrip Lua yang aman yang mencegah penghitung menjadi negatif.
 
 Server MX juga membatasi pesan yang diteruskan ke satu atau lebih penerima melalui pembatasan laju – tetapi ini hanya berlaku untuk `Senders` yang tidak ada dalam [daftar izinkan](#do-you-have-an-allowlist):
 
@@ -5244,6 +5244,7 @@ Server MX juga membatasi pesan yang diteruskan ke satu atau lebih penerima melal
 Server IMAP dan SMTP kami membatasi alias Anda agar tidak memiliki lebih dari `60` koneksi bersamaan sekaligus.
 
 Server MX kami membatasi pengirim [yang tidak ada dalam daftar izinkan](#do-you-have-an-allowlist) agar tidak membuat lebih dari 10 koneksi bersamaan (dengan masa kedaluwarsa cache 3 menit untuk penghitung, yang mencerminkan waktu habis socket kami selama 3 menit).
+
 
 ### Bagaimana Anda melindungi dari backscatter {#how-do-you-protect-against-backscatter}
 

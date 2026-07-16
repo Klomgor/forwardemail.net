@@ -5219,14 +5219,14 @@ Ograniczenia szybkości nadawcy dotyczą albo domeny głównej wyciągniętej z 
 Nasze serwery MX mają dzienne limity na przychodzącą pocztę otrzymywaną dla [zaszyfrowanego przechowywania IMAP](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * Zamiast ograniczać szybkość przychodzącej poczty na poziomie pojedynczego aliasu (np. `you@yourdomain.com`) – ograniczamy szybkość według samej domeny aliasu (np. `yourdomain.com`). Zapobiega to zalewaniu skrzynek wszystkich aliasów w Twojej domenie przez `Nadawców` naraz.
-* Mamy ogólne limity, które dotyczą wszystkich `Nadawców` w naszej usłudze niezależnie od odbiorcy:
-  * `Nadawcy`, których uważamy za "zaufane" źródło prawdy (np. `gmail.com`, `microsoft.com`, `apple.com`) mają limit wysyłki 100 GB dziennie.
-  * `Nadawcy`, którzy są [na liście dozwolonych](#do-you-have-an-allowlist) mają limit wysyłki 10 GB dziennie.
-  * Wszyscy inni `Nadawcy` mają limit wysyłki 1 GB i/lub 1000 wiadomości dziennie.
-* Mamy specyficzny limit na `Nadawcę` i `yourdomain.com` wynoszący 1 GB i/lub 1000 wiadomości dziennie.
-* Mamy limit burst wynoszący 50 wiadomości na `Nadawcę` i `yourdomain.com` na minutę. Zapobiega to zalewaniu domeny przez spamerów setkami wiadomości na sekundę, nawet gdy dzienny limit nie został osiągnięty.
+* Limity szybkości są stosowane przy użyciu systemu warstwowego opartego na poziomie zaufania nadawcy:
+  * **Warstwa 1 – Źródła prawdy** (np. `gmail.com`, `microsoft.com`, `apple.com`): limit do 100 GB dziennie globalnie.  Zwolnione z limitów na domenę i limitów burst.
+  * **Warstwa 2 – `Nadawcy` [na liście dozwolonych](#do-you-have-an-allowlist)**: limit do 10 GB dziennie globalnie.  Zwolnione z limitów na domenę i limitów burst.
+  * **Warstwa 3 – Wszyscy inni nadawcy**: limit do 1 GB i/lub 1000 wiadomości dziennie globalnie, 1 GB i/lub 1000 wiadomości na `Nadawcę`+domenę dziennie, oraz limit burst wynoszący 50 wiadomości na `Nadawcę`+domenę na minutę.
+* Limit burst używa licznika ze stałym oknem (60 sekund).  Okno zaczyna się, gdy nadejdzie pierwsza wiadomość i wygasa po 60 sekundach niezależnie od kolejnych wiadomości — nie przesuwa się ani nie resetuje przy każdej wiadomości.
+* Mamy dzienny limit na skrzynkę odbiorcy wynoszący 100,000 wiadomości.  Dotyczy to wszystkich warstw i zapobiega zalewaniu pojedynczej skrzynki niezależnie od poziomu zaufania nadawcy.
 
-Wszystkie limity szybkości są egzekwowane atomowo — liczniki są zwiększane przed zapisaniem wiadomości, eliminując warunki wyścigu, w których równoczesne żądania mogłyby ominąć limity.
+Wszystkie limity szybkości są egzekwowane atomowo — liczniki są zwiększane przed zapisaniem wiadomości, eliminując warunki wyścigu, w których równoczesne żądania mogłyby ominąć limity.  Operacje zmniejszania (używane, gdy zapis się nie powiedzie po zwiększeniu) używają bezpiecznych skryptów Lua, które zapobiegają spadkowi liczników poniżej zera.
 
 Serwery MX ograniczają także wiadomości przekazywane do jednego lub więcej odbiorców poprzez ograniczenia szybkości – ale dotyczy to tylko `Nadawców` nie znajdujących się na [liście dozwolonych](#do-you-have-an-allowlist):
 
@@ -5243,6 +5243,7 @@ Serwery MX ograniczają także wiadomości przekazywane do jednego lub więcej o
 Nasze serwery IMAP i SMTP ograniczają Twoje aliasy do maksymalnie `60` jednoczesnych połączeń.
 
 Nasze serwery MX ograniczają [nie-dozwolonych](#do-you-have-an-allowlist) nadawców do nawiązywania nie więcej niż 10 jednoczesnych połączeń (z 3-minutowym wygaśnięciem pamięci podręcznej licznika, co odpowiada naszemu limitowi czasu socketu 3 minuty).
+
 
 ### Jak chronicie się przed backscatter {#how-do-you-protect-against-backscatter}
 

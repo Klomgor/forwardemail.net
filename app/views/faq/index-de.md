@@ -5219,17 +5219,17 @@ Die Ratenbegrenzung für Absender erfolgt entweder über die Root-Domain, die au
 
 Unsere MX-Server haben tägliche Limits für eingehende E-Mails, die für [verschlüsselten IMAP-Speicher](/blog/docs/best-quantum-safe-encrypted-email-service) empfangen werden:
 
-* Anstatt die eingehenden E-Mails auf individueller Alias-Basis zu begrenzen (z. B. `you@yourdomain.com`), begrenzen wir die Rate nach dem Domainnamen des Alias selbst (z. B. `yourdomain.com`). Dies verhindert, dass `Sender` die Posteingänge aller Aliase Ihrer Domain gleichzeitig überfluten.
-* Wir haben allgemeine Limits, die für alle `Sender` unseres Dienstes unabhängig vom Empfänger gelten:
-  * `Sender`, die wir als "vertrauenswürdig" als Quelle der Wahrheit betrachten (z. B. `gmail.com`, `microsoft.com`, `apple.com`), dürfen 100 GB pro Tag senden.
-  * `Sender`, die auf der [Erlaubnisliste](#do-you-have-an-allowlist) stehen, dürfen 10 GB pro Tag senden.
-  * Alle anderen `Sender` dürfen 1 GB und/oder 1000 Nachrichten pro Tag senden.
-* Wir haben ein spezifisches Limit pro `Sender` und `yourdomain.com` von 1 GB und/oder 1000 Nachrichten täglich.
-* Wir haben ein Burst-Limit von 50 Nachrichten pro `Sender` und `yourdomain.com` pro Minute. Dies verhindert, dass Spammer eine Domain mit Hunderten von Nachrichten pro Sekunde überfluten, selbst wenn das Tageslimit noch nicht erreicht wurde.
+* Anstatt die eingehenden E-Mails auf individueller Alias-Basis zu begrenzen (z. B. `you@yourdomain.com`), begrenzen wir die Rate nach dem Domainnamen des Alias selbst (z. B. `yourdomain.com`). Dies verhindert, dass `Senders` die Posteingänge aller Aliase Ihrer Domain gleichzeitig überfluten.
+* Ratenlimits werden mithilfe eines mehrstufigen Systems basierend auf der Vertrauensstufe des Absenders angewendet:
+  * **Tier 1 – Wahrheitsquellen** (z. B. `gmail.com`, `microsoft.com`, `apple.com`): weltweit auf 100 GB pro Tag begrenzt. Ausgenommen von Pro-Domain- und Burst-Limits.
+  * **Tier 2 – [Erlaubnisgelistete](#do-you-have-an-allowlist) Absender**: weltweit auf 10 GB pro Tag begrenzt. Ausgenommen von Pro-Domain- und Burst-Limits.
+  * **Tier 3 – Alle anderen Absender**: weltweit auf 1 GB und/oder 1000 Nachrichten pro Tag begrenzt, 1 GB und/oder 1000 Nachrichten pro `Sender`+Domain täglich, und ein Burst-Limit von 50 Nachrichten pro `Sender`+Domain pro Minute.
+* Das Burst-Limit verwendet einen Zähler mit festem Fenster (60 Sekunden). Das Fenster beginnt, wenn die erste Nachricht eintrifft, und läuft nach 60 Sekunden ab, unabhängig von nachfolgenden Nachrichten — es verschiebt sich nicht und wird nicht bei jeder Nachricht zurückgesetzt.
+* Wir haben eine tägliche Obergrenze von 100,000 Nachrichten pro Empfänger-Postfach. Dies gilt für alle Stufen und verhindert, dass ein einzelnes Postfach unabhängig von der Vertrauensstufe des Absenders überflutet wird.
 
-Alle Ratenlimits werden atomar durchgesetzt — Zähler werden vor der Speicherung der Nachricht erhöht, wodurch Race Conditions eliminiert werden, bei denen gleichzeitige Anfragen die Limits umgehen könnten.
+Alle Ratenlimits werden atomar durchgesetzt — Zähler werden vor der Speicherung der Nachricht erhöht, wodurch Race Conditions eliminiert werden, bei denen gleichzeitige Anfragen die Limits umgehen könnten. Dekrement-Operationen (die verwendet werden, wenn die Speicherung nach dem Inkrement fehlschlägt) verwenden sichere Lua-Skripte, die verhindern, dass Zähler negativ werden.
 
-Die MX-Server begrenzen auch Nachrichten, die an einen oder mehrere Empfänger weitergeleitet werden, durch Ratenbegrenzung – dies gilt jedoch nur für `Sender`, die nicht auf der [Erlaubnisliste](#do-you-have-an-allowlist) stehen:
+Die MX-Server begrenzen auch Nachrichten, die an einen oder mehrere Empfänger weitergeleitet werden, durch Ratenbegrenzung – dies gilt jedoch nur für `Senders`, die nicht auf der [Erlaubnisliste](#do-you-have-an-allowlist) stehen:
 
 * Wir erlauben nur bis zu 100 Verbindungen pro Stunde, pro aufgelöster FQDN-Root-Domain des `Sender` (oder) der Remote-IP-Adresse des `Sender` (falls kein Reverse-PTR verfügbar ist) und pro Empfänger im Umschlag. Wir speichern den Schlüssel für die Ratenbegrenzung als kryptografischen Hash in unserer Redis-Datenbank.
 
@@ -5239,11 +5239,12 @@ Die MX-Server begrenzen auch Nachrichten, die an einen oder mehrere Empfänger w
 
 * Wenn Sie von einer Domain wie `test.abc.123.example.com` senden, wird die Ratenbegrenzung auf `example.com` angewendet. Viele Spammer verwenden Hunderte von Subdomains, um gängige Spamfilter zu umgehen, die nur eindeutige Hostnamen und nicht eindeutige FQDN-Root-Domains ratenbegrenzen.
 
-* `Sender`, die das Ratenlimit überschreiten, werden mit einem 421-Fehler abgelehnt.
+* `Senders`, die das Ratenlimit überschreiten, werden mit einem 421-Fehler abgelehnt.
 
 Unsere IMAP- und SMTP-Server begrenzen Ihre Aliase darauf, nicht mehr als `60` gleichzeitige Verbindungen gleichzeitig zu haben.
 
 Unsere MX-Server begrenzen [nicht erlaubnisgelistete](#do-you-have-an-allowlist) Sender darauf, nicht mehr als 10 gleichzeitige Verbindungen herzustellen (mit einem 3-minütigen Cache-Ablauf für den Zähler, der unserem Socket-Timeout von 3 Minuten entspricht).
+
 
 ### Wie schützen Sie vor Backscatter {#how-do-you-protect-against-backscatter}
 

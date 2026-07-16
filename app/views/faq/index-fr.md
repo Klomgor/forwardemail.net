@@ -5221,14 +5221,14 @@ La limitation de débit des expéditeurs se fait soit par le domaine racine extr
 Nos serveurs MX ont des limites quotidiennes pour le courrier entrant reçu pour le [stockage IMAP chiffré](/blog/docs/best-quantum-safe-encrypted-email-service) :
 
 * Au lieu de limiter le débit du courrier entrant reçu sur une base d'alias individuel (par exemple `vous@votredomaine.com`) – nous limitons le débit par le nom de domaine de l'alias lui-même (par exemple `votredomaine.com`). Cela empêche les `Expéditeurs` de saturer les boîtes de réception de tous les alias de votre domaine en même temps.
-* Nous avons des limites générales qui s'appliquent à tous les `Expéditeurs` sur notre service quel que soit le destinataire :
-  * Les `Expéditeurs` que nous considérons comme "fiables" en tant que source de vérité (par exemple `gmail.com`, `microsoft.com`, `apple.com`) sont limités à l'envoi de 100 Go par jour.
-  * Les `Expéditeurs` qui sont [sur liste blanche](#do-you-have-an-allowlist) sont limités à l'envoi de 10 Go par jour.
-  * Tous les autres `Expéditeurs` sont limités à l'envoi de 1 Go et/ou 1000 messages par jour.
-* Nous avons une limite spécifique par `Expéditeur` et `votredomaine.com` de 1 Go et/ou 1000 messages par jour.
-* Nous avons une limite de rafale de 50 messages par `Expéditeur` et `votredomaine.com` par minute. Cela empêche les spammeurs d'inonder un domaine avec des centaines de messages par seconde même lorsque la limite quotidienne n'a pas été atteinte.
+* Les limites de débit sont appliquées en utilisant un système à plusieurs niveaux basé sur le niveau de confiance de l'expéditeur :
+  * **Niveau 1 – Sources de vérité** (par exemple `gmail.com`, `microsoft.com`, `apple.com`) : limitées à 100 Go par jour globalement. Exemptées des limites par domaine et de rafale.
+  * **Niveau 2 – Expéditeurs [sur liste blanche](#do-you-have-an-allowlist)** : limités à 10 Go par jour globalement. Exemptés des limites par domaine et de rafale.
+  * **Niveau 3 – Tous les autres expéditeurs** : limités à 1 Go et/ou 1000 messages par jour globalement, 1 Go et/ou 1000 messages par `Expéditeur`+domaine quotidiennement, et une limite de rafale de 50 messages par `Expéditeur`+domaine par minute.
+* La limite de rafale utilise un compteur à fenêtre fixe (60 secondes). La fenêtre commence lorsque le premier message arrive et expire après 60 secondes indépendamment des messages suivants — elle ne glisse pas ou ne se réinitialise pas à chaque message.
+* Nous avons un plafond quotidien de 100,000 messages par boîte de réception de destinataire. Cela s'applique à tous les niveaux et empêche toute boîte de réception unique d'être inondée quel que soit le niveau de confiance de l'expéditeur.
 
-Toutes les limites de débit sont appliquées de manière atomique — les compteurs sont incrémentés avant le stockage du message, éliminant les conditions de concurrence où des requêtes simultanées pourraient contourner les limites.
+Toutes les limites de débit sont appliquées de manière atomique — les compteurs sont incrémentés avant le stockage du message, éliminant les conditions de concurrence où des requêtes simultanées pourraient contourner les limites. Les opérations de décrémentation (utilisées lorsque le stockage échoue après l'incrémentation) utilisent des scripts Lua sécurisés qui empêchent les compteurs de devenir négatifs.
 
 Les serveurs MX limitent également les messages transférés à un ou plusieurs destinataires via la limitation de débit – mais cela ne s'applique qu'aux `Expéditeurs` qui ne sont pas sur la [liste blanche](#do-you-have-an-allowlist) :
 
@@ -5245,6 +5245,7 @@ Les serveurs MX limitent également les messages transférés à un ou plusieurs
 Nos serveurs IMAP et SMTP limitent vos alias à ne pas avoir plus de `60` connexions simultanées à la fois.
 
 Nos serveurs MX limitent les expéditeurs [non sur liste blanche](#do-you-have-an-allowlist) à ne pas établir plus de 10 connexions simultanées (avec une expiration du cache de 3 minutes pour le compteur, ce qui reflète notre délai d'attente de socket de 3 minutes).
+
 
 ### Comment protégez-vous contre le backscatter {#how-do-you-protect-against-backscatter}
 

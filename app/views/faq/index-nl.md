@@ -5220,14 +5220,14 @@ Sender rate limiting gebeurt ofwel op basis van het rootdomein dat wordt geparse
 Onze MX-servers hebben dagelijkse limieten voor binnenkomende mail die wordt ontvangen voor [versleutelde IMAP-opslag](/blog/docs/best-quantum-safe-encrypted-email-service):
 
 * In plaats van rate limiting toe te passen op binnenkomende mail per individuele alias (bijv. `you@yourdomain.com`) – passen we rate limiting toe op de domeinnaam van de alias zelf (bijv. `yourdomain.com`). Dit voorkomt dat `Senders` de inboxen van alle aliassen binnen uw domein tegelijk overspoelen.
-* We hebben algemene limieten die gelden voor alle `Senders` binnen onze dienst ongeacht de ontvanger:
-  * `Senders` die wij als "vertrouwd" beschouwen als bron van waarheid (bijv. `gmail.com`, `microsoft.com`, `apple.com`) mogen maximaal 100 GB per dag verzenden.
-  * `Senders` die [allowlisted](#do-you-have-an-allowlist) zijn mogen maximaal 10 GB per dag verzenden.
-  * Alle andere `Senders` mogen maximaal 1 GB en/of 1000 berichten per dag verzenden.
-* We hebben een specifieke limiet per `Sender` en `yourdomain.com` van 1 GB en/of 1000 berichten per dag.
-* We hebben een burst-limiet van 50 berichten per `Sender` en `yourdomain.com` per minuut. Dit voorkomt dat spammers een domein overspoelen met honderden berichten per seconde, zelfs wanneer de dagelijkse limiet nog niet is bereikt.
+* Rate limits worden toegepast met behulp van een gelaagd systeem op basis van het vertrouwensniveau van de afzender:
+  * **Tier 1 – Waarheidsbronnen** (bijv. `gmail.com`, `microsoft.com`, `apple.com`): wereldwijd beperkt tot 100 GB per dag.  Vrijgesteld van per-domein en burst-limieten.
+  * **Tier 2 – [Allowlisted](#do-you-have-an-allowlist) afzenders**: wereldwijd beperkt tot 10 GB per dag.  Vrijgesteld van per-domein en burst-limieten.
+  * **Tier 3 – Alle andere afzenders**: wereldwijd beperkt tot 1 GB en/of 1000 berichten per dag, 1 GB en/of 1000 berichten per `Sender`+domein per dag, en een burst-limiet van 50 berichten per `Sender`+domein per minuut.
+* De burst-limiet gebruikt een teller met een vast venster (60 seconden).  Het venster begint wanneer het eerste bericht aankomt en verloopt na 60 seconden, ongeacht volgende berichten — het schuift niet op en wordt niet gereset bij elk bericht.
+* We hebben een dagelijkse limiet per mailbox van de ontvanger van 100,000 berichten.  Dit geldt voor alle tiers en voorkomt dat een enkele mailbox wordt overspoeld, ongeacht het vertrouwensniveau van de afzender.
 
-Alle snelheidslimieten worden atomisch afgedwongen — tellers worden verhoogd voordat het bericht wordt opgeslagen, waardoor race-condities worden geëlimineerd waarbij gelijktijdige verzoeken de limieten zouden kunnen omzeilen.
+Alle snelheidslimieten worden atomisch afgedwongen — tellers worden verhoogd voordat het bericht wordt opgeslagen, waardoor race-condities worden geëlimineerd waarbij gelijktijdige verzoeken de limieten zouden kunnen omzeilen.  Verlagingsoperaties (gebruikt wanneer opslag mislukt na verhoging) gebruiken veilige Lua-scripts die voorkomen dat tellers negatief worden.
 
 De MX-servers beperken ook het aantal berichten dat wordt doorgestuurd naar een of meer ontvangers via rate limiting – maar dit geldt alleen voor `Senders` die niet op de [allowlist](#do-you-have-an-allowlist) staan:
 
@@ -5244,6 +5244,7 @@ De MX-servers beperken ook het aantal berichten dat wordt doorgestuurd naar een 
 Onze IMAP- en SMTP-servers beperken uw aliassen tot niet meer dan `60` gelijktijdige verbindingen tegelijk.
 
 Onze MX-servers beperken [niet-allowlisted](#do-you-have-an-allowlist) afzenders tot niet meer dan 10 gelijktijdige verbindingen (met een cache-verval van 3 minuten voor de teller, wat overeenkomt met onze socket timeout van 3 minuten).
+
 
 ### Hoe beschermt u tegen backscatter {#how-do-you-protect-against-backscatter}
 
