@@ -29,7 +29,9 @@ class DatabaseLRUMap {
   constructor(options = {}) {
     this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 1000;
     this.idleTTL = options.idleTTL || ms('5m');
-    this._map = new Map(); // key -> { db, lastAccess }
+    // shrinkTTL: after this idle period, release page cache but keep connection open
+    this.shrinkTTL = options.shrinkTTL || ms('2m');
+    this._map = new Map(); // key -> { db, lastAccess, shrunk }
     this._closing = new Set(); // keys currently being closed
 
     // Periodic sweep to close idle databases (every 30s)
@@ -53,6 +55,7 @@ class DatabaseLRUMap {
     // Update last access time (LRU touch) — this is what prevents
     // eviction of actively-used databases without needing ref/unref.
     entry.lastAccess = Date.now();
+    entry.shrunk = false;
     return entry.db;
   }
 
@@ -72,7 +75,8 @@ class DatabaseLRUMap {
 
     this._map.set(key, {
       db,
-      lastAccess: Date.now()
+      lastAccess: Date.now(),
+      shrunk: false
     });
     return this;
   }
@@ -141,18 +145,34 @@ class DatabaseLRUMap {
   }
 
   // Sweep idle databases that haven't been accessed within TTL.
+  // Also release page cache (shrink_memory) for semi-idle DBs to
+  // prevent unbounded native memory growth from SQLite page caches.
   _sweepIdle() {
     const now = Date.now();
     const toEvict = [];
+    let shrunkCount = 0;
     for (const [key, entry] of this._map) {
-      if (now - entry.lastAccess > this.idleTTL) {
-        // Skip entries mid-transaction
-        if (entry.db && entry.db.inTransaction) continue;
-        // Skip entries currently being closed
-        if (this._closing.has(key)) continue;
-        // Skip entries whose db is not open (already closed externally)
-        if (!entry.db || !entry.db.open) continue;
+      if (!entry.db || !entry.db.open) continue;
+      if (this._closing.has(key)) continue;
+      if (entry.db.inTransaction) continue;
+
+      const idleMs = now - entry.lastAccess;
+
+      if (idleMs > this.idleTTL) {
+        // Fully idle — close the connection
         toEvict.push(key);
+      } else if (idleMs > this.shrinkTTL && !entry.shrunk) {
+        // Semi-idle — release page cache but keep connection open.
+        // This reclaims native memory (up to 16MB per DB) without
+        // the TTI penalty of reopening the connection on next access.
+        try {
+          entry.db.pragma('shrink_memory');
+          entry.shrunk = true;
+          shrunkCount++;
+        } catch (err) {
+          // Non-fatal: DB may have been closed concurrently
+          logger.debug(err);
+        }
       }
     }
 
@@ -171,9 +191,13 @@ class DatabaseLRUMap {
       }
     }
 
-    if (toEvict.length > 0 && boolean(env.SQLITE_DEBUG_TIMERS)) {
+    if (
+      (toEvict.length > 0 || shrunkCount > 0) &&
+      boolean(env.SQLITE_DEBUG_TIMERS)
+    ) {
       console.debug('DatabaseLRUMap sweep', {
         evicted: toEvict.length,
+        shrunk: shrunkCount,
         duration_ms: Date.now() - now,
         remaining: this._map.size
       });
