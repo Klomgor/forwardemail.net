@@ -134,7 +134,7 @@ async function getDatabase(
     session.db.open === true
   ) {
     if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-      console.debug('getDatabase session.db reuse', {
+      console.log('getDatabase session.db reuse', {
         alias_id: alias?.id
       });
     }
@@ -499,7 +499,7 @@ async function getDatabase(
       db = cachedDb;
       session.db = db;
       if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-        console.debug('getDatabase cache hit', {
+        console.log('getDatabase cache hit', {
           alias_id: alias.id
         });
       }
@@ -534,7 +534,7 @@ async function getDatabase(
       // (also used in allocateConnection in IMAP notifier)
       session.db = db;
       if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-        console.debug('getDatabase cache miss (opened)', {
+        console.log('getDatabase cache miss (opened)', {
           duration_ms: Date.now() - t0,
           alias_id: alias.id,
           readonly

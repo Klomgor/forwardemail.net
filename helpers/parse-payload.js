@@ -429,7 +429,7 @@ async function parsePayload(data, ws) {
           payload.session
         );
         if (debugTimers) {
-          console.debug('parsePayload onAppend (append)', {
+          console.log('parsePayload onAppend (append)', {
             duration_ms: Date.now() - t0,
             alias_id: payload.session?.user?.alias_id
           });
@@ -2253,7 +2253,7 @@ async function parsePayload(data, ws) {
             payload.session
           );
           if (debugTimers) {
-            console.debug('parsePayload getDatabase (stmt)', {
+            console.log('parsePayload getDatabase (stmt)', {
               duration_ms: Date.now() - t0,
               alias_id: payload.session.user.alias_id
             });

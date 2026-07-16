@@ -178,7 +178,7 @@ class SQLite {
       }
 
       if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-        console.debug('broadcast', {
+        console.log('broadcast', {
           duration_ms: Date.now() - t0,
           local_clients: localSent,
           session_id: session.id,
@@ -292,7 +292,7 @@ class SQLite {
           .call(this, data, ws)
           .then(() => {
             if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-              console.debug('parsePayload complete', {
+              console.log('parsePayload complete', {
                 duration_ms: Date.now() - t0
               });
             }
