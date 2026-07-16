@@ -364,6 +364,7 @@ const Aliases = new mongoose.Schema({
     validate: (value) => (typeof value === 'string' ? isEmail(value) : true)
   },
   imap_not_enabled_sent_at: Date,
+  welcome_email_sent_at: Date,
   imap_backup_at: Date,
   last_vacuum_at: Date,
   //

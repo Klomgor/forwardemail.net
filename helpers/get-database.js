@@ -709,18 +709,34 @@ async function getDatabase(
         const isInitialSetup = await ensureDefaultMailboxes(instance, session);
 
         // Send welcome email on first-time mailbox setup via email queue
-        if (isInitialSetup && config.env !== 'test') {
-          const aliasAddress = session.user.username;
-          email({
-            template: 'welcome-mailbox',
-            message: { to: aliasAddress },
-            locals: { aliasAddress, locale: session.user.locale || 'en' }
-          }).catch((err) =>
-            logger.warn('Failed to send welcome email', {
-              session,
-              error: err.message
-            })
+        // Only send for aliases with IMAP enabled and only once (persisted in MongoDB)
+        if (
+          isInitialSetup &&
+          config.env !== 'test' &&
+          session.user.alias_has_imap
+        ) {
+          const result = await Aliases.findOneAndUpdate(
+            {
+              id: session.user.alias_id,
+              welcome_email_sent_at: { $exists: false }
+            },
+            { $set: { welcome_email_sent_at: new Date() } }
           );
+
+          // Only send if we successfully claimed the field (atomic dedup)
+          if (result) {
+            const aliasAddress = session.user.username;
+            email({
+              template: 'welcome-mailbox',
+              message: { to: aliasAddress },
+              locals: { aliasAddress, locale: session.user.locale || 'en' }
+            }).catch((err) =>
+              logger.warn('Failed to send welcome email', {
+                session,
+                error: err.message
+              })
+            );
+          }
         }
       } catch (err) {
         logger.fatal(err, { session, resolver: instance.resolver });
@@ -1502,9 +1518,47 @@ function retryGetDatabase(...args) {
             }
 
             error.stats = stats;
+
+            //
+            // Prevent deletion loop: if the file was created recently
+            // (within 7 days), it was likely just recreated by a previous
+            // NOTADB recovery. Deleting it again would create an infinite
+            // cycle of: corrupt -> delete -> recreate -> corrupt.
+            //
+            const fileAgeMs = Date.now() - stats.birthtimeMs;
+            if (fileAgeMs < ms('7d')) {
+              error.message = `SQLITE_NOTADB loop detected for ${
+                session.user.username
+              } (${session.user.alias_id}) - db file was created ${Math.round(
+                fileAgeMs / ms('1h')
+              )}h ago, refusing to delete again\n\n${error.message}`;
+              throw error;
+            }
           } catch (err) {
+            if (err.code === 'SQLITE_NOTADB') throw err;
             logger.debug(err);
             return;
+          }
+
+          //
+          // Cooldown: additional Redis-based guard in case filesystem
+          // birthtimeMs is unreliable (e.g. NFS, copy operations).
+          //
+          const notadbCooldownKey = `notadb_reset:${session.user.alias_id}`;
+          if (instance.client) {
+            const alreadyReset = await instance.client.get(notadbCooldownKey);
+            if (alreadyReset) {
+              error.message = `SQLITE_NOTADB loop detected (Redis) for ${session.user.username} (${session.user.alias_id}) - db was already reset on ${alreadyReset}, refusing to delete again\n\n${error.message}`;
+              throw error;
+            }
+
+            // Set cooldown for 7 days to break the loop
+            await instance.client.set(
+              notadbCooldownKey,
+              new Date().toISOString(),
+              'PX',
+              ms('7d')
+            );
           }
 
           //
