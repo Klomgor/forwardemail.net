@@ -1412,6 +1412,31 @@ async function forward(recipient, headers, session, body) {
   if (!_.isArray(recipient.to) || recipient.to.length > 1)
     throw new TypeError('Invalid array of recipients');
 
+  //
+  // RFC 6531/6532 downgrade (RFC 5504): convert internationalized domain
+  // names in address headers to ACE/Punycode so that receiving MTAs which
+  // do not advertise SMTPUTF8 can process the message.  A-labels are
+  // always valid per RFC 5321, so this is safe for all servers.
+  //
+  for (const hdr of ['from', 'to', 'cc', 'reply-to', 'sender']) {
+    const value = getHeaders(headers, hdr);
+    if (!value) continue;
+    // only rewrite if the header contains non-ASCII characters
+    if (!/[\u0080-\uFFFF]/.test(value)) continue;
+    // replace domain parts of email addresses with their ACE equivalents
+    const downgraded = value.replace(
+      /(@)([^@\s>,;]+)/g,
+      (match, at, domain) => {
+        try {
+          return `${at}${punycode.toASCII(domain)}`;
+        } catch {
+          return match;
+        }
+      }
+    );
+    if (downgraded !== value) headers.update(hdr, downgraded);
+  }
+
   const unsealed = Buffer.concat([headers.build(), body]);
   const sealHeaders = await sealMessage(unsealed, {
     ...config.signatureData,

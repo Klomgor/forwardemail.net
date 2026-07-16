@@ -11,9 +11,12 @@ const AnalyticsEvents = require('#models/analytics-events');
 const AnalyticsSummary = require('#models/analytics-summary');
 const { Users } = require('#models');
 
-// Cache TTL in milliseconds
-const CACHE_TTL = ms('5m');
+// Cache TTL in milliseconds (1h is fine since data is hourly-aggregated)
+const CACHE_TTL = ms('1h');
 const CACHE_PREFIX = 'analytics:';
+
+// Maximum time for MongoDB aggregation queries (prevents infinite hangs)
+const AGGREGATION_TIMEOUT_MS = 30_000;
 
 /**
  * Get cached data or execute query
@@ -301,7 +304,7 @@ async function dashboard(ctx) {
             { $sort: { count: -1 } },
             { $limit: 10 }
           ],
-          { allowDiskUse: true }
+          { allowDiskUse: true, maxTimeMS: AGGREGATION_TIMEOUT_MS }
         ),
         Users.aggregate(
           [
@@ -326,7 +329,7 @@ async function dashboard(ctx) {
             { $sort: { count: -1 } },
             { $limit: 10 }
           ],
-          { allowDiskUse: true }
+          { allowDiskUse: true, maxTimeMS: AGGREGATION_TIMEOUT_MS }
         ),
         Users.aggregate(
           [
@@ -357,7 +360,7 @@ async function dashboard(ctx) {
             { $sort: { count: -1 } },
             { $limit: 10 }
           ],
-          { allowDiskUse: true }
+          { allowDiskUse: true, maxTimeMS: AGGREGATION_TIMEOUT_MS }
         )
       ]);
 

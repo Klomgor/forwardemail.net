@@ -1381,6 +1381,22 @@ Users.index(
 // Text search index for email field to enable efficient email searching
 Users.index({ email: 'text' });
 
+// Compound indexes for Admin > Analytics signup attribution queries.
+// Without these, the aggregation pipelines do full collection scans on
+// created_at which causes the page to time out on large Users collections.
+Users.index(
+  { created_at: -1, signup_referrer: 1 },
+  { partialFilterExpression: { signup_referrer: { $exists: true } } }
+);
+Users.index(
+  { created_at: -1, signup_landing_page: 1 },
+  { partialFilterExpression: { signup_landing_page: { $exists: true } } }
+);
+Users.index(
+  { created_at: -1, signup_utm_source: 1 },
+  { partialFilterExpression: { signup_utm_source: { $exists: true } } }
+);
+
 async function getBannedUserIdSet(client) {
   let bannedUserIds = [];
   bannedUserIds = await client.get('banned_user_ids');

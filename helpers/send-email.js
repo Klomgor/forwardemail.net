@@ -35,6 +35,26 @@ const Emails = require('#models/emails');
 const env = require('#config/env');
 const config = require('#config');
 
+//
+// RFC 5321 Section 2.3.5: The domain part of a mailbox MUST be
+// representable as an A-label (ACE/Punycode) for interoperability
+// with servers that do not support SMTPUTF8 (RFC 6531).
+// This function converts the domain part of an email address to
+// ACE form while preserving the local part unchanged.
+//
+function punycodeEnvelopeAddress(address) {
+  if (!address || typeof address !== 'string') return address;
+  const atIndex = address.lastIndexOf('@');
+  if (atIndex === -1) return address;
+  const localPart = address.slice(0, atIndex);
+  const domainPart = address.slice(atIndex + 1);
+  try {
+    return `${localPart}@${punycode.toASCII(domainPart)}`;
+  } catch {
+    return address;
+  }
+}
+
 async function getPGPResults({
   session,
   envelope,
@@ -251,6 +271,17 @@ async function sendEmail(
     !isEmail(envelope.to)
   )
     throw new TypeError('Envelope to missing or not a single email');
+
+  //
+  // RFC 6531/6532 downgrade: always encode envelope addresses to ACE/Punycode
+  // so that servers not advertising SMTPUTF8 can accept the message.
+  // This is safe for all servers since A-labels are valid per RFC 5321.
+  //
+  envelope = {
+    ...envelope,
+    to: punycodeEnvelopeAddress(envelope.to),
+    ...(envelope.from ? { from: punycodeEnvelopeAddress(envelope.from) } : {})
+  };
 
   // check against denylist
   try {
@@ -687,3 +718,4 @@ async function sendEmail(
 }
 
 module.exports = sendEmail;
+module.exports.punycodeEnvelopeAddress = punycodeEnvelopeAddress;
