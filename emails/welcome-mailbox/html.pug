@@ -9,66 +9,80 @@ block content
           .card-body.text-center.p-0
             .p-3
               p.card-text
+                = emoji("lock")
+                = " "
                 = t("Your encrypted mailbox is ready.")
               if aliasAddress
                 p.card-text
                   strong= aliasAddress
             .p-3
-              h1.h3= t("Get Started")
+              h1.h3
+                = emoji("rocket")
+                = " "
+                = t("Get Started")
               ul.list-unstyled.text-left.mb-0.d-inline-block.mx-auto
                 li
-                  = emoji("white_check_mark")
+                  = emoji("book")
                   = " "
                   a(href=`${config.urls.web}/${locale}/faq`)= t("FAQ")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("inbox_tray")
                   = " "
                   a(
                     href=`${config.urls.web}/${locale}/faq#how-do-i-import-and-migrate-my-existing-mailbox`
                   )= t("Import & Migrate Your Mailbox")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("computer")
                   = " "
                   a(
                     href=`${config.urls.web}/${locale}/faq#do-you-support-receiving-email-with-imap`
                   )= t("Email Client Setup")
             .p-3
-              h1.h3= t("Manage Your Account")
+              h1.h3
+                = emoji("gear")
+                = " "
+                = t("Manage Your Account")
               ul.list-unstyled.text-left.mb-0.d-inline-block.mx-auto
                 li
-                  = emoji("white_check_mark")
+                  = emoji("mailbox_with_mail")
                   = " "
                   a(href=`${config.urls.web}/${locale}/my-account/domains`)= t("Create Aliases & Mailboxes")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("shield")
                   = " "
                   a(href=`${config.urls.web}/${locale}/my-account/security`)= t("Account Security & Profile")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("credit_card")
                   = " "
                   a(href=`${config.urls.web}/${locale}/my-account/billing`)= t("Billing & Plans")
             .p-3
-              h1.h3= t("Learn More")
+              h1.h3
+                = emoji("bulb")
+                = " "
+                = t("Learn More")
               ul.list-unstyled.text-left.mb-0.d-inline-block.mx-auto
                 li
-                  = emoji("white_check_mark")
+                  = emoji("page_facing_up")
                   = " "
                   a(href=`${config.urls.web}/technical-whitepaper.pdf`)= t("Technical Whitepaper (PDF)")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("wrench")
                   = " "
                   a(
                     href=`${config.urls.web}/${locale}/faq#do-you-support-self-hosting`
                   )= t("Self-Hosting Guide")
             .p-3
-              h1.h3= t("Connect With Us")
+              h1.h3
+                = emoji("speech_balloon")
+                = " "
+                = t("Connect With Us")
               ul.list-unstyled.text-left.mb-0.d-inline-block.mx-auto
                 li
-                  = emoji("white_check_mark")
+                  = emoji("raising_hand")
                   = " "
                   a(href=`${config.urls.web}/${locale}/help`)= t("Support & Help")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("speech_balloon")
                   = " "
                   a(
                     href="https://matrix.to/#/#forwardemail:matrix.org",
@@ -76,7 +90,7 @@ block content
                     rel="noopener noreferrer"
                   )= t("Matrix Chat Room")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("bird")
                   = " "
                   a(
                     href="https://x.com/fwdemail",
@@ -84,7 +98,7 @@ block content
                     rel="noopener noreferrer"
                   )= t("@fwdemail on X (Twitter)")
                 li
-                  = emoji("white_check_mark")
+                  = emoji("hammer_and_wrench")
                   = " "
                   a(
                     href="https://github.com/forwardemail",
