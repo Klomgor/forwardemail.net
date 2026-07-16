@@ -17,10 +17,10 @@ test.afterEach((t) => {
 
 // --- Constructor ---
 
-test('constructor > defaults maxSize to 2500', (t) => {
+test('constructor > defaults maxSize to 1000', (t) => {
   const map = new DatabaseLRUMap();
   t.context.map = map;
-  t.is(map.maxSize, 2500);
+  t.is(map.maxSize, 1000);
 });
 
 test('constructor > accepts custom options', (t) => {
