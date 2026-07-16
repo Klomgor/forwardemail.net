@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
+const process = require('node:process');
 const fs = require('node:fs');
 const os = require('node:os');
 
@@ -609,8 +610,12 @@ async function getDatabase(
       }
     }
 
+    // Per-stage maintenance timing (always on for slow stages > 500ms)
+    let _maint_t0;
+
     // migrate schema
     // TODO: add p-timeout to the client.get calls below
+    _maint_t0 = Date.now();
     if (!migrateCheck) {
       try {
         //
@@ -700,10 +705,22 @@ async function getDatabase(
       }
     }
 
+    if (!migrateCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=migrateSchema alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // create initial folders for the user if they do not yet exist
     // (only do this once every day)
     //
+    _maint_t0 = Date.now();
     if (!folderCheck) {
       try {
         const isInitialSetup = await ensureDefaultMailboxes(instance, session);
@@ -743,9 +760,21 @@ async function getDatabase(
       }
     }
 
+    if (!folderCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=folderCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // NOTE: we remove messages in Junk/Trash folder that are >= 30 days old
     //       (but we only do this once every day)
+    _maint_t0 = Date.now();
     if (!trashCheck) {
       try {
         await instance.client.set(
@@ -961,9 +990,21 @@ async function getDatabase(
       }
     }
 
+    if (!trashCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=trashCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // NOTE: we delete thread ids that don't correspond to messages anymore
     //
+    _maint_t0 = Date.now();
     if (!threadCheck) {
       try {
         await instance.client.set(
@@ -981,6 +1022,18 @@ async function getDatabase(
       }
     }
 
+    if (!threadCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=threadCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
+    _maint_t0 = Date.now();
     if (!calendarDuplicateCheck) {
       try {
         await instance.client.set(
@@ -1022,12 +1075,24 @@ async function getDatabase(
       }
     }
 
+    if (!calendarDuplicateCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=calendarDuplicateCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // Fix HIGHESTMODSEQ (modifyIndex) for mailboxes where messages have higher modseq
     // This corrects the issue caused by the on-copy.js bug where messages copied from
     // high-activity mailboxes retained their source modseq instead of getting the target
     // mailbox's modifyIndex. Only run once per week.
     //
+    _maint_t0 = Date.now();
     if (!highestmodseqCheck) {
       try {
         await instance.client.set(
@@ -1086,10 +1151,22 @@ async function getDatabase(
       }
     }
 
+    if (!highestmodseqCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=highestmodseqCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // Storage format migration: convert attachment bodies from hex to base64
     // This is a one-time migration that saves ~33% storage on attachments
     //
+    _maint_t0 = Date.now();
     if (!storageFormatCheck) {
       try {
         await instance.client.set(
@@ -1124,12 +1201,24 @@ async function getDatabase(
       }
     }
 
+    if (!storageFormatCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=storageFormatCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // Fix CalDAV href values and restore soft-deleted events from the bad patch window.
     // This is a one-time migration that:
     // 1. Clears href for events modified during the window
     // 2. Restores events that were soft-deleted during the window
     //
+    _maint_t0 = Date.now();
     if (!caldavHrefCheck) {
       try {
         await instance.client.set(
@@ -1152,6 +1241,17 @@ async function getDatabase(
       }
     }
 
+    if (!caldavHrefCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=caldavHrefCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
     //
     // Backfill dtstart, dtend, and is_recurring columns for CalendarEvents
     // that were created before these columns were added to the schema.
@@ -1159,6 +1259,7 @@ async function getDatabase(
     // loading every event and parsing ICS in memory.
     // (only do this once every 30 days per alias)
     //
+    _maint_t0 = Date.now();
     if (!calendarDateCheck) {
       try {
         await instance.client.set(
@@ -1181,6 +1282,18 @@ async function getDatabase(
       }
     }
 
+    if (!calendarDateCheck) {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=calendarDateCheck alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
+    }
+
+    _maint_t0 = Date.now();
     if (
       !migrateCheck ||
       !folderCheck ||
@@ -1369,6 +1482,17 @@ async function getDatabase(
         err.isCodeBug = true;
         logger.fatal(err);
       }
+    }
+
+    {
+      const _d = Date.now() - _maint_t0;
+      if (_d > 500)
+        console.warn(
+          '[SLOW_MAINT] pid=%d stage=vacuum alias=%s duration=%dms',
+          process.pid,
+          session?.user?.alias_name,
+          _d
+        );
     }
 
     // Final safety: if the handle was closed during initialization

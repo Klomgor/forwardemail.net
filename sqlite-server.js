@@ -37,6 +37,20 @@ const refreshSession = require('#helpers/refresh-session');
 const { decrypt } = require('#helpers/encrypt-decrypt');
 const { encoder } = require('#helpers/encoder-decoder');
 
+//
+// Event loop lag monitor: detects when the event loop is blocked > 100ms
+// Logs with worker PID so we can correlate with pm2 instance
+//
+let _lagPrev = Date.now();
+setInterval(() => {
+  const now = Date.now();
+  const lag = now - _lagPrev - 1000;
+  _lagPrev = now;
+  if (lag > 100) {
+    console.warn('[EVENT_LOOP_LAG] pid=%d lag=%dms', process.pid, lag);
+  }
+}, 1000).unref();
+
 class SQLite {
   constructor(options = {}) {
     this.client = options.client;

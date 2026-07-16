@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
+const process = require('node:process');
 const fs = require('node:fs');
 const os = require('node:os');
 const punycode = require('node:punycode');
@@ -2640,6 +2641,19 @@ async function parsePayload(data, ws) {
     // SQLite auto-checkpoints at wal_autocheckpoint (default 1000 pages).
 
     if (db && !this?.databaseMap) await closeDatabase(db);
+
+    // Slow request warning (always on, not gated by SQLITE_DEBUG_TIMERS)
+    const elapsed = Date.now() - now;
+    if (elapsed > 1000) {
+      console.warn(
+        '[SLOW_REQUEST] pid=%d action=%s alias=%s domain=%s duration=%dms',
+        process.pid,
+        payload?.action,
+        payload?.session?.user?.alias_name,
+        payload?.session?.user?.domain_name,
+        elapsed
+      );
+    }
 
     if (!ws) return response.data;
 
