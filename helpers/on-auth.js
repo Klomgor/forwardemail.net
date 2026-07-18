@@ -343,7 +343,7 @@ async function onAuth(auth, session, fn) {
           ) {
             const syncKey = `sync_dedup:${user.alias_id}`;
             this.client
-              .set(syncKey, '1', 'PX', ms('5s'), 'NX')
+              .set(syncKey, '1', 'PX', ms('30s'), 'NX')
               .then((locked) => {
                 if (!locked) return;
                 return this.wsp
@@ -1151,7 +1151,7 @@ async function onAuth(auth, session, fn) {
     ) {
       const syncKey = `sync_dedup:${user.alias_id}`;
       this.client
-        .set(syncKey, '1', 'PX', ms('5s'), 'NX')
+        .set(syncKey, '1', 'PX', ms('30s'), 'NX')
         .then((locked) => {
           if (!locked) return;
           return this.wsp

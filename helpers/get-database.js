@@ -688,6 +688,36 @@ async function getDatabase(
         }
 
         //
+        // Compound covering indexes for hot IMAP queries.
+        // These are created IF NOT EXISTS so they're idempotent.
+        //
+        // 1. (mailbox, uid) — covers the UID-list query (SELECT/EXAMINE)
+        //    and FETCH queries (WHERE mailbox = ? AND uid IN (...) ORDER BY uid)
+        //
+        // 2. (mailbox, unseen) — covers STATUS unseen count
+        //    (SELECT count(*) FROM Messages WHERE mailbox = ? AND unseen = 1)
+        //
+        // 3. (mailbox, undeleted, uid) — covers EXPUNGE
+        //    (DELETE FROM Messages WHERE mailbox = ? AND undeleted = 0 ORDER BY uid)
+        //
+        try {
+          db.prepare(
+            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
+          ).run();
+          db.prepare(
+            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
+          ).run();
+          db.prepare(
+            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
+          ).run();
+        } catch (err) {
+          // Ignore if table doesn't exist yet (fresh DB, will be created on next open)
+          if (!err.message.includes('no such table')) {
+            logger.fatal(err, { session, resolver: instance.resolver });
+          }
+        }
+
+        //
         // only cache migrate_check as successful if no CREATE TABLE
         // commands failed; otherwise the next request will re-attempt
         // migration instead of hitting "no such table" errors

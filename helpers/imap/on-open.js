@@ -46,7 +46,6 @@ async function onOpen(path, session, fn) {
       condition: {
         mailbox: mailbox._id.toString()
       },
-      group: 'uid',
       fields: ['uid'],
       sort: 'uid'
     });

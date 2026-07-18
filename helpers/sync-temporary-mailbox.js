@@ -114,6 +114,10 @@ async function syncTemporaryMailbox(session) {
           });
           tmpDb.prepare(sql.query).run(sql.values);
           deleted++;
+
+          // yield event loop between messages so other requests aren't starved
+
+          await new Promise(setImmediate);
         } catch (_err) {
           err = Array.isArray(_err) ? _err[0] : _err;
           hasMore = false;

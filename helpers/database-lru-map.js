@@ -204,18 +204,27 @@ class DatabaseLRUMap {
     }
   }
 
-  // Graceful shutdown — close all databases
+  // Graceful shutdown — close all databases WITHOUT checkpoint.
+  // The cron reloads every 4-6h; WAL will be checkpointed on next open.
+  // Skipping checkpoint makes shutdown near-instant (~1-2s for 1300 DBs)
+  // instead of blowing the 30s kill_timeout and getting SIGKILLed.
   async closeAll() {
     clearInterval(this._sweepInterval);
+    const t0 = Date.now();
     const promises = [];
     for (const entry of this._map.values()) {
       if (entry.db && entry.db.open) {
-        promises.push(closeDatabase(entry.db));
+        promises.push(closeDatabase(entry.db, { skipCheckpoint: true }));
       }
     }
 
     this._map.clear();
     await Promise.allSettled(promises);
+    console.log(
+      `[SHUTDOWN] closeAll completed in ${Date.now() - t0}ms (${
+        promises.length
+      } databases, checkpoint skipped)`
+    );
   }
 
   // Destroy the interval (for tests and graceful shutdown)

@@ -10,7 +10,7 @@ const pWaitFor = require('p-wait-for');
 const env = require('#config/env');
 const logger = require('#helpers/logger');
 
-async function closeDatabase(db) {
+async function closeDatabase(db, options = {}) {
   if (!db || !db.open) return;
 
   const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
@@ -18,7 +18,7 @@ async function closeDatabase(db) {
   if (db.inTransaction) {
     try {
       await pWaitFor(() => !db.inTransaction, {
-        timeout: ms('30s')
+        timeout: options.skipCheckpoint ? ms('3s') : ms('30s')
       });
     } catch (err) {
       err.message = `Shutdown could not cancel transaction: ${err.message}`;
@@ -56,11 +56,18 @@ async function closeDatabase(db) {
   // This reduces WAL file growth and improves startup time for the next open.
   // PASSIVE is safe — it skips pages that would require blocking.
   //
-  try {
-    db.pragma('wal_checkpoint(PASSIVE)');
-  } catch (err) {
-    // Non-fatal: checkpoint failure doesn't prevent close
-    logger.debug(err, { db });
+  // Skip checkpoint when shutting down (options.skipCheckpoint = true) because:
+  // - The cron reloads every 4-6h; WAL will be checkpointed on next open
+  // - Checkpointing 1300 DBs serially blows the 30s kill_timeout budget
+  // - Skipping makes shutdown near-instant, preventing SIGKILL
+  //
+  if (!options.skipCheckpoint) {
+    try {
+      db.pragma('wal_checkpoint(PASSIVE)');
+    } catch (err) {
+      // Non-fatal: checkpoint failure doesn't prevent close
+      logger.debug(err, { db });
+    }
   }
 
   try {

@@ -1126,10 +1126,28 @@ async function backup(payload) {
   // NOTE: out of scope asynchronous code will NOT get run
   //       (so we cannot do `then()` here to run after throwing)
   //
-  try {
-    await client.del(`backup_check:${payload.session.user.alias_id}`);
-  } catch (err) {
-    logger.fatal(err);
+  // For SQLITE_NOTADB errors (wrong password / corrupt DB), set a 4-hour
+  // cooldown instead of deleting the key. This prevents the same alias from
+  // being retried hundreds of times per hour (the IMAP client re-triggers
+  // backup on every connection, and without a cooldown it retries immediately).
+  //
+  if (err && err.code === 'SQLITE_NOTADB') {
+    try {
+      await client.set(
+        `backup_check:${payload.session.user.alias_id}`,
+        'notadb_cooldown',
+        'PX',
+        ms('4h')
+      );
+    } catch (_err) {
+      logger.fatal(_err);
+    }
+  } else {
+    try {
+      await client.del(`backup_check:${payload.session.user.alias_id}`);
+    } catch (_err) {
+      logger.fatal(_err);
+    }
   }
 
   // if an error occurred then allow cache to attempt again
