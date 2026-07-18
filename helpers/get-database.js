@@ -814,9 +814,10 @@ async function getDatabase(
     // and auto-vacuum) are NOT required for correctness of the current request.
     // They are housekeeping tasks that can run in the background.
     //
-    // Maintenance is awaited inline so it runs in both test and production.
+    // Maintenance is awaited inline to ensure it completes before returning the handle.
     // Redis TTLs prevent repeated runs (maintenance only fires once per TTL window).
     // The _deferredMaintenanceRunning guard prevents concurrent runs for the same alias.
+    // After maintenance, we re-fetch from databaseMap in case VACUUM replaced the handle.
     //
     const needsDeferredMaint =
       !trashCheck ||
@@ -846,24 +847,23 @@ async function getDatabase(
           vacuumCheck
         });
       } catch (err) {
+        err.isCodeBug = true;
         logger.fatal(err, { session, resolver: instance.resolver });
       } finally {
         _deferredMaintenanceRunning.delete(session.user.alias_id);
       }
-    }
 
-    // Re-fetch from databaseMap in case VACUUM replaced the handle
-    // (VACUUM closes the old handle, reopens a new one, and stores it in the map)
-    if (instance.databaseMap) {
-      const freshDb = instance.databaseMap.get(alias.id);
-      if (freshDb && freshDb.open) {
-        db = freshDb;
-        session.db = db;
+      // Re-fetch handle from databaseMap in case VACUUM replaced it
+      if (instance.databaseMap) {
+        const freshDb = instance.databaseMap.get(alias.id);
+        if (freshDb && freshDb.open) {
+          db = freshDb;
+          session.db = db;
+        }
       }
     }
 
-    // Final safety: if the handle was closed during maintenance
-    // (e.g. by LRU sweep or failed VACUUM), throw so p-retry can reopen
+    // Final safety: if the handle was closed (e.g. by LRU sweep), throw so p-retry can reopen
     if (!db.open) {
       throw new TypeError('database connection is not open');
     }

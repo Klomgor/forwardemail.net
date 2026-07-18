@@ -194,7 +194,38 @@ async function onSearch(mailboxId, options, session, fn) {
               };
             }
 
-            const ids = session.db.prepare(sql.query).pluck().all(sql.values);
+            let ids;
+            try {
+              ids = session.db.prepare(sql.query).pluck().all(sql.values);
+            } catch (err) {
+              // Graceful fallback: if Messages_fts table doesn't exist yet
+              // (migration pending), retry with LIKE query
+              if (
+                env.SQLITE_FTS5_ENABLED &&
+                err.message &&
+                err.message.includes('Messages_fts')
+              ) {
+                const escaped = term.value
+                  .replaceAll('\\', '\\\\')
+                  .replaceAll('%', '\\%')
+                  .replaceAll('_', '\\_');
+                const fallbackSql = {
+                  query: `select _id from Messages where mailbox = $mailbox and text ${
+                    ne ? 'NOT LIKE' : 'LIKE'
+                  } $p1 ESCAPE '\\';`,
+                  values: {
+                    mailbox: mailbox._id.toString(),
+                    p1: `%${escaped}%`
+                  }
+                };
+                ids = session.db
+                  .prepare(fallbackSql.query)
+                  .pluck()
+                  .all(fallbackSql.values);
+              } else {
+                throw err;
+              }
+            }
 
             // RFC 3501: multiple criteria are AND'd; intersect when set already populated
             if (mustIncludeIds) {

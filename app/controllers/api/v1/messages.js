@@ -487,23 +487,34 @@ async function list(ctx) {
         .filter(Boolean)
         .map((w) => `"${w}"`)
         .join(' ');
-      let ftsIds = await ctx.instance.wsp.request({
-        action: 'stmt',
-        session: { user: ctx.state.session.user },
-        stmt: [
-          ['prepare', `SELECT _id FROM Messages_fts WHERE text MATCH $p1`],
-          ['pluck'],
-          ['all', { p1: fts5Query }]
-        ]
-      });
-      if (!Array.isArray(ftsIds)) ftsIds = [];
-      if (ftsIds.length > 0) {
-        searchConditions.push({
-          _id: { $in: ftsIds.map((id) => id.toString()) }
+      try {
+        let ftsIds = await ctx.instance.wsp.request({
+          action: 'stmt',
+          session: { user: ctx.state.session.user },
+          stmt: [
+            ['prepare', `SELECT _id FROM Messages_fts WHERE text MATCH $p1`],
+            ['pluck'],
+            ['all', { p1: fts5Query }]
+          ]
         });
-      } else {
-        // No FTS5 matches — force empty result set
-        searchConditions.push({ _id: { $in: [] } });
+        if (!Array.isArray(ftsIds)) ftsIds = [];
+        if (ftsIds.length > 0) {
+          searchConditions.push({
+            _id: { $in: ftsIds.map((id) => id.toString()) }
+          });
+        } else {
+          // No FTS5 matches — force empty result set
+          searchConditions.push({ _id: { $in: [] } });
+        }
+      } catch (err) {
+        // Graceful fallback if Messages_fts table doesn't exist yet (migration pending)
+        if (err.message && err.message.includes('Messages_fts')) {
+          searchConditions.push({
+            text: { $regex: _.escapeRegExp(searchText), $options: 'i' }
+          });
+        } else {
+          throw err;
+        }
       }
     } else {
       // Fallback: LIKE '%term%' full table scan
@@ -640,6 +651,7 @@ async function list(ctx) {
 
     // For the text portion, use FTS5 MATCH when available
     let textMatchIds = [];
+    let fts5Failed = false;
     if (env.SQLITE_FTS5_ENABLED) {
       const fts5Query = searchTerm
         .replace(/"/g, '""')
@@ -647,21 +659,30 @@ async function list(ctx) {
         .filter(Boolean)
         .map((w) => `"${w}"`)
         .join(' ');
-      const ftsResult = await ctx.instance.wsp.request({
-        action: 'stmt',
-        session: { user: ctx.state.session.user },
-        stmt: [
-          ['prepare', `SELECT _id FROM Messages_fts WHERE text MATCH $p1`],
-          ['pluck'],
-          ['all', { p1: fts5Query }]
-        ]
-      });
-      if (Array.isArray(ftsResult)) textMatchIds = ftsResult;
+      try {
+        const ftsResult = await ctx.instance.wsp.request({
+          action: 'stmt',
+          session: { user: ctx.state.session.user },
+          stmt: [
+            ['prepare', `SELECT _id FROM Messages_fts WHERE text MATCH $p1`],
+            ['pluck'],
+            ['all', { p1: fts5Query }]
+          ]
+        });
+        if (Array.isArray(ftsResult)) textMatchIds = ftsResult;
+      } catch (err) {
+        // Graceful fallback if Messages_fts table doesn't exist yet (migration pending)
+        if (err.message && err.message.includes('Messages_fts')) {
+          fts5Failed = true;
+        } else {
+          throw err;
+        }
+      }
     }
 
     // Combine header matches and text matches
     const allMatchIds = [...new Set([...headerIds, ...textMatchIds])];
-    if (env.SQLITE_FTS5_ENABLED) {
+    if (env.SQLITE_FTS5_ENABLED && !fts5Failed) {
       // With FTS5, we already have all text match IDs — no need for LIKE fallback
       if (allMatchIds.length > 0) {
         searchConditions.push({
@@ -671,7 +692,7 @@ async function list(ctx) {
         searchConditions.push({ _id: { $in: [] } });
       }
     } else {
-      // Without FTS5, fall back to LIKE for text search
+      // Without FTS5 (or FTS5 table missing), fall back to LIKE for text search
       searchConditions.push({
         $or: [
           {
