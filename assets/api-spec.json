@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "When set to \"true\", returns metadata-only responses without nodemailer or raw fields. This significantly improves performance by skipping full MIME tree reconstruction and attachment body fetching. Useful for building message lists where only metadata (subject, flags, dates, folder, size) is needed."
           }
         ],
         "responses": {

@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Bei Einstellung auf \"true\" werden nur Metadaten-Antworten ohne nodemailer- oder raw-Felder zurückgegeben. Verbessert die Leistung erheblich, indem die vollständige MIME-Baumrekonstruktion und das Abrufen von Anhangsinhalten übersprungen werden."
           }
         ],
         "responses": {

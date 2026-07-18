@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "เมื่อตั้งค่าเป็น \"true\" จะส่งคืนเฉพาะข้อมูลเมตาโดยไม่มีฟิลด์ nodemailer หรือ raw ช่วยปรับปรุงประสิทธิภาพอย่างมากโดยข้ามการสร้างโครงสร้าง MIME แบบเต็มและการดึงเนื้อหาไฟล์แนบ"
           }
         ],
         "responses": {

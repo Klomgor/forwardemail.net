@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Ha \"true\" értékre van állítva, csak metaadat-válaszokat ad vissza nodemailer vagy raw mezők nélkül. Jelentősen javítja a teljesítményt a teljes MIME-fa újraépítésének és a melléklet-tartalmak lekérésének kihagyásával."
           }
         ],
         "responses": {

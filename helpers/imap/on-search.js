@@ -160,14 +160,23 @@ async function onSearch(mailboxId, options, session, fn) {
               const sanitized = term.value
                 .replace(/"/g, '""') // escape embedded double-quotes
                 .replace(/\*/g, ''); // strip wildcard operator
-              sql = {
-                query: `select _id from Messages_fts where Messages_fts ${
-                  ne ? 'NOT MATCH' : 'MATCH'
-                } $p1 ORDER BY rank;`,
-                values: {
-                  p1: `"${sanitized}"`
-                }
-              };
+              if (ne) {
+                // FTS5 does not support NOT MATCH; use a NOT IN subquery
+                sql = {
+                  query: `select _id from Messages where mailbox = $mailbox and _id NOT IN (SELECT _id FROM Messages_fts WHERE text MATCH $p1);`,
+                  values: {
+                    mailbox: mailbox._id.toString(),
+                    p1: `"${sanitized}"`
+                  }
+                };
+              } else {
+                sql = {
+                  query: `select _id from Messages_fts where text MATCH $p1 ORDER BY rank;`,
+                  values: {
+                    p1: `"${sanitized}"`
+                  }
+                };
+              }
             } else {
               // Escape LIKE metacharacters (%, _, \) so they match literally
               const escaped = term.value

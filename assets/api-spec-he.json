@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "כאשר מוגדר ל-\"true\", מחזיר תגובות מטא-נתונים בלבד ללא שדות nodemailer או raw. משפר משמעותית את הביצועים על ידי דילוג על שחזור מלא של עץ MIME ושליפת תוכן קבצים מצורפים."
           }
         ],
         "responses": {

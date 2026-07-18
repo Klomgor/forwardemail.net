@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "\"true\"로 설정하면 nodemailer 또는 raw 필드 없이 메타데이터만 포함된 응답을 반환합니다. 전체 MIME 트리 재구성 및 첨부 파일 본문 가져오기를 건너뛰어 성능이 크게 향상됩니다."
           }
         ],
         "responses": {

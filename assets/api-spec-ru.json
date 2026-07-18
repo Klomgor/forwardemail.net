@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "При установке значения \"true\" возвращает ответы только с метаданными без полей nodemailer или raw. Значительно улучшает производительность, пропуская полную реконструкцию дерева MIME и получение содержимого вложений."
           }
         ],
         "responses": {

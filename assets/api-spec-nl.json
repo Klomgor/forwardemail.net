@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Wanneer ingesteld op \"true\", worden alleen metadata-antwoorden geretourneerd zonder nodemailer- of raw-velden. Verbetert de prestaties aanzienlijk door de volledige MIME-boomreconstructie en het ophalen van bijlage-inhoud over te slaan."
           }
         ],
         "responses": {

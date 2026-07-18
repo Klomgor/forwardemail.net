@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "عند التعيين إلى \"true\"، يُرجع استجابات البيانات الوصفية فقط بدون حقول nodemailer أو raw. يحسّن الأداء بشكل كبير عن طريق تخطي إعادة بناء شجرة MIME الكاملة وجلب محتوى المرفقات."
           }
         ],
         "responses": {

@@ -135,6 +135,51 @@ function setCachedDiskSpace(storageLocation, value) {
   diskSpaceCache.set(storageLocation, { ts: Date.now(), value });
 }
 
+// ─── ATTACHMENT HASH CACHE ────────────────────────────────────────────────────
+// Attachments are immutable (once written, content never changes).
+// Caching SELECT * FROM Attachments WHERE hash = ? results eliminates
+// repeated SQLite reads when the Web API fetches message bodies.
+// Keyed by alias_id → Map<hash, {ts, data}>.
+const ATTACHMENT_CACHE_TTL_MS = 60_000;
+const ATTACHMENT_CACHE_MAX_PER_ALIAS = 2000;
+const ATTACHMENT_CACHE_MAX_ALIASES = 500;
+const attachmentCacheByAlias = new Map();
+
+function getAttachmentFromCache(aliasId, hash) {
+  const aliasCache = attachmentCacheByAlias.get(aliasId);
+  if (!aliasCache) return undefined;
+  const entry = aliasCache.get(hash);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > ATTACHMENT_CACHE_TTL_MS) {
+    aliasCache.delete(hash);
+    return undefined;
+  }
+
+  return entry.data;
+}
+
+function setAttachmentInCache(aliasId, hash, data) {
+  let aliasCache = attachmentCacheByAlias.get(aliasId);
+  if (!aliasCache) {
+    // Evict oldest alias cache if at capacity
+    if (attachmentCacheByAlias.size >= ATTACHMENT_CACHE_MAX_ALIASES) {
+      const firstKey = attachmentCacheByAlias.keys().next().value;
+      attachmentCacheByAlias.delete(firstKey);
+    }
+
+    aliasCache = new Map();
+    attachmentCacheByAlias.set(aliasId, aliasCache);
+  }
+
+  // Evict oldest entry if at per-alias capacity
+  if (aliasCache.size >= ATTACHMENT_CACHE_MAX_PER_ALIAS) {
+    const firstKey = aliasCache.keys().next().value;
+    aliasCache.delete(firstKey);
+  }
+
+  aliasCache.set(hash, { ts: Date.now(), data });
+}
+
 const CHECKPOINTS = ['PASSIVE', 'FULL', 'RESTART', 'TRUNCATE'];
 
 const HOSTNAME = os.hostname();
@@ -2286,37 +2331,45 @@ async function parsePayload(data, ws) {
             : JSON.stringify(payload.stmt)
         );
 
+        //
+        // ─── ATTACHMENT CACHE: check before hitting SQLite ───
+        // Detect pattern: ['prepare', 'select * from "Attachments" where "hash" = $p1'],
+        //                 ['get', { p1: <hash> }]
+        //
+        const aliasId = payload.session.user.alias_id;
+        let isAttachmentHashLookup = false;
+        let attachmentHash = null;
+
+        if (
+          payload.stmt.length === 2 &&
+          payload.stmt[0][0] === 'prepare' &&
+          typeof payload.stmt[0][1] === 'string' &&
+          payload.stmt[0][1].includes('"Attachments"') &&
+          payload.stmt[0][1].includes('"hash"') &&
+          payload.stmt[1][0] === 'get' &&
+          payload.stmt[1][1] &&
+          typeof payload.stmt[1][1] === 'object'
+        ) {
+          // Extract the hash value from the bind params
+          const bindParams = payload.stmt[1][1];
+          const hashParam = bindParams.p1 || bindParams.$p1;
+          if (typeof hashParam === 'string') {
+            isAttachmentHashLookup = true;
+            attachmentHash = hashParam;
+            // Check cache
+            const cached = getAttachmentFromCache(aliasId, attachmentHash);
+            if (cached !== undefined) {
+              response = {
+                id: payload.id,
+                data: cached
+              };
+              break;
+            }
+          }
+        }
+
         let stmt;
         let data;
-
-        /*
-        // NOTE: fts5 does't work due to this error:
-        // TODO: investigate:
-        //       SqliteError: database disk image is malformed
-        //      at WebSocket.<anonymous> (/Users/user/Projects/web/sqlite-server.js:400:
-        if (payload.stmt[0][1].includes('Messages_fts')) {
-          console.log('MESSAGE FTS DETECTED', payload.stmt);
-          console.log(
-            'result',
-            db.prepare('select * from Messages_fts').all()
-          );
-          console.log(
-            'result2',
-            db
-              .prepare(
-                `select * from Messages_fts where Messages_fts = 'test';`
-              )
-              .all()
-          );
-          const tables = db.pragma(`table_list(Messages_fts)`);
-          console.log('tables', tables);
-          console.log(
-            'checking',
-            db.pragma('integrity_check(Messages_fts)'),
-            db.pragma('rebuild(Messages_fts)')
-          );
-        }
-        */
 
         {
           const t0 = debugTimers ? Date.now() : 0;
@@ -2324,7 +2377,7 @@ async function parsePayload(data, ws) {
             this,
             // alias
             {
-              id: payload.session.user.alias_id,
+              id: aliasId,
               storage_location: payload.session.user.storage_location
             },
             payload.session
@@ -2332,7 +2385,7 @@ async function parsePayload(data, ws) {
           if (debugTimers) {
             console.log('parsePayload getDatabase (stmt)', {
               duration_ms: Date.now() - t0,
-              alias_id: payload.session.user.alias_id
+              alias_id: aliasId
             });
           }
         }
@@ -2398,6 +2451,15 @@ async function parsePayload(data, ws) {
               throw new TypeError('Unknown operation');
             }
           }
+        }
+
+        // Populate attachment cache on successful lookup
+        if (isAttachmentHashLookup && attachmentHash) {
+          setAttachmentInCache(
+            aliasId,
+            attachmentHash,
+            typeof data === 'undefined' ? null : data
+          );
         }
 
         response = {

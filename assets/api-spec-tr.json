@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "\"true\" olarak ayarlandığında, nodemailer veya raw alanları olmadan yalnızca meta veri yanıtları döndürür. Tam MIME ağacı yeniden yapılandırmasını ve ek içeriği getirmeyi atlayarak performansı önemli ölçüde artırır."
           }
         ],
         "responses": {

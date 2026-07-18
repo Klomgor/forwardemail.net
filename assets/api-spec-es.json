@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Cuando se establece en \"true\", devuelve respuestas solo con metadatos sin campos nodemailer o raw. Mejora significativamente el rendimiento al omitir la reconstrucción completa del árbol MIME y la obtención del cuerpo de los archivos adjuntos."
           }
         ],
         "responses": {

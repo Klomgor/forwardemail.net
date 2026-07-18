@@ -231,8 +231,11 @@ function decodeRawMessage(message) {
   return message;
 }
 
-async function json(ctx, message) {
-  // run in parallel
+async function json(ctx, message, { lightweight = false } = {}) {
+  // In lightweight mode (used by list endpoint), skip the expensive
+  // indexer.getContents + simpleParser call that rebuilds the full MIME tree
+  // and fetches all attachment bodies from SQLite. This eliminates N attachment
+  // hash lookups per message and avoids CPU-heavy MIME parsing.
   const [mailbox, data] = await Promise.all([
     typeof message.mailbox.path === 'string'
       ? Promise.resolve(message.mailbox)
@@ -246,30 +249,32 @@ async function json(ctx, message) {
             path: true
           }
         ),
-    (async () => {
-      // similar to 'rfc822' case in `helpers/get-query-response.js`
-      // (value is a stream)
-      const { value } = indexer.getContents(
-        typeof message.mimeTree === 'object'
-          ? message.mimeTree
-          : JSON.parse(message.mimeTree),
-        false,
-        {},
-        ctx.instance,
-        ctx.state.session
-      );
+    lightweight
+      ? Promise.resolve(null)
+      : (async () => {
+          // similar to 'rfc822' case in `helpers/get-query-response.js`
+          // (value is a stream)
+          const { value } = indexer.getContents(
+            typeof message.mimeTree === 'object'
+              ? message.mimeTree
+              : JSON.parse(message.mimeTree),
+            false,
+            {},
+            ctx.instance,
+            ctx.state.session
+          );
 
-      const raw = await getStream.buffer(value);
-      const nodemailer = await simpleParser(raw, {
-        Iconv,
-        skipHtmlToText: true,
-        skipTextLinks: true,
-        skipTextToHtml: true,
-        skipImageLinks: true,
-        maxHtmlLengthToParse: bytes(env.SMTP_MESSAGE_MAX_SIZE)
-      });
-      return { raw, nodemailer };
-    })()
+          const raw = await getStream.buffer(value);
+          const nodemailer = await simpleParser(raw, {
+            Iconv,
+            skipHtmlToText: true,
+            skipTextLinks: true,
+            skipTextToHtml: true,
+            skipImageLinks: true,
+            maxHtmlLengthToParse: bytes(env.SMTP_MESSAGE_MAX_SIZE)
+          });
+          return { raw, nodemailer };
+        })()
   ]);
 
   // Transform message data for API response
@@ -365,12 +370,16 @@ async function json(ctx, message) {
     updated_at: message.updated_at
   };
 
-  if (ctx.query.nodemailer !== 'false')
-    object.nodemailer = convertToPureObject(data.nodemailer);
+  // In lightweight mode, data is null (no MIME rebuild was performed)
+  if (data) {
+    if (ctx.query.nodemailer !== 'false')
+      object.nodemailer = convertToPureObject(data.nodemailer);
 
-  if (ctx.query.attachments === 'false') delete object?.nodemailer?.attachments;
+    if (ctx.query.attachments === 'false')
+      delete object?.nodemailer?.attachments;
 
-  if (ctx.query.raw !== 'false') object.raw = data.raw.toString();
+    if (ctx.query.raw !== 'false') object.raw = data.raw.toString();
+  }
 
   // keep this last
   object.object = 'message';
@@ -469,9 +478,39 @@ async function list(ctx) {
   // Search in message body/text
   if (isSANB(ctx.query.body) || isSANB(ctx.query.text)) {
     const searchText = isSANB(ctx.query.body) ? ctx.query.body : ctx.query.text;
-    searchConditions.push({
-      text: { $regex: _.escapeRegExp(searchText), $options: 'i' }
-    });
+    if (env.SQLITE_FTS5_ENABLED) {
+      // Use FTS5 MATCH for full-text search (indexed, O(log n) instead of O(n))
+      // FTS5 tokenizes on word boundaries so we quote the phrase for exact match
+      const fts5Query = searchText
+        .replace(/"/g, '""') // escape double quotes for FTS5
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => `"${w}"`)
+        .join(' ');
+      let ftsIds = await ctx.instance.wsp.request({
+        action: 'stmt',
+        session: { user: ctx.state.session.user },
+        stmt: [
+          ['prepare', `SELECT _id FROM Messages_fts WHERE text MATCH $p1`],
+          ['pluck'],
+          ['all', { p1: fts5Query }]
+        ]
+      });
+      if (!Array.isArray(ftsIds)) ftsIds = [];
+      if (ftsIds.length > 0) {
+        searchConditions.push({
+          _id: { $in: ftsIds.map((id) => id.toString()) }
+        });
+      } else {
+        // No FTS5 matches — force empty result set
+        searchConditions.push({ _id: { $in: [] } });
+      }
+    } else {
+      // Fallback: LIKE '%term%' full table scan
+      searchConditions.push({
+        text: { $regex: _.escapeRegExp(searchText), $options: 'i' }
+      });
+    }
   }
 
   // Optimize: Collect all requested headers first, then execute in parallel
@@ -599,18 +638,53 @@ async function list(ctx) {
     });
     if (!Array.isArray(headerIds)) headerIds = [];
 
-    searchConditions.push({
-      $or: [
-        {
-          _id: {
-            $in: headerIds.map((id) => id.toString())
+    // For the text portion, use FTS5 MATCH when available
+    let textMatchIds = [];
+    if (env.SQLITE_FTS5_ENABLED) {
+      const fts5Query = searchTerm
+        .replace(/"/g, '""')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => `"${w}"`)
+        .join(' ');
+      const ftsResult = await ctx.instance.wsp.request({
+        action: 'stmt',
+        session: { user: ctx.state.session.user },
+        stmt: [
+          ['prepare', `SELECT _id FROM Messages_fts WHERE text MATCH $p1`],
+          ['pluck'],
+          ['all', { p1: fts5Query }]
+        ]
+      });
+      if (Array.isArray(ftsResult)) textMatchIds = ftsResult;
+    }
+
+    // Combine header matches and text matches
+    const allMatchIds = [...new Set([...headerIds, ...textMatchIds])];
+    if (env.SQLITE_FTS5_ENABLED) {
+      // With FTS5, we already have all text match IDs — no need for LIKE fallback
+      if (allMatchIds.length > 0) {
+        searchConditions.push({
+          _id: { $in: allMatchIds.map((id) => id.toString()) }
+        });
+      } else {
+        searchConditions.push({ _id: { $in: [] } });
+      }
+    } else {
+      // Without FTS5, fall back to LIKE for text search
+      searchConditions.push({
+        $or: [
+          {
+            _id: {
+              $in: headerIds.map((id) => id.toString())
+            }
+          },
+          {
+            text: { $regex: _.escapeRegExp(searchTerm), $options: 'i' }
           }
-        },
-        {
-          text: { $regex: _.escapeRegExp(searchTerm), $options: 'i' }
-        }
-      ]
-    });
+        ]
+      });
+    }
   }
 
   // Date range filtering
@@ -770,7 +844,16 @@ async function list(ctx) {
   }
 
   ctx.body = await (Array.isArray(messages)
-    ? Promise.all(messages.map((message) => json(ctx, message)))
+    ? Promise.all(
+        messages.map((message) =>
+          json(ctx, message, {
+            // Opt-in lightweight mode: skip indexer.getContents/simpleParser to avoid
+            // N attachment hash lookups and MIME rebuilds per message. Returns metadata
+            // only (no nodemailer/raw fields). Use ?lightweight=true for fast listing.
+            lightweight: ctx.query.lightweight === 'true'
+          })
+        )
+      )
     : Promise.resolve([]));
 }
 

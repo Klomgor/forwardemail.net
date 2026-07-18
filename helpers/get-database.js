@@ -54,6 +54,11 @@ const builder = new Builder({ bufferAsNative: true });
 
 const HOSTNAME = os.hostname();
 
+// Guard to prevent concurrent maintenance for the same alias.
+// Once maintenance begins, the alias_id is added here;
+// it is removed when maintenance completes (success or failure).
+const _deferredMaintenanceRunning = new Set();
+
 // always ensure `rclone.conf` is an empty file
 // function syncRcloneConfig() {
 //   try {
@@ -802,731 +807,63 @@ async function getDatabase(
     }
 
     //
-    // NOTE: we remove messages in Junk/Trash folder that are >= 30 days old
-    //       (but we only do this once every day)
-    _maint_t0 = Date.now();
-    if (!trashCheck) {
-      try {
-        await instance.client.set(
-          `trash_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('1d')
-        );
-
-        const mailboxes = await Mailboxes.find(instance, session, {
-          path: {
-            $in: ['Trash', 'Spam', 'Junk']
-          }
-          // specialUse: {
-          //   $in: ['\\Trash', '\\Junk']
-          // }
-        });
-
-        if (mailboxes.length === 0) {
-          logger.debug('Trash folder(s) do not exist yet; skipping cleanup', {
-            session
-          });
-        } else {
-          // Use alias-specific retention if configured (skips dynamic scaling).
-          // Otherwise fall back to dynamic storage-based scaling.
-          const aliasRetention = session.user.alias_retention || 0;
-          let days;
-          if (aliasRetention > 0) {
-            // Convert ms back to days (alias_retention is stored in ms on session)
-            days = Math.round(aliasRetention / (24 * 60 * 60 * 1000));
-          } else {
-            // Use alias-specific storage (not pooled) for trash cleanup
-            // so each alias cleans trash based on its own usage vs its own cap
-            const [aliasDoc, maxQuotaPerAlias] = await Promise.all([
-              Aliases.findOne({ id: session.user.alias_id })
-                .select('storage_used')
-                .lean()
-                .exec(),
-              Domains.getMaxQuota(session.user.domain_id, session.user.alias_id)
-            ]);
-
-            const storageUsed =
-              aliasDoc && typeof aliasDoc.storage_used === 'number'
-                ? aliasDoc.storage_used
-                : 0;
-
-            const percentageUsed = Math.round(
-              (storageUsed / maxQuotaPerAlias) * 100
-            );
-
-            // subtract the % from 30d and round up with min 1 day
-            // (min 1 prevents deleting all Trash/Junk at 100% storage)
-            days = Math.max(Math.round(30 * (1 - percentageUsed / 100)), 1);
-          }
-
-          {
-            const sql = builder.build({
-              type: 'remove',
-              table: 'Messages',
-              condition: {
-                $or: [
-                  {
-                    mailbox: {
-                      $in: mailboxes.map((m) => m._id.toString())
-                    },
-                    exp: 1,
-                    rdate: {
-                      $lte: new Date().toISOString()
-                    }
-                  },
-                  {
-                    mailbox: {
-                      $in: mailboxes.map((m) => m._id.toString())
-                    },
-                    rdate: {
-                      $lte: dayjs()
-                        .subtract(days, 'days')
-                        .toDate()
-                        .toISOString()
-                    }
-                  },
-                  {
-                    mailbox: {
-                      $in: mailboxes.map((m) => m._id.toString())
-                    },
-                    undeleted: 0
-                  },
-                  {
-                    mailbox: {
-                      $in: mailboxes.map((m) => m._id.toString())
-                    },
-                    created_at: {
-                      $lte: dayjs()
-                        .subtract(days, 'days')
-                        .toDate()
-                        .toISOString()
-                    }
-                  }
-                ]
-              }
-            });
-
-            db.prepare(sql.query).run(sql.values);
-          }
-
-          // TODO: wss broadcast changes here to connected clients
-
-          // iterate over all messages to get an array of attachment ids
-          // and then iterate over all attachments to delete those not in the list
-          const now = new Date().toISOString();
-          const sql = builder.build({
-            type: 'select',
-            table: 'Messages',
-            condition: {
-              created_at: {
-                $lte: now
-              },
-              ha: true
-            },
-            fields: ['mimeTree']
-          });
-
-          const stmt = db.prepare(sql.query);
-
-          const hashSet = new Set();
-
-          for (const message of stmt.iterate(sql.values)) {
-            const mimeTree = decodeMetadata(message.mimeTree, recursivelyParse);
-            const hashes = getAttachments(mimeTree);
-            for (const hash of hashes) {
-              hashSet.add(hash);
-            }
-          }
-
-          // NOTE: this only works if there's at least one hash from existing messages
-          //       (otherwise to do it for all we'd just remove this conditional check)
-          // TODO: <https://github.com/nodemailer/wildduck/issues/750>
-          if (hashSet.size > 0) {
-            // iterate over all attachments from the past
-            // and if the hash is not in the array then remove it
-            const sql = builder.build({
-              type: 'select',
-              table: 'Attachments',
-              condition: {
-                created_at: { $lte: now },
-                counterUpdated: { $lte: now }
-              },
-              fields: ['hash']
-            });
-
-            const existingHashes = db
-              .prepare(sql.query)
-              .pluck()
-              .all(sql.values);
-
-            for (const hash of existingHashes) {
-              if (hashSet.has(hash)) continue;
-
-              const sql = builder.build({
-                type: 'remove',
-                table: 'Attachments',
-                condition: {
-                  created_at: { $lte: now },
-                  counterUpdated: { $lte: now },
-                  hash
-                }
-              });
-
-              db.prepare(sql.query).run(sql.values);
-            }
-
-            /*
-          // TODO: this is too slow, it took 1 hour in production
-          db.transaction((hashes) => {
-            for (const hash of hashes) {
-              if (hashSet.has(hash)) continue;
-              const sql = builder.build({
-                type: 'remove',
-                table: 'Attachments',
-                condition: {
-                  created_at: { $lte: now },
-                  counterUpdated: { $lte: now },
-                  hash
-                }
-              });
-
-              db.prepare(sql.query).run(sql.values);
-            }
-          }).immediate(existingHashes);
-          */
-          }
-
-          // Update storage after deleting messages from Trash/Spam/Junk
-          // This fixes the bug where deleted messages don't free up storage quota
-          updateStorageUsed(session.user.alias_id, instance.client)
-            .then()
-            .catch((err) =>
-              logger.fatal(err, { session, resolver: instance.resolver })
-            );
-        } // end else (mailboxes.length > 0)
-
-        // Optimize query planner (guard against busy/closed/in-transaction state)
-        if (db && db.open && !db.inTransaction) {
-          try {
-            db.pragma('analysis_limit=400');
-            db.pragma('optimize');
-          } catch (err) {
-            logger.fatal(err, { session, resolver: instance.resolver });
-          }
-        }
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!trashCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=trashCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
     //
-    // NOTE: we delete thread ids that don't correspond to messages anymore
+    // ─── DEFERRED MAINTENANCE ───────────────────────────────────────────
+    // All stages below (trashCheck, threadCheck, calendarDuplicateCheck,
+    // highestmodseqCheck, storageFormatCheck, caldavHrefCheck, calendarDateCheck,
+    // and auto-vacuum) are NOT required for correctness of the current request.
+    // They are housekeeping tasks that can run in the background.
     //
-    _maint_t0 = Date.now();
-    if (!threadCheck) {
-      try {
-        await instance.client.set(
-          `thread_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('1d')
-        );
-
-        db.exec(
-          `DELETE FROM Threads WHERE _id NOT IN (SELECT thread FROM Messages);`
-        );
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!threadCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=threadCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
-    _maint_t0 = Date.now();
-    if (!calendarDuplicateCheck) {
-      try {
-        await instance.client.set(
-          `calendar_duplicate_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('30d')
-        );
-
-        //
-        // get all calendars and delete calendars that have zero events and duplicated name
-        // (rudimentary cleanup approach; since new logic will create fresh calendars)
-        //
-        const calendars = await Calendars.find(instance, session, {});
-        if (calendars.length > 0)
-          await pMapSeries(calendars, async (calendar) => {
-            const [eventCount, calendarCount] = await Promise.all([
-              CalendarEvents.countDocuments(instance, session, {
-                calendar: calendar._id
-              }),
-              Calendars.countDocuments(instance, session, {
-                name: calendar.name,
-                _id: { $ne: calendar._id.toString() }
-              })
-            ]);
-
-            //
-            // if no events and there were other calendars with the same name
-            // then we can assume this is simply a duplicate and we can remove it
-            // (eventually it will get to the last one that has the same name and not remove it)
-            //
-            if (eventCount === 0 && calendarCount > 0)
-              await Calendars.deleteOne(instance, session, {
-                _id: calendar._id
-              });
-          });
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!calendarDuplicateCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=calendarDuplicateCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
+    // Maintenance is awaited inline so it runs in both test and production.
+    // Redis TTLs prevent repeated runs (maintenance only fires once per TTL window).
+    // The _deferredMaintenanceRunning guard prevents concurrent runs for the same alias.
     //
-    // Fix HIGHESTMODSEQ (modifyIndex) for mailboxes where messages have higher modseq
-    // This corrects the issue caused by the on-copy.js bug where messages copied from
-    // high-activity mailboxes retained their source modseq instead of getting the target
-    // mailbox's modifyIndex. Only run once per week.
-    //
-    _maint_t0 = Date.now();
-    if (!highestmodseqCheck) {
-      try {
-        await instance.client.set(
-          `highestmodseq_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('7d')
-        );
-
-        // Find all mailboxes
-        const mailboxes = await Mailboxes.find(instance, session, {});
-
-        for (const mailbox of mailboxes) {
-          // Find highest modseq in this mailbox
-          const sql = builder.build({
-            type: 'select',
-            table: 'Messages',
-            condition: {
-              mailbox: mailbox._id.toString()
-            },
-            fields: ['modseq'],
-            sort: { modseq: -1 },
-            limit: 1
-          });
-
-          const result = db.prepare(sql.query).get(sql.values);
-
-          if (result && result.modseq > mailbox.modifyIndex) {
-            // Update mailbox modifyIndex to match highest message modseq
-            const updateSql = builder.build({
-              type: 'update',
-              table: 'Mailboxes',
-              condition: {
-                _id: mailbox._id.toString()
-              },
-              modifier: {
-                $set: {
-                  modifyIndex: result.modseq
-                }
-              }
-            });
-
-            db.prepare(updateSql.query).run(updateSql.values);
-
-            logger.info('Fixed HIGHESTMODSEQ for mailbox', {
-              mailbox: mailbox.path,
-              oldModifyIndex: mailbox.modifyIndex,
-              newModifyIndex: result.modseq,
-              difference: result.modseq - mailbox.modifyIndex,
-              session
-            });
-          }
-        }
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!highestmodseqCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=highestmodseqCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
-    //
-    // Storage format migration: convert attachment bodies from hex to base64
-    // This is a one-time migration that saves ~33% storage on attachments
-    //
-    _maint_t0 = Date.now();
-    if (!storageFormatCheck) {
-      try {
-        await instance.client.set(
-          `storage_format_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('30d')
-        );
-
-        const {
-          migrateStorageFormat
-        } = require('#helpers/migrate-storage-format');
-        const stats = await migrateStorageFormat(instance, session);
-
-        if (stats.attachmentsMigrated > 0) {
-          logger.info('Storage format migration completed', {
-            session,
-            stats
-          });
-
-          // Update Aliases model to mark migration complete
-          try {
-            await Aliases.findByIdAndUpdate(session.user.alias_id, {
-              $set: { has_storage_format_migration: true }
-            });
-          } catch (err) {
-            logger.warn(err, { session });
-          }
-        }
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!storageFormatCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=storageFormatCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
-    //
-    // Fix CalDAV href values and restore soft-deleted events from the bad patch window.
-    // This is a one-time migration that:
-    // 1. Clears href for events modified during the window
-    // 2. Restores events that were soft-deleted during the window
-    //
-    _maint_t0 = Date.now();
-    if (!caldavHrefCheck) {
-      try {
-        await instance.client.set(
-          `caldav_href_check:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('30d')
-        );
-
-        const stats = await fixCalDAVHref(instance, session);
-
-        if (stats.hrefCleared > 0 || stats.eventsRestored > 0) {
-          logger.info('CalDAV href fix and event recovery completed', {
-            session,
-            stats
-          });
-        }
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!caldavHrefCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=caldavHrefCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
-    //
-    // Backfill dtstart, dtend, and is_recurring columns for CalendarEvents
-    // that were created before these columns were added to the schema.
-    // This enables SQL-level date filtering in getEventsByDate instead of
-    // loading every event and parsing ICS in memory.
-    // (only do this once every 30 days per alias)
-    //
-    _maint_t0 = Date.now();
-    if (!calendarDateCheck) {
-      try {
-        await instance.client.set(
-          `calendar_date_check_v2:${session.user.alias_id}`,
-          true,
-          'PX',
-          ms('30d')
-        );
-
-        const stats = await backfillCalendarDates(instance, session);
-
-        if (stats.updated > 0 || stats.errors > 0) {
-          logger.info('CalendarEvents date backfill completed', {
-            session,
-            stats
-          });
-        }
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
-      }
-    }
-
-    if (!calendarDateCheck) {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=calendarDateCheck alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
-    }
-
-    _maint_t0 = Date.now();
-    if (
-      !migrateCheck ||
-      !folderCheck ||
+    const needsDeferredMaint =
       !trashCheck ||
       !threadCheck ||
-      !vacuumCheck ||
       !calendarDuplicateCheck ||
       !highestmodseqCheck ||
       !storageFormatCheck ||
       !caldavHrefCheck ||
-      !calendarDateCheck
+      !calendarDateCheck ||
+      !vacuumCheck;
+
+    if (
+      needsDeferredMaint &&
+      !_deferredMaintenanceRunning.has(session.user.alias_id)
     ) {
+      _deferredMaintenanceRunning.add(session.user.alias_id);
       try {
-        //
-        // Ensure that auto vacuum is enabled.
-        // Uses VACUUM INTO + atomic rename to avoid blocking readers.
-        //
-        // SAFETY: This operation replaces the database file on disk.
-        // Race condition prevention:
-        //  1. Redis distributed lock (NX) prevents concurrent VACUUM across workers
-        //  2. We remove the db from databaseMap BEFORE close+rename so no other
-        //     in-process request can obtain a stale handle
-        //  3. WAL checkpoint ensures all data is in the main file before VACUUM
-        //  4. We verify the new file is a valid encrypted DB before committing
-        //     the rename (open + setupPragma on tmpPath first)
-        //  5. Only after successful reopen do we store in databaseMap and
-        //     mark has_auto_vacuum_migration in MongoDB
-        //
-        if (!db.open) throw new TypeError('database connection is not open');
-        const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
-        if (!hasAutoVacuum) {
-          // get latest from cache in case another connection started a vacuum
-          vacuumCheck = boolean(
-            await instance.client.get(`vacuum_check:${session.user.alias_id}`)
-          );
-          if (!vacuumCheck) {
-            //
-            // Acquire a distributed lock to prevent concurrent VACUUM
-            // across multiple workers on the same alias database.
-            // Uses Redis SET NX with 5-minute expiry as a safety net.
-            //
-            const vacuumLockKey = `vacuum_lock:${session.user.alias_id}`;
-            const acquired = await instance.client.set(
-              vacuumLockKey,
-              '1',
-              'PX',
-              ms('5m'),
-              'NX'
-            );
-            if (acquired) {
-              try {
-                const tmpPath = `${dbFilePath}.vacuum-tmp`;
-
-                // Clean up any stale tmp file from a previous failed attempt
-                try {
-                  fs.unlinkSync(tmpPath);
-                } catch {}
-
-                // Checkpoint WAL so all committed data is in the main DB file
-                db.pragma('wal_checkpoint(TRUNCATE)');
-
-                // Set auto_vacuum mode and VACUUM INTO the temp file
-                db.pragma('auto_vacuum=FULL');
-                db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
-
-                //
-                // SAFETY: Verify the new file is a valid encrypted database
-                // BEFORE replacing the original. This prevents SQLITE_NOTADB
-                // if VACUUM produced a corrupt or incomplete file.
-                //
-                let verifyDb;
-                try {
-                  verifyDb = new Database(tmpPath, {
-                    timeout: config.busyTimeout,
-                    verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
-                  });
-                  await setupPragma(verifyDb, session);
-                  // Quick integrity check — reads first page + schema
-                  const integrityResult = verifyDb.pragma('quick_check', {
-                    simple: true
-                  });
-                  if (integrityResult !== 'ok') {
-                    throw new Error(
-                      `VACUUM INTO integrity check failed: ${integrityResult}`
-                    );
-                  }
-                } finally {
-                  if (verifyDb && verifyDb.open) verifyDb.close();
-                }
-
-                //
-                // SAFETY: Remove from databaseMap BEFORE close+rename
-                // so no concurrent request can obtain a handle to the
-                // about-to-be-replaced file.
-                //
-                if (instance.databaseMap) instance.databaseMap.evict(alias.id);
-
-                // Close the current db handle
-                db.close();
-
-                // Atomic rename (same filesystem, so this is atomic on Linux)
-                fs.renameSync(tmpPath, dbFilePath);
-
-                // Reopen the database with the new file
-                db = new Database(dbFilePath, {
-                  timeout: config.busyTimeout,
-                  verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
-                });
-
-                // Re-apply encryption and pragmas
-                try {
-                  await setupPragma(db, session);
-                } catch (pragmaErr) {
-                  // Close the handle so it doesn't leak if pragma fails
-                  try {
-                    db.close();
-                  } catch {}
-
-                  throw pragmaErr;
-                }
-
-                // Store reopened db in map and update session
-                if (instance.databaseMap)
-                  instance.databaseMap.set(alias.id, db);
-                session.db = db;
-
-                // Mark migration complete in MongoDB
-                // (only after everything succeeded)
-                await Aliases.findByIdAndUpdate(session.user.alias_id, {
-                  $set: { has_auto_vacuum_migration: true }
-                });
-
-                // Rate-limit: only set AFTER success so failures can retry
-                await instance.client.set(
-                  `vacuum_check:${session.user.alias_id}`,
-                  true,
-                  'PX',
-                  ms('7d')
-                );
-              } catch (err) {
-                // If VACUUM failed, ensure we still have a valid db handle
-                if (!db || !db.open) {
-                  try {
-                    db = new Database(dbFilePath, {
-                      timeout: config.busyTimeout,
-                      verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
-                    });
-                    await setupPragma(db, session);
-                    if (instance.databaseMap)
-                      instance.databaseMap.set(alias.id, db);
-                    session.db = db;
-                  } catch (reopenErr) {
-                    reopenErr.isCodeBug = true;
-                    logger.fatal(reopenErr);
-                  }
-                }
-
-                throw err;
-              } finally {
-                // Release the distributed lock
-                await instance.client.del(vacuumLockKey);
-                // Clean up tmp file if it still exists (e.g. on error)
-                try {
-                  fs.unlinkSync(`${dbFilePath}.vacuum-tmp`);
-                } catch {}
-              }
-            }
-          }
-        }
-
-        //
-        // All applications should run "PRAGMA optimize;" after a schema change,
-        // especially after one or more CREATE INDEX statements.
-        // <https://www.sqlite.org/pragma.html#pragma_optimize:~:text=All%20applications%20should%20run%20%22PRAGMA%20optimize%3B%22%20after%20a%20schema%20change%2C%20especially%20after%20one%20or%20more%20CREATE%20INDEX%20statements.>
-        //
-        if (db && db.open && !db.inTransaction) {
-          try {
-            db.pragma('analysis_limit=400');
-            db.pragma('optimize');
-          } catch (err) {
-            logger.fatal(err, { session, resolver: instance.resolver });
-          }
-        }
+        await _runDeferredMaintenance(instance, db, session, {
+          alias,
+          trashCheck,
+          threadCheck,
+          calendarDuplicateCheck,
+          highestmodseqCheck,
+          storageFormatCheck,
+          caldavHrefCheck,
+          calendarDateCheck,
+          vacuumCheck
+        });
       } catch (err) {
-        err.message = `VACUUM failed: ${err.message}`;
-        err.isCodeBug = true;
-        logger.fatal(err);
+        logger.fatal(err, { session, resolver: instance.resolver });
+      } finally {
+        _deferredMaintenanceRunning.delete(session.user.alias_id);
       }
     }
 
-    {
-      const _d = Date.now() - _maint_t0;
-      if (_d > 500)
-        console.warn(
-          '[SLOW_MAINT] pid=%d stage=vacuum alias=%s duration=%dms',
-          process.pid,
-          session?.user?.alias_name,
-          _d
-        );
+    // Re-fetch from databaseMap in case VACUUM replaced the handle
+    // (VACUUM closes the old handle, reopens a new one, and stores it in the map)
+    if (instance.databaseMap) {
+      const freshDb = instance.databaseMap.get(alias.id);
+      if (freshDb && freshDb.open) {
+        db = freshDb;
+        session.db = db;
+      }
     }
 
-    // Final safety: if the handle was closed during initialization
-    // (e.g. by LRU sweep during awaits), throw so p-retry can reopen
+    // Final safety: if the handle was closed during maintenance
+    // (e.g. by LRU sweep or failed VACUUM), throw so p-retry can reopen
     if (!db.open) {
       throw new TypeError('database connection is not open');
     }
@@ -1551,6 +888,751 @@ async function getDatabase(
     err.readonly = readonly;
     err.dbFilePath = dbFilePath;
     throw err;
+  }
+}
+
+//
+// ─── MAINTENANCE FUNCTION ───────────────────────────────────────────────────
+// Contains all housekeeping stages (trash cleanup, thread pruning, vacuum, etc.).
+// Runs inline (awaited) in getDatabase() but only when Redis TTL flags indicate
+// the check hasn't been performed recently.  setImmediate yields inside prevent
+// blocking the event loop during heavy batch operations.
+//
+async function _runDeferredMaintenance(instance, db, session, checks) {
+  const {
+    alias,
+    trashCheck,
+    threadCheck,
+    calendarDuplicateCheck,
+    highestmodseqCheck,
+    storageFormatCheck,
+    caldavHrefCheck,
+    calendarDateCheck
+  } = checks;
+  let { vacuumCheck } = checks;
+
+  // Safety: if db was closed between scheduling and execution, bail out
+  if (!db || !db.open) return;
+
+  let _maint_t0;
+  const dbFilePath = getPathToDatabase({
+    id: session.user.alias_id,
+    storage_location: session.user.storage_location
+  });
+
+  // NOTE: we remove messages in Junk/Trash folder that are >= 30 days old
+  //       (but we only do this once every day)
+  _maint_t0 = Date.now();
+  if (!trashCheck) {
+    try {
+      await instance.client.set(
+        `trash_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('1d')
+      );
+
+      const mailboxes = await Mailboxes.find(instance, session, {
+        path: {
+          $in: ['Trash', 'Spam', 'Junk']
+        }
+        // specialUse: {
+        //   $in: ['\\Trash', '\\Junk']
+        // }
+      });
+
+      if (mailboxes.length === 0) {
+        logger.debug('Trash folder(s) do not exist yet; skipping cleanup', {
+          session
+        });
+      } else {
+        // Use alias-specific retention if configured (skips dynamic scaling).
+        // Otherwise fall back to dynamic storage-based scaling.
+        const aliasRetention = session.user.alias_retention || 0;
+        let days;
+        if (aliasRetention > 0) {
+          // Convert ms back to days (alias_retention is stored in ms on session)
+          days = Math.round(aliasRetention / (24 * 60 * 60 * 1000));
+        } else {
+          // Use alias-specific storage (not pooled) for trash cleanup
+          // so each alias cleans trash based on its own usage vs its own cap
+          const [aliasDoc, maxQuotaPerAlias] = await Promise.all([
+            Aliases.findOne({ id: session.user.alias_id })
+              .select('storage_used')
+              .lean()
+              .exec(),
+            Domains.getMaxQuota(session.user.domain_id, session.user.alias_id)
+          ]);
+
+          const storageUsed =
+            aliasDoc && typeof aliasDoc.storage_used === 'number'
+              ? aliasDoc.storage_used
+              : 0;
+
+          const percentageUsed = Math.round(
+            (storageUsed / maxQuotaPerAlias) * 100
+          );
+
+          // subtract the % from 30d and round up with min 1 day
+          // (min 1 prevents deleting all Trash/Junk at 100% storage)
+          days = Math.max(Math.round(30 * (1 - percentageUsed / 100)), 1);
+        }
+
+        {
+          const sql = builder.build({
+            type: 'remove',
+            table: 'Messages',
+            condition: {
+              $or: [
+                {
+                  mailbox: {
+                    $in: mailboxes.map((m) => m._id.toString())
+                  },
+                  exp: 1,
+                  rdate: {
+                    $lte: new Date().toISOString()
+                  }
+                },
+                {
+                  mailbox: {
+                    $in: mailboxes.map((m) => m._id.toString())
+                  },
+                  rdate: {
+                    $lte: dayjs().subtract(days, 'days').toDate().toISOString()
+                  }
+                },
+                {
+                  mailbox: {
+                    $in: mailboxes.map((m) => m._id.toString())
+                  },
+                  undeleted: 0
+                },
+                {
+                  mailbox: {
+                    $in: mailboxes.map((m) => m._id.toString())
+                  },
+                  created_at: {
+                    $lte: dayjs().subtract(days, 'days').toDate().toISOString()
+                  }
+                }
+              ]
+            }
+          });
+
+          db.prepare(sql.query).run(sql.values);
+        }
+
+        // TODO: wss broadcast changes here to connected clients
+
+        // iterate over all messages to get an array of attachment ids
+        // and then iterate over all attachments to delete those not in the list
+        const now = new Date().toISOString();
+        const sql = builder.build({
+          type: 'select',
+          table: 'Messages',
+          condition: {
+            created_at: {
+              $lte: now
+            },
+            ha: true
+          },
+          fields: ['mimeTree']
+        });
+
+        //
+        // Use .all() instead of .iterate() so we can yield to the event loop
+        // between batches (better-sqlite3 iterators hold a lock and cannot
+        // be used across async boundaries).
+        //
+        const allMessages = db.prepare(sql.query).all(sql.values);
+
+        const hashSet = new Set();
+        const BATCH_SIZE = 100;
+
+        for (const [i, allMessage] of allMessages.entries()) {
+          const mimeTree = decodeMetadata(
+            allMessage.mimeTree,
+            recursivelyParse
+          );
+          const hashes = getAttachments(mimeTree);
+          for (const hash of hashes) {
+            hashSet.add(hash);
+          }
+
+          // Yield to event loop every BATCH_SIZE messages to avoid blocking
+          if ((i + 1) % BATCH_SIZE === 0) {
+            await new Promise((resolve) => {
+              setImmediate(resolve);
+            });
+            // Safety: bail if db was closed during yield
+            if (!db.open) return;
+          }
+        }
+
+        // NOTE: this only works if there's at least one hash from existing messages
+        //       (otherwise to do it for all we'd just remove this conditional check)
+        // TODO: <https://github.com/nodemailer/wildduck/issues/750>
+        if (hashSet.size > 0) {
+          // Get all existing attachment hashes
+          const sql = builder.build({
+            type: 'select',
+            table: 'Attachments',
+            condition: {
+              created_at: { $lte: now },
+              counterUpdated: { $lte: now }
+            },
+            fields: ['hash']
+          });
+
+          const existingHashes = db.prepare(sql.query).pluck().all(sql.values);
+
+          // Collect orphan hashes (not referenced by any message)
+          const orphanHashes = existingHashes.filter((h) => !hashSet.has(h));
+
+          // Batch DELETE orphan attachments (500 at a time to stay under
+          // SQLITE_MAX_VARIABLE_NUMBER = 999)
+          const DELETE_BATCH = 500;
+          for (let i = 0; i < orphanHashes.length; i += DELETE_BATCH) {
+            const batch = orphanHashes.slice(i, i + DELETE_BATCH);
+            const placeholders = batch.map(() => '?').join(',');
+            db.prepare(
+              `DELETE FROM "Attachments" WHERE "hash" IN (${placeholders})` +
+                ` AND "created_at" <= ? AND "counterUpdated" <= ?`
+            ).run(...batch, now, now);
+
+            // Yield between batches
+            if (i + DELETE_BATCH < orphanHashes.length) {
+              await new Promise((resolve) => {
+                setImmediate(resolve);
+              });
+              if (!db.open) return;
+            }
+          }
+        }
+
+        // Update storage after deleting messages from Trash/Spam/Junk
+        // This fixes the bug where deleted messages don't free up storage quota
+        updateStorageUsed(session.user.alias_id, instance.client)
+          .then()
+          .catch((err) =>
+            logger.fatal(err, { session, resolver: instance.resolver })
+          );
+      } // end else (mailboxes.length > 0)
+
+      // Optimize query planner (guard against busy/closed/in-transaction state)
+      if (db && db.open && !db.inTransaction) {
+        try {
+          db.pragma('analysis_limit=400');
+          db.pragma('optimize');
+        } catch (err) {
+          logger.fatal(err, { session, resolver: instance.resolver });
+        }
+      }
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!trashCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=trashCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  //
+  // NOTE: we delete thread ids that don't correspond to messages anymore
+  //
+  _maint_t0 = Date.now();
+  if (!threadCheck) {
+    try {
+      await instance.client.set(
+        `thread_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('1d')
+      );
+
+      db.exec(
+        `DELETE FROM Threads WHERE _id NOT IN (SELECT thread FROM Messages);`
+      );
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!threadCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=threadCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  _maint_t0 = Date.now();
+  if (!calendarDuplicateCheck) {
+    try {
+      await instance.client.set(
+        `calendar_duplicate_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('30d')
+      );
+
+      //
+      // get all calendars and delete calendars that have zero events and duplicated name
+      // (rudimentary cleanup approach; since new logic will create fresh calendars)
+      //
+      const calendars = await Calendars.find(instance, session, {});
+      if (calendars.length > 0)
+        await pMapSeries(calendars, async (calendar) => {
+          const [eventCount, calendarCount] = await Promise.all([
+            CalendarEvents.countDocuments(instance, session, {
+              calendar: calendar._id
+            }),
+            Calendars.countDocuments(instance, session, {
+              name: calendar.name,
+              _id: { $ne: calendar._id.toString() }
+            })
+          ]);
+
+          //
+          // if no events and there were other calendars with the same name
+          // then we can assume this is simply a duplicate and we can remove it
+          // (eventually it will get to the last one that has the same name and not remove it)
+          //
+          if (eventCount === 0 && calendarCount > 0)
+            await Calendars.deleteOne(instance, session, {
+              _id: calendar._id
+            });
+        });
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!calendarDuplicateCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=calendarDuplicateCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  //
+  // Fix HIGHESTMODSEQ (modifyIndex) for mailboxes where messages have higher modseq
+  // This corrects the issue caused by the on-copy.js bug where messages copied from
+  // high-activity mailboxes retained their source modseq instead of getting the target
+  // mailbox's modifyIndex. Only run once per week.
+  //
+  _maint_t0 = Date.now();
+  if (!highestmodseqCheck) {
+    try {
+      await instance.client.set(
+        `highestmodseq_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('7d')
+      );
+
+      // Find all mailboxes
+      const mailboxes = await Mailboxes.find(instance, session, {});
+
+      for (const mailbox of mailboxes) {
+        // Find highest modseq in this mailbox
+        const sql = builder.build({
+          type: 'select',
+          table: 'Messages',
+          condition: {
+            mailbox: mailbox._id.toString()
+          },
+          fields: ['modseq'],
+          sort: { modseq: -1 },
+          limit: 1
+        });
+
+        const result = db.prepare(sql.query).get(sql.values);
+
+        if (result && result.modseq > mailbox.modifyIndex) {
+          // Update mailbox modifyIndex to match highest message modseq
+          const updateSql = builder.build({
+            type: 'update',
+            table: 'Mailboxes',
+            condition: {
+              _id: mailbox._id.toString()
+            },
+            modifier: {
+              $set: {
+                modifyIndex: result.modseq
+              }
+            }
+          });
+
+          db.prepare(updateSql.query).run(updateSql.values);
+
+          logger.info('Fixed HIGHESTMODSEQ for mailbox', {
+            mailbox: mailbox.path,
+            oldModifyIndex: mailbox.modifyIndex,
+            newModifyIndex: result.modseq,
+            difference: result.modseq - mailbox.modifyIndex,
+            session
+          });
+        }
+      }
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!highestmodseqCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=highestmodseqCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  //
+  // Storage format migration: convert attachment bodies from hex to base64
+  // This is a one-time migration that saves ~33% storage on attachments
+  //
+  _maint_t0 = Date.now();
+  if (!storageFormatCheck) {
+    try {
+      await instance.client.set(
+        `storage_format_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('30d')
+      );
+
+      const {
+        migrateStorageFormat
+      } = require('#helpers/migrate-storage-format');
+      const stats = await migrateStorageFormat(instance, session);
+
+      if (stats.attachmentsMigrated > 0) {
+        logger.info('Storage format migration completed', {
+          session,
+          stats
+        });
+
+        // Update Aliases model to mark migration complete
+        try {
+          await Aliases.findByIdAndUpdate(session.user.alias_id, {
+            $set: { has_storage_format_migration: true }
+          });
+        } catch (err) {
+          logger.warn(err, { session });
+        }
+      }
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!storageFormatCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=storageFormatCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  //
+  // Fix CalDAV href values and restore soft-deleted events from the bad patch window.
+  // This is a one-time migration that:
+  // 1. Clears href for events modified during the window
+  // 2. Restores events that were soft-deleted during the window
+  //
+  _maint_t0 = Date.now();
+  if (!caldavHrefCheck) {
+    try {
+      await instance.client.set(
+        `caldav_href_check:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('30d')
+      );
+
+      const stats = await fixCalDAVHref(instance, session);
+
+      if (stats.hrefCleared > 0 || stats.eventsRestored > 0) {
+        logger.info('CalDAV href fix and event recovery completed', {
+          session,
+          stats
+        });
+      }
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!caldavHrefCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=caldavHrefCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  //
+  // Backfill dtstart, dtend, and is_recurring columns for CalendarEvents
+  // that were created before these columns were added to the schema.
+  // This enables SQL-level date filtering in getEventsByDate instead of
+  // loading every event and parsing ICS in memory.
+  // (only do this once every 30 days per alias)
+  //
+  _maint_t0 = Date.now();
+  if (!calendarDateCheck) {
+    try {
+      await instance.client.set(
+        `calendar_date_check_v2:${session.user.alias_id}`,
+        true,
+        'PX',
+        ms('30d')
+      );
+
+      const stats = await backfillCalendarDates(instance, session);
+
+      if (stats.updated > 0 || stats.errors > 0) {
+        logger.info('CalendarEvents date backfill completed', {
+          session,
+          stats
+        });
+      }
+    } catch (err) {
+      logger.fatal(err, { session, resolver: instance.resolver });
+    }
+  }
+
+  if (!calendarDateCheck) {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=calendarDateCheck alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
+  }
+
+  _maint_t0 = Date.now();
+  if (
+    !trashCheck ||
+    !threadCheck ||
+    !vacuumCheck ||
+    !calendarDuplicateCheck ||
+    !highestmodseqCheck ||
+    !storageFormatCheck ||
+    !caldavHrefCheck ||
+    !calendarDateCheck
+  ) {
+    try {
+      //
+      // Ensure that auto vacuum is enabled.
+      // Uses VACUUM INTO + atomic rename to avoid blocking readers.
+      //
+      // SAFETY: This operation replaces the database file on disk.
+      // Race condition prevention:
+      //  1. Redis distributed lock (NX) prevents concurrent VACUUM across workers
+      //  2. We remove the db from databaseMap BEFORE close+rename so no other
+      //     in-process request can obtain a stale handle
+      //  3. WAL checkpoint ensures all data is in the main file before VACUUM
+      //  4. We verify the new file is a valid encrypted DB before committing
+      //     the rename (open + setupPragma on tmpPath first)
+      //  5. Only after successful reopen do we store in databaseMap and
+      //     mark has_auto_vacuum_migration in MongoDB
+      //
+      if (!db.open) throw new TypeError('database connection is not open');
+      const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
+      if (!hasAutoVacuum) {
+        // get latest from cache in case another connection started a vacuum
+        vacuumCheck = boolean(
+          await instance.client.get(`vacuum_check:${session.user.alias_id}`)
+        );
+        if (!vacuumCheck) {
+          //
+          // Acquire a distributed lock to prevent concurrent VACUUM
+          // across multiple workers on the same alias database.
+          // Uses Redis SET NX with 5-minute expiry as a safety net.
+          //
+          const vacuumLockKey = `vacuum_lock:${session.user.alias_id}`;
+          const acquired = await instance.client.set(
+            vacuumLockKey,
+            '1',
+            'PX',
+            ms('5m'),
+            'NX'
+          );
+          if (acquired) {
+            try {
+              const tmpPath = `${dbFilePath}.vacuum-tmp`;
+
+              // Clean up any stale tmp file from a previous failed attempt
+              try {
+                fs.unlinkSync(tmpPath);
+              } catch {}
+
+              // Checkpoint WAL so all committed data is in the main DB file
+              db.pragma('wal_checkpoint(TRUNCATE)');
+
+              // Set auto_vacuum mode and VACUUM INTO the temp file
+              db.pragma('auto_vacuum=FULL');
+              db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
+
+              //
+              // SAFETY: Verify the new file is a valid encrypted database
+              // BEFORE replacing the original. This prevents SQLITE_NOTADB
+              // if VACUUM produced a corrupt or incomplete file.
+              //
+              let verifyDb;
+              try {
+                verifyDb = new Database(tmpPath, {
+                  timeout: config.busyTimeout,
+                  verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+                });
+                await setupPragma(verifyDb, session);
+                // Quick integrity check — reads first page + schema
+                const integrityResult = verifyDb.pragma('quick_check', {
+                  simple: true
+                });
+                if (integrityResult !== 'ok') {
+                  throw new Error(
+                    `VACUUM INTO integrity check failed: ${integrityResult}`
+                  );
+                }
+              } finally {
+                if (verifyDb && verifyDb.open) verifyDb.close();
+              }
+
+              //
+              // SAFETY: Remove from databaseMap BEFORE close+rename
+              // so no concurrent request can obtain a handle to the
+              // about-to-be-replaced file.
+              //
+              if (instance.databaseMap) instance.databaseMap.evict(alias.id);
+
+              // Close the current db handle
+              db.close();
+
+              // Atomic rename (same filesystem, so this is atomic on Linux)
+              fs.renameSync(tmpPath, dbFilePath);
+
+              // Reopen the database with the new file
+              db = new Database(dbFilePath, {
+                timeout: config.busyTimeout,
+                verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+              });
+
+              // Re-apply encryption and pragmas
+              try {
+                await setupPragma(db, session);
+              } catch (pragmaErr) {
+                // Close the handle so it doesn't leak if pragma fails
+                try {
+                  db.close();
+                } catch {}
+
+                throw pragmaErr;
+              }
+
+              // Store reopened db in map and update session
+              if (instance.databaseMap) instance.databaseMap.set(alias.id, db);
+              session.db = db;
+
+              // Mark migration complete in MongoDB
+              // (only after everything succeeded)
+              await Aliases.findByIdAndUpdate(session.user.alias_id, {
+                $set: { has_auto_vacuum_migration: true }
+              });
+
+              // Rate-limit: only set AFTER success so failures can retry
+              await instance.client.set(
+                `vacuum_check:${session.user.alias_id}`,
+                true,
+                'PX',
+                ms('7d')
+              );
+            } catch (err) {
+              // If VACUUM failed, ensure we still have a valid db handle
+              if (!db || !db.open) {
+                try {
+                  db = new Database(dbFilePath, {
+                    timeout: config.busyTimeout,
+                    verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+                  });
+                  await setupPragma(db, session);
+                  if (instance.databaseMap)
+                    instance.databaseMap.set(alias.id, db);
+                  session.db = db;
+                } catch (reopenErr) {
+                  reopenErr.isCodeBug = true;
+                  logger.fatal(reopenErr);
+                }
+              }
+
+              throw err;
+            } finally {
+              // Release the distributed lock
+              await instance.client.del(vacuumLockKey);
+              // Clean up tmp file if it still exists (e.g. on error)
+              try {
+                fs.unlinkSync(`${dbFilePath}.vacuum-tmp`);
+              } catch {}
+            }
+          }
+        }
+      }
+
+      //
+      // All applications should run "PRAGMA optimize;" after a schema change,
+      // especially after one or more CREATE INDEX statements.
+      // <https://www.sqlite.org/pragma.html#pragma_optimize:~:text=All%20applications%20should%20run%20%22PRAGMA%20optimize%3B%22%20after%20a%20schema%20change%2C%20especially%20after%20one%20or%20more%20CREATE%20INDEX%20statements.>
+      //
+      if (db && db.open && !db.inTransaction) {
+        try {
+          db.pragma('analysis_limit=400');
+          db.pragma('optimize');
+        } catch (err) {
+          logger.fatal(err, { session, resolver: instance.resolver });
+        }
+      }
+    } catch (err) {
+      err.message = `VACUUM failed: ${err.message}`;
+      err.isCodeBug = true;
+      logger.fatal(err);
+    }
+  }
+
+  {
+    const _d = Date.now() - _maint_t0;
+    if (_d > 500)
+      console.warn(
+        '[SLOW_MAINT] pid=%d stage=vacuum alias=%s duration=%dms',
+        process.pid,
+        session?.user?.alias_name,
+        _d
+      );
   }
 }
 

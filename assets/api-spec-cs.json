@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Při nastavení na \"true\" vrací pouze metadata bez polí nodemailer nebo raw. Výrazně zlepšuje výkon přeskočením úplné rekonstrukce MIME stromu a načítání těl příloh."
           }
         ],
         "responses": {

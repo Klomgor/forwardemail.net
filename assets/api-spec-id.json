@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Ketika diatur ke \"true\", mengembalikan respons metadata saja tanpa bidang nodemailer atau raw. Meningkatkan kinerja secara signifikan dengan melewati rekonstruksi pohon MIME lengkap dan pengambilan isi lampiran."
           }
         ],
         "responses": {

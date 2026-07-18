@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "Når sat til \"true\", returneres kun metadata-svar uden nodemailer- eller raw-felter. Forbedrer ydeevnen markant ved at springe fuld MIME-trærekonstruktion og hentning af vedhæftede filer over."
           }
         ],
         "responses": {

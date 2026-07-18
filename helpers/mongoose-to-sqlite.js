@@ -1573,29 +1573,37 @@ function parseSchema(Model, modelName = '') {
             //
             if (env.SQLITE_FTS5_ENABLED)
               fts5 = [
-                `CREATE VIRTUAL TABLE IF NOT EXISTS ${name}_fts USING fts5(_id UNINDEXED, ${key}, content="${name}", content_rowid="_id");`,
-                // insert
+                // Use implicit rowid as content_rowid (content_rowid requires INTEGER;
+                // _id is TEXT so we cannot use it). Store _id as UNINDEXED for lookups.
+                `CREATE VIRTUAL TABLE IF NOT EXISTS ${name}_fts USING fts5(_id UNINDEXED, ${key}, content="${name}", content_rowid=rowid);`,
+                // insert trigger — map rowid and copy _id + text column
                 [
-                  `CREATE TRIGGER IF NOT EXISTS ${name}_ai AFTER INSERT on ${name}`,
+                  `CREATE TRIGGER IF NOT EXISTS ${name}_ai AFTER INSERT ON ${name}`,
                   '    BEGIN',
-                  `        INSERT INTO ${name}_fts (_id, ${key})`,
-                  `        VALUES (new._id, new.${key});`,
+                  `        INSERT INTO ${name}_fts (rowid, _id, ${key})`,
+                  `        VALUES (new.rowid, new._id, new.${key});`,
                   '    END;'
                 ].join('\n'),
-                // delete
+                // delete trigger
                 [
                   `CREATE TRIGGER IF NOT EXISTS ${name}_ad AFTER DELETE ON ${name}`,
                   '    BEGIN',
-                  `        DELETE FROM ${name}_fts WHERE _id = old._id;`,
+                  `        INSERT INTO ${name}_fts (${name}_fts, rowid, _id, ${key})`,
+                  `        VALUES ('delete', old.rowid, old._id, old.${key});`,
                   '    END;'
                 ].join('\n'),
-                // update
+                // update trigger
                 [
                   `CREATE TRIGGER IF NOT EXISTS ${name}_au AFTER UPDATE ON ${name}`,
                   '    BEGIN',
-                  `        UPDATE ${name}_fts SET ${key} = new.${key} WHERE _id = old._id;`,
+                  `        INSERT INTO ${name}_fts (${name}_fts, rowid, _id, ${key})`,
+                  `        VALUES ('delete', old.rowid, old._id, old.${key});`,
+                  `        INSERT INTO ${name}_fts (rowid, _id, ${key})`,
+                  `        VALUES (new.rowid, new._id, new.${key});`,
                   '    END;'
-                ].join('\n')
+                ].join('\n'),
+                // rebuild command — populates FTS5 index from existing content table rows
+                `INSERT INTO ${name}_fts(${name}_fts) VALUES('rebuild');`
               ];
           }
         }

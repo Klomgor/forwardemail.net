@@ -244,18 +244,22 @@ async function onFetch(mailboxId, options, session, fn) {
     const stmt = session.db.prepare(sql.query);
 
     //
-    // NOTE: we explicitly disable `isBatchMode` for now since there is a bug somewhere
-    //       in the logic for `await this.wss.broadcast(...)` below which code lies in `sqlite-server.js`
-    //       and the loop itself has a `5m` timeout, so basically FETCH calls were taking 5m+ before timing out
+    // IMPORTANT: Always use .all() instead of .iterate() because the loop body
+    // contains `await` calls (getQueryResponse, getStream).
+    // better-sqlite3 iterators hold a database lock that CANNOT span async
+    // boundaries — doing so causes lock contention and blocks all other
+    // queries on this database handle until the iterator is exhausted.
     //
-    const isBatchMode = false; // count > 1000;
+    // Memory impact: .all() loads all matching rows into memory at once.
+    // With typical projections (uid, modseq, flags, mimeTree) each row is
+    // ~1-5 KB, so even 10K messages ≈ 10-50 MB — acceptable for a server.
+    //
+    const allResults = stmt.all(sql.values);
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
     const uidSet = queryAll ? new Set(session.selected.uidList) : null;
 
-    for (const result of isBatchMode
-      ? stmt.all(sql.values)
-      : stmt.iterate(sql.values)) {
+    for (const result of allResults) {
       const message = syncConvertResult(Messages, result, projection);
 
       // don't process messages that are new since query started
@@ -304,17 +308,11 @@ async function onFetch(mailboxId, options, session, fn) {
 
         compiledPayloads.push({ compiled });
 
-        // flush compiled payloads after every 500 written
-        if (isBatchMode && compiledPayloads.length >= 500) {
+        // flush compiled payloads after every 500 written to avoid unbounded memory growth
+        if (compiledPayloads.length >= 500) {
           await this.wss.broadcast(session, compiledPayloads);
           compiledPayloads.length = 0;
         }
-
-        //
-        // NOTE: we may need to pass indexer options here as similar to wildduck (through the use of `eachAsync`)
-        // <https://mongoosejs.com/docs/api/querycursor.html#QueryCursor.prototype.eachAsync()>
-        // (e.g. so we can do `await Promise.resolve((resolve) => setImmediate(resolve));`)
-        //
 
         // move along to next cursor
         continue;
@@ -359,8 +357,8 @@ async function onFetch(mailboxId, options, session, fn) {
 
       compiledPayloads.push({ compiled });
 
-      // flush compiled payloads after every 500 written
-      if (isBatchMode && compiledPayloads.length >= 500) {
+      // flush compiled payloads after every 500 written to avoid unbounded memory growth
+      if (compiledPayloads.length >= 500) {
         await this.wss.broadcast(session, compiledPayloads);
         compiledPayloads.length = 0;
       }

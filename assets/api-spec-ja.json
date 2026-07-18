@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "\"true\"に設定すると、nodemailerやrawフィールドなしのメタデータのみのレスポンスを返します。完全なMIMEツリーの再構築と添付ファイル本文の取得をスキップすることで、パフォーマンスが大幅に向上します。"
           }
         ],
         "responses": {

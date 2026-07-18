@@ -4677,6 +4677,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "lightweight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "设置为 \"true\" 时，仅返回元数据响应，不包含 nodemailer 或 raw 字段。通过跳过完整 MIME 树重建和附件正文获取，显著提高性能。"
           }
         ],
         "responses": {
