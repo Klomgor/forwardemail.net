@@ -14,8 +14,8 @@ const logger = require('./logger');
 const onAppend = require('./imap/on-append');
 const updateStorageUsed = require('./update-storage-used');
 const { syncConvertResult } = require('./mongoose-to-sqlite');
+const refreshSession = require('#helpers/refresh-session');
 
-const _ = require('#helpers/lodash');
 const TemporaryMessages = require('#models/temporary-messages');
 
 const onAppendPromise = pify(onAppend, { multiArgs: true });
@@ -43,6 +43,17 @@ async function syncTemporaryMailbox(session) {
   const count = tmpDb.prepare(sql.query).pluck().get(sql.values);
 
   if (count > 0) {
+    //
+    // Pre-loop optimization: call refreshSession once to:
+    // 1. Refresh user data from MongoDB (if needed, cached for 1d in Redis)
+    // 2. Set session.db via getDatabase (LRU cache lookup)
+    //
+    // This avoids 25 redundant Redis RTTs + LRU lookups per batch
+    // because getDatabase returns immediately when session.db is already
+    // set and open (see get-database.js line 132).
+    //
+    await refreshSession.call(this, session, 'APPEND');
+
     let hasMore = true;
     while (hasMore) {
       const sql = builder.build({
@@ -73,6 +84,9 @@ async function syncTemporaryMailbox(session) {
           )} was available`
         );
 
+      // Collect IDs of successfully appended messages for batch delete
+      const appendedIds = [];
+
       for (const m of messages) {
         try {
           const message = syncConvertResult(TemporaryMessages, m);
@@ -93,7 +107,9 @@ async function syncTemporaryMailbox(session) {
             message.date,
             message.raw,
             {
-              ..._.omit(session, 'db'),
+              // Pass session WITH db so refreshSession/getDatabase
+              // can short-circuit (session.db already set and open)
+              ...session,
               remoteAddress: message.remoteAddress,
 
               // don't append duplicate messages
@@ -104,25 +120,30 @@ async function syncTemporaryMailbox(session) {
             }
           );
 
-          // if successfully appended then delete from the database
-          const sql = builder.build({
-            type: 'remove',
-            table: 'TemporaryMessages',
-            condition: {
-              _id: m._id
-            }
-          });
-          tmpDb.prepare(sql.query).run(sql.values);
+          // Track successfully appended message for batch delete
+          appendedIds.push(m._id);
           deleted++;
 
           // yield event loop between messages so other requests aren't starved
-
           await new Promise(setImmediate);
         } catch (_err) {
           err = Array.isArray(_err) ? _err[0] : _err;
           hasMore = false;
           break;
         }
+      }
+
+      // Batch delete all successfully appended messages from tmpDb
+      // (single DELETE WHERE _id IN (...) instead of N individual DELETEs)
+      if (appendedIds.length > 0) {
+        const deleteSql = builder.build({
+          type: 'remove',
+          table: 'TemporaryMessages',
+          condition: {
+            _id: { $in: appendedIds }
+          }
+        });
+        tmpDb.prepare(deleteSql.query).run(deleteSql.values);
       }
     }
   }

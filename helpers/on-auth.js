@@ -334,7 +334,9 @@ async function onAuth(auth, session, fn) {
           }
 
           // Sync messages if applicable (IMAP, POP3, CalDAV, API)
-          // Rate-limited: only fire sync once per alias every 5 seconds
+          // Rate-limited: only fire sync once per alias every 30 seconds.
+          // With tmp delivery caching in place, 30s is sufficient to pick up
+          // queued messages without flooding the sqlite server with sync calls.
           if (
             user.alias_id &&
             user.alias_has_imap &&
@@ -1141,7 +1143,9 @@ async function onAuth(auth, session, fn) {
 
     //
     // if we're on IMAP, POP3, CalDAV, or API server then sync messages with user
-    // Rate-limited: only fire sync once per alias every 5 minutes
+    // Rate-limited: only fire sync once per alias every 30 seconds.
+    // With tmp delivery caching in place, 30s is sufficient to pick up
+    // queued messages without flooding the sqlite server with sync calls.
     //
     if (
       alias &&

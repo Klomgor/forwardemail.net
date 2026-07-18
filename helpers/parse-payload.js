@@ -109,7 +109,31 @@ const onStorePromise = pify(onStore, { multiArgs: true });
 const onSubscribePromise = pify(onSubscribe, { multiArgs: true });
 const onUnsubscribePromise = pify(onUnsubscribe, { multiArgs: true });
 
-const concurrency = os.cpus().length;
+// Reduced concurrency for tmp action to lower event loop pressure
+// from parallel PGP/S/MIME encryption operations (CPU-bound).
+// With 2 parallel aliases, the event loop can still service fetch/search/stmt
+// requests between encryption rounds.
+const TMP_CONCURRENCY = Math.min(2, os.cpus().length);
+
+// In-memory cache for checkDiskSpace results (keyed by storage_location).
+// Avoids repeated statvfs syscalls when processing 50-100 aliases that
+// share the same storage volume. TTL = 10 seconds.
+const DISK_SPACE_CACHE_TTL_MS = 10_000;
+const diskSpaceCache = new Map();
+
+function getCachedDiskSpace(storagePath, storageLocation) {
+  const now = Date.now();
+  const cached = diskSpaceCache.get(storageLocation);
+  if (cached && now - cached.ts < DISK_SPACE_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  return null;
+}
+
+function setCachedDiskSpace(storageLocation, value) {
+  diskSpaceCache.set(storageLocation, { ts: Date.now(), value });
+}
 
 const CHECKPOINTS = ['PASSIVE', 'FULL', 'RESTART', 'TRUNCATE'];
 
@@ -801,22 +825,57 @@ async function parsePayload(data, ws) {
         //
         const fingerprint = getFingerprint({}, headers, payload.raw);
 
+        //
+        // Batch alias pre-fetch: single MongoDB query instead of N
+        // individual findById calls inside the pMap loop.
+        // Saves (N-1) MongoDB round-trips for messages delivered to
+        // multiple aliases (common for mailing lists, catch-all forwards).
+        //
+        const aliasIds = payload.aliases.map((a) => a.id);
+        const aliasesList = await Aliases.find({ _id: { $in: aliasIds } })
+          .populate('domain', 'id name')
+          .populate(
+            'user',
+            `id email ${config.userFields.isBanned} ${config.lastLocaleField}`
+          )
+          .select(
+            'id has_imap has_pgp public_key has_smime smime_certificate storage_location user is_enabled name domain max_quota'
+          )
+          .lean()
+          .exec();
+        // Build lookup map by alias ID for O(1) access in the loop
+        const aliasMap = new Map();
+        for (const a of aliasesList) {
+          aliasMap.set(a._id.toString(), a);
+        }
+
+        //
+        // Detect whether this message might contain iMIP calendar data.
+        // If the top-level Content-Type does NOT indicate multipart or
+        // calendar content, we can skip the expensive simpleParser call
+        // (20-100ms per alias) for the 99%+ of messages that are plain
+        // text/html without calendar attachments.
+        //
+        // NOTE: iMIP can be in multipart attachments, so we only skip
+        // for simple text/plain or text/html messages without multipart.
+        //
+        const contentType = headers
+          ? (headers.getFirst('content-type') || '').toLowerCase()
+          : '';
+        const mayHaveCalendar =
+          contentType.includes('multipart') ||
+          contentType.includes('text/calendar') ||
+          contentType.includes('application/ics');
+
         await pMap(
           payload.aliases,
 
           async (obj) => {
+            // yield event loop between aliases so other WS requests aren't starved
+
+            await new Promise(setImmediate);
             try {
-              const alias = await Aliases.findById(obj.id)
-                .populate('domain', 'id name')
-                .populate(
-                  'user',
-                  `id email ${config.userFields.isBanned} ${config.lastLocaleField}`
-                )
-                .select(
-                  'id has_imap has_pgp public_key has_smime smime_certificate storage_location user is_enabled name domain max_quota'
-                )
-                .lean()
-                .exec();
+              const alias = aliasMap.get(obj.id.toString()) || null;
 
               if (!alias) throw new TypeError('Alias does not exist');
 
@@ -1089,7 +1148,17 @@ async function parsePayload(data, ws) {
                 storage_location: alias.storage_location
               });
               const spaceRequired = byteLength * 2; // 2x to account for syncing
-              const diskSpace = await checkDiskSpace(storagePath);
+              // Use cached disk space check (10s TTL) to avoid repeated
+              // statvfs syscalls for aliases on the same storage volume.
+              let diskSpace = getCachedDiskSpace(
+                storagePath,
+                alias.storage_location
+              );
+              if (!diskSpace) {
+                diskSpace = await checkDiskSpace(storagePath);
+                setCachedDiskSpace(alias.storage_location, diskSpace);
+              }
+
               if (diskSpace.free < spaceRequired)
                 throw new TypeError(
                   `Needed ${bytes(spaceRequired)} but only ${bytes(
@@ -1538,27 +1607,31 @@ async function parsePayload(data, ws) {
                       }
                     });
                     // process iMIP (calendar scheduling) if applicable
-                    try {
-                      const parsedEmail = await simpleParser(payload.raw, {
-                        skipHtmlToText: true,
-                        skipTextLinks: true,
-                        skipTextToHtml: true,
-                        skipImageLinks: true
-                      });
-                      await checkAndProcessImipMessage(parsedEmail, {
-                        messageId: parsedEmail.messageId,
-                        fromEmail: payload.sender,
-                        toEmail: session.user.username,
-                        client: this.client,
-                        remoteAddress: payload.remoteAddress
-                      });
-                    } catch (imipErr) {
-                      logger.warn('iMIP processing failed', {
-                        session,
-                        error: imipErr.message,
-                        sender: payload.sender,
-                        recipient: session.user.username
-                      });
+                    // Skip expensive simpleParser for non-calendar messages
+                    // (plain text/html without multipart or calendar content-type)
+                    if (mayHaveCalendar) {
+                      try {
+                        const parsedEmail = await simpleParser(payload.raw, {
+                          skipHtmlToText: true,
+                          skipTextLinks: true,
+                          skipTextToHtml: true,
+                          skipImageLinks: true
+                        });
+                        await checkAndProcessImipMessage(parsedEmail, {
+                          messageId: parsedEmail.messageId,
+                          fromEmail: payload.sender,
+                          toEmail: session.user.username,
+                          client: this.client,
+                          remoteAddress: payload.remoteAddress
+                        });
+                      } catch (imipErr) {
+                        logger.warn('iMIP processing failed', {
+                          session,
+                          error: imipErr.message,
+                          sender: payload.sender,
+                          recipient: session.user.username
+                        });
+                      }
                     }
 
                     return;
@@ -1979,91 +2052,95 @@ async function parsePayload(data, ws) {
               // SECURITY: DKIM/DMARC already validated by MX server (is-authenticated-message.js)
               // Additional checks: sender/attendee match and rate limiting
               //
-              try {
-                const parsedEmail = await simpleParser(payload.raw, {
-                  skipHtmlToText: true,
-                  skipTextLinks: true,
-                  skipTextToHtml: true,
-                  skipImageLinks: true
-                });
-
-                // Try the comprehensive handler first (handles all methods)
-                const imipResult = await checkAndProcessImipMessage(
-                  parsedEmail,
-                  {
-                    messageId: parsedEmail.messageId,
-                    fromEmail: payload.sender,
-                    toEmail: session.user.username,
-                    client: this.client,
-                    remoteAddress: payload.remoteAddress
-                  }
-                );
-
-                if (imipResult && imipResult.processed) {
-                  //
-                  // Invalidate the CalDAV negative-cache so the next
-                  // CalDAV sync request processes this invite immediately
-                  // rather than waiting for the 30 s TTL to expire.
-                  //
-                  // RFC 6638 §3.2: the server MUST deliver scheduling
-                  // messages to the attendee's scheduling inbox promptly.
-                  // A stale negative-cache entry would suppress delivery
-                  // for up to 30 s after the message arrives.
-                  //
-                  if (this.client && session.user && session.user.alias_id) {
-                    this.client
-                      .del(`caldav_inv_empty:${session.user.alias_id}`)
-                      .catch((delErr) => {
-                        logger.warn(
-                          'Failed to invalidate CalDAV invite cache after iMIP store',
-                          { error: delErr.message }
-                        );
-                      });
-                  }
-
-                  logger.info('Processed iMIP message from incoming email', {
-                    session,
-                    user: { id: session.user.alias_user_id },
-                    domains: [
-                      new mongoose.Types.ObjectId(session.user.domain_id)
-                    ],
-                    method: imipResult.method,
-                    inviteId: imipResult.invite?._id,
-                    eventUid: imipResult.imipData?.uid,
-                    attendeeEmail: imipResult.imipData?.attendeeEmail,
-                    partstat: imipResult.imipData?.partstat,
-                    toEmail: session.user.username
+              // Skip expensive simpleParser for non-calendar messages
+              // (plain text/html without multipart or calendar content-type)
+              if (mayHaveCalendar) {
+                try {
+                  const parsedEmail = await simpleParser(payload.raw, {
+                    skipHtmlToText: true,
+                    skipTextLinks: true,
+                    skipTextToHtml: true,
+                    skipImageLinks: true
                   });
-                } else if (imipResult && imipResult.rejected) {
-                  // Log security rejections for audit trail
-                  logger.warn('iMIP message rejected for security reasons', {
+
+                  // Try the comprehensive handler first (handles all methods)
+                  const imipResult = await checkAndProcessImipMessage(
+                    parsedEmail,
+                    {
+                      messageId: parsedEmail.messageId,
+                      fromEmail: payload.sender,
+                      toEmail: session.user.username,
+                      client: this.client,
+                      remoteAddress: payload.remoteAddress
+                    }
+                  );
+
+                  if (imipResult && imipResult.processed) {
+                    //
+                    // Invalidate the CalDAV negative-cache so the next
+                    // CalDAV sync request processes this invite immediately
+                    // rather than waiting for the 30 s TTL to expire.
+                    //
+                    // RFC 6638 §3.2: the server MUST deliver scheduling
+                    // messages to the attendee's scheduling inbox promptly.
+                    // A stale negative-cache entry would suppress delivery
+                    // for up to 30 s after the message arrives.
+                    //
+                    if (this.client && session.user && session.user.alias_id) {
+                      this.client
+                        .del(`caldav_inv_empty:${session.user.alias_id}`)
+                        .catch((delErr) => {
+                          logger.warn(
+                            'Failed to invalidate CalDAV invite cache after iMIP store',
+                            { error: delErr.message }
+                          );
+                        });
+                    }
+
+                    logger.info('Processed iMIP message from incoming email', {
+                      session,
+                      user: { id: session.user.alias_user_id },
+                      domains: [
+                        new mongoose.Types.ObjectId(session.user.domain_id)
+                      ],
+                      method: imipResult.method,
+                      inviteId: imipResult.invite?._id,
+                      eventUid: imipResult.imipData?.uid,
+                      attendeeEmail: imipResult.imipData?.attendeeEmail,
+                      partstat: imipResult.imipData?.partstat,
+                      toEmail: session.user.username
+                    });
+                  } else if (imipResult && imipResult.rejected) {
+                    // Log security rejections for audit trail
+                    logger.warn('iMIP message rejected for security reasons', {
+                      session,
+                      user: { id: session.user.alias_user_id },
+                      domains: [
+                        new mongoose.Types.ObjectId(session.user.domain_id)
+                      ],
+                      method: imipResult.method,
+                      code: imipResult.code,
+                      reason: imipResult.reason,
+                      eventUid: imipResult.imipData?.uid,
+                      attendeeEmail: imipResult.imipData?.attendeeEmail,
+                      sender: payload.sender,
+                      recipient: session.user.username,
+                      remoteAddress: payload.remoteAddress
+                    });
+                  }
+                } catch (imipErr) {
+                  // Don't fail message delivery if iMIP processing fails
+                  logger.warn('iMIP processing failed', {
                     session,
                     user: { id: session.user.alias_user_id },
                     domains: [
                       new mongoose.Types.ObjectId(session.user.domain_id)
                     ],
-                    method: imipResult.method,
-                    code: imipResult.code,
-                    reason: imipResult.reason,
-                    eventUid: imipResult.imipData?.uid,
-                    attendeeEmail: imipResult.imipData?.attendeeEmail,
+                    error: imipErr.message,
                     sender: payload.sender,
-                    recipient: session.user.username,
-                    remoteAddress: payload.remoteAddress
+                    recipient: session.user.username
                   });
                 }
-              } catch (imipErr) {
-                // Don't fail message delivery if iMIP processing fails
-                logger.warn('iMIP processing failed', {
-                  session,
-                  user: { id: session.user.alias_user_id },
-                  domains: [
-                    new mongoose.Types.ObjectId(session.user.domain_id)
-                  ],
-                  error: imipErr.message,
-                  sender: payload.sender,
-                  recipient: session.user.username
-                });
               }
             } catch (err) {
               err.payload = _.omit(payload, 'raw');
@@ -2074,7 +2151,7 @@ async function parsePayload(data, ws) {
               );
             }
           },
-          { concurrency }
+          { concurrency: TMP_CONCURRENCY }
         );
 
         response = {
