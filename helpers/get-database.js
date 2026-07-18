@@ -814,36 +814,31 @@ async function getDatabase(
     // and auto-vacuum) are NOT required for correctness of the current request.
     // They are housekeeping tasks that can run in the background.
     //
-    // Maintenance is awaited inline to ensure it completes before returning the handle.
+    // VACUUM must be awaited inline because it closes + replaces the db handle
+    // (session.db).  All other maintenance is deferred via setImmediate so it
+    // does not block the event loop or delay the current request.
     // Redis TTLs prevent repeated runs (maintenance only fires once per TTL window).
     // The _deferredMaintenanceRunning guard prevents concurrent runs for the same alias.
-    // After maintenance, we re-fetch from databaseMap in case VACUUM replaced the handle.
     //
-    const needsDeferredMaint =
-      !trashCheck ||
-      !threadCheck ||
-      !calendarDuplicateCheck ||
-      !highestmodseqCheck ||
-      !storageFormatCheck ||
-      !caldavHrefCheck ||
-      !calendarDateCheck ||
-      !vacuumCheck;
 
+    // ── Part 1: VACUUM (inline) ─────────────────────────────────────────
+    // VACUUM replaces the db handle so it MUST complete before we return.
     if (
-      needsDeferredMaint &&
+      !vacuumCheck &&
       !_deferredMaintenanceRunning.has(session.user.alias_id)
     ) {
       _deferredMaintenanceRunning.add(session.user.alias_id);
       try {
         await _runDeferredMaintenance(instance, db, session, {
           alias,
-          trashCheck,
-          threadCheck,
-          calendarDuplicateCheck,
-          highestmodseqCheck,
-          storageFormatCheck,
-          caldavHrefCheck,
-          calendarDateCheck,
+          // Skip all non-VACUUM stages (they run in Part 2 below)
+          trashCheck: true,
+          threadCheck: true,
+          calendarDuplicateCheck: true,
+          highestmodseqCheck: true,
+          storageFormatCheck: true,
+          caldavHrefCheck: true,
+          calendarDateCheck: true,
           vacuumCheck
         });
       } catch (err) {
@@ -861,6 +856,56 @@ async function getDatabase(
           session.db = db;
         }
       }
+    }
+
+    // ── Part 2: Non-VACUUM maintenance (deferred / fire-and-forget) ─────
+    // These stages (trash, thread, calendar, highestmodseq, storage format,
+    // caldav href, calendar date) do NOT replace the db handle and are safe
+    // to run asynchronously after getDatabase() returns.
+    const needsDeferredMaint =
+      !trashCheck ||
+      !threadCheck ||
+      !calendarDuplicateCheck ||
+      !highestmodseqCheck ||
+      !storageFormatCheck ||
+      !caldavHrefCheck ||
+      !calendarDateCheck;
+
+    if (
+      needsDeferredMaint &&
+      !_deferredMaintenanceRunning.has(session.user.alias_id)
+    ) {
+      // Capture references for the deferred closure.
+      // Use `db` which has already been updated by Part 1 if VACUUM ran.
+      const _db = db;
+      const _session = { ...session, db: _db };
+      const _alias = alias;
+      const _aliasId = session.user.alias_id;
+      _deferredMaintenanceRunning.add(_aliasId);
+      setImmediate(() => {
+        _runDeferredMaintenance(instance, _db, _session, {
+          alias: _alias,
+          trashCheck,
+          threadCheck,
+          calendarDuplicateCheck,
+          highestmodseqCheck,
+          storageFormatCheck,
+          caldavHrefCheck,
+          calendarDateCheck,
+          // Skip VACUUM — already handled inline above
+          vacuumCheck: true
+        })
+          .catch((err) => {
+            err.isCodeBug = true;
+            logger.fatal(err, {
+              session: _session,
+              resolver: instance.resolver
+            });
+          })
+          .finally(() => {
+            _deferredMaintenanceRunning.delete(_aliasId);
+          });
+      });
     }
 
     // Final safety: if the handle was closed (e.g. by LRU sweep), throw so p-retry can reopen
@@ -1027,46 +1072,49 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
         // iterate over all messages to get an array of attachment ids
         // and then iterate over all attachments to delete those not in the list
         const now = new Date().toISOString();
-        const sql = builder.build({
-          type: 'select',
-          table: 'Messages',
-          condition: {
-            created_at: {
-              $lte: now
-            },
-            ha: true
-          },
-          fields: ['mimeTree']
-        });
-
         //
-        // Use .all() instead of .iterate() so we can yield to the event loop
-        // between batches (better-sqlite3 iterators hold a lock and cannot
-        // be used across async boundaries).
+        // Use LIMIT/OFFSET pagination instead of .all() to avoid loading
+        // every message with attachments into memory at once (which can be
+        // hundreds of MB for large mailboxes).  Each page is a synchronous
+        // .all() call (better-sqlite3 iterators hold a lock across async
+        // boundaries so .iterate() cannot be used), but the page size is
+        // bounded so memory stays constant.
         //
-        const allMessages = db.prepare(sql.query).all(sql.values);
-
         const hashSet = new Set();
-        const BATCH_SIZE = 100;
-
-        for (const [i, allMessage] of allMessages.entries()) {
-          const mimeTree = decodeMetadata(
-            allMessage.mimeTree,
-            recursivelyParse
-          );
-          const hashes = getAttachments(mimeTree);
-          for (const hash of hashes) {
-            hashSet.add(hash);
+        const PAGE_SIZE = 256;
+        let offset = 0;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const pageSql = builder.build({
+            type: 'select',
+            table: 'Messages',
+            condition: {
+              created_at: { $lte: now },
+              ha: true
+            },
+            fields: ['mimeTree'],
+            limit: PAGE_SIZE,
+            offset,
+            sort: { _id: 1 }
+          });
+          const page = db.prepare(pageSql.query).all(pageSql.values);
+          if (page.length === 0) break;
+          for (const row of page) {
+            const mimeTree = decodeMetadata(row.mimeTree, recursivelyParse);
+            const hashes = getAttachments(mimeTree);
+            for (const hash of hashes) {
+              hashSet.add(hash);
+            }
           }
 
-          // Yield to event loop every BATCH_SIZE messages to avoid blocking
-          if ((i + 1) % BATCH_SIZE === 0) {
-            await new Promise((resolve) => {
-              setImmediate(resolve);
-            });
-            // Safety: bail if db was closed during yield
-            if (!db.open) return;
-          }
+          offset += page.length;
+          // Yield to event loop between pages to avoid blocking
+          await new Promise((resolve) => {
+            setImmediate(resolve);
+          });
+          // Safety: bail if db was closed during yield
+          if (!db.open) return;
+          if (page.length < PAGE_SIZE) break;
         }
 
         // NOTE: this only works if there's at least one hash from existing messages

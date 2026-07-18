@@ -209,73 +209,106 @@ async function onFetch(mailboxId, options, session, fn) {
 
     // const count = await Messages.countDocuments(this, session, condition);
 
-    const sql = builder.build({
-      type: 'select',
-      table: 'Messages',
-      condition,
-      fields,
-      // sort required for IMAP UIDPLUS
-      sort: condition?.uid?.$eq ? undefined : 'uid'
-      // no limits right now:
-      // limit: MAX_PAGE_SIZE
-    });
-
     //
-    // NOTE: use larger batch size if the query was limited in its projection
+    // Use LIMIT/OFFSET pagination instead of a single unbounded .all() to
+    // prevent memory exhaustion.  A malicious or naive client can issue
+    // FETCH 1:* (BODY[]) on a mailbox with thousands of messages — each
+    // mimeTree blob can be 15 MB+, so loading them all at once would OOM
+    // the process.  We fetch PAGE_SIZE rows per iteration, process them
+    // (which involves async work like getQueryResponse/getStream), then
+    // fetch the next page.  This keeps peak memory bounded.
     //
-    // max batch size in mongoose is 5000
-    // <https://github.com/Automattic/mongoose/blob/1f6449576aac47dcb43f9974bb187a4f13d413d3/lib/cursor/QueryCursor.js#L78C1-L83>
+    // We still use .all() per page (not .iterate()) because the loop body
+    // contains `await` calls and better-sqlite3 iterators hold a lock that
+    // cannot span async boundaries.
     //
-    // the default in mongodb for find query is 101
-    // <https://www.mongodb.com/docs/manual/tutorial/iterate-a-cursor/#cursor-batches>
-    //
-    // const batchSize: !Object.keys(projection).some(
-    //   (key) => !LIMITED_PROJECTION_KEYS.has(key)
-    // )
-    //   ? 1000
-    //   : 101
-
-    //
-    // TODO: we may want to use `.all()` instead of `.all()`
-    // with the `batchSize` value at a time (for better performance)
-    //
-
-    // <https://github.com/m4heshd/better-sqlite3-multiple-ciphers/blob/master/docs/api.md#iteratebindparameters---iterator>
-    const stmt = session.db.prepare(sql.query);
-
-    //
-    // IMPORTANT: Always use .all() instead of .iterate() because the loop body
-    // contains `await` calls (getQueryResponse, getStream).
-    // better-sqlite3 iterators hold a database lock that CANNOT span async
-    // boundaries — doing so causes lock contention and blocks all other
-    // queries on this database handle until the iterator is exhausted.
-    //
-    // Memory impact: .all() loads all matching rows into memory at once.
-    // With typical projections (uid, modseq, flags, mimeTree) each row is
-    // ~1-5 KB, so even 10K messages ≈ 10-50 MB — acceptable for a server.
-    //
-    const allResults = stmt.all(sql.values);
+    const PAGE_SIZE = 256;
+    const sortClause = condition?.uid?.$eq ? undefined : 'uid';
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
     const uidSet = queryAll ? new Set(session.selected.uidList) : null;
 
-    for (const result of allResults) {
-      const message = syncConvertResult(Messages, result, projection);
+    let offset = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const pageSql = builder.build({
+        type: 'select',
+        table: 'Messages',
+        condition,
+        fields,
+        sort: sortClause,
+        limit: PAGE_SIZE,
+        offset
+      });
+      const pageResults = session.db.prepare(pageSql.query).all(pageSql.values);
+      if (pageResults.length < PAGE_SIZE) hasMore = false;
+      offset += pageResults.length;
+      if (pageResults.length === 0) break;
 
-      // don't process messages that are new since query started
-      // <https://github.com/nodemailer/wildduck/issues/708>
-      if (queryAll && !uidSet.has(message.uid)) {
-        continue;
-      }
+      for (const result of pageResults) {
+        const message = syncConvertResult(Messages, result, projection);
 
-      const markAsSeen =
-        options.markAsSeen &&
-        message.flags &&
-        !message.flags.includes('\\Seen');
-      if (markAsSeen) message.flags.unshift('\\Seen');
+        // don't process messages that are new since query started
+        // <https://github.com/nodemailer/wildduck/issues/708>
+        if (queryAll && !uidSet.has(message.uid)) {
+          continue;
+        }
 
-      // write the response early since we don't need to perform db operation
-      if (options.metadataOnly && !markAsSeen) {
+        const markAsSeen =
+          options.markAsSeen &&
+          message.flags &&
+          !message.flags.includes('\\Seen');
+        if (markAsSeen) message.flags.unshift('\\Seen');
+
+        // write the response early since we don't need to perform db operation
+        if (options.metadataOnly && !markAsSeen) {
+          const values = await Promise.all(
+            getQueryResponse(
+              options.query,
+              message,
+              {
+                logger: this.logger,
+                fetchOptions: {},
+                // database
+                attachmentStorage: this.attachmentStorage,
+                acceptUTF8Enabled:
+                  typeof session.isUTF8Enabled === 'function'
+                    ? session.isUTF8Enabled()
+                    : session.acceptUTF8Enabled || false
+              },
+              this,
+              session
+            )
+          );
+
+          const data = formatResponse.call(session, 'FETCH', message.uid, {
+            query: options.query,
+            values
+          });
+
+          const compiled = imapHandler.compiler(data);
+
+          // `compiled` is a 'binary' string
+          totalBytes += compiled.length;
+          rowCount++;
+
+          compiledPayloads.push({ compiled });
+
+          // flush compiled payloads after every 500 written to avoid unbounded memory growth
+          if (compiledPayloads.length >= 500) {
+            await this.wss.broadcast(session, compiledPayloads);
+            compiledPayloads.length = 0;
+          }
+
+          // move along to next cursor
+          continue;
+        }
+
+        //
+        // NOTE: wildduck uses streams and a TTL limiter/counter however we can
+        // simplify this for now just by writing to the socket writable stream
+        //
+
         const values = await Promise.all(
           getQueryResponse(
             options.query,
@@ -300,11 +333,13 @@ async function onFetch(mailboxId, options, session, fn) {
           values
         });
 
-        const compiled = imapHandler.compiler(data);
+        // <https://github.com/nodemailer/wildduck/issues/563#issuecomment-1826943401>
+        const stream = imapHandler.compileStream(data);
 
-        // `compiled` is a 'binary' string
+        const compiled = await getStream(stream, {
+          encoding: 'binary'
+        });
         totalBytes += compiled.length;
-        rowCount++;
 
         compiledPayloads.push({ compiled });
 
@@ -314,90 +349,42 @@ async function onFetch(mailboxId, options, session, fn) {
           compiledPayloads.length = 0;
         }
 
-        // move along to next cursor
-        continue;
-      }
+        rowCount++;
 
-      //
-      // NOTE: wildduck uses streams and a TTL limiter/counter however we can
-      // simplify this for now just by writing to the socket writable stream
-      //
+        if (markAsSeen) {
+          // RFC 7162: Any flag change MUST update the message's mod-sequence
+          // so CONDSTORE clients can detect the implicit \Seen change.
+          const newModseq = mailbox.modifyIndex + 1;
+          const sql = builder.build({
+            type: 'update',
+            table: 'Messages',
+            condition: {
+              _id: message._id.toString()
+            },
+            modifier: {
+              $set: prepareQuery(Messages.mapping, {
+                flags: message.flags,
+                unseen: false,
+                modseq: newModseq
+              })
+            }
+          });
+          ops.push([sql.query, sql.values]);
 
-      const values = await Promise.all(
-        getQueryResponse(
-          options.query,
-          message,
-          {
-            logger: this.logger,
-            fetchOptions: {},
-            // database
-            attachmentStorage: this.attachmentStorage,
-            acceptUTF8Enabled:
-              typeof session.isUTF8Enabled === 'function'
-                ? session.isUTF8Enabled()
-                : session.acceptUTF8Enabled || false
-          },
-          this,
-          session
-        )
-      );
-
-      const data = formatResponse.call(session, 'FETCH', message.uid, {
-        query: options.query,
-        values
-      });
-
-      // <https://github.com/nodemailer/wildduck/issues/563#issuecomment-1826943401>
-      const stream = imapHandler.compileStream(data);
-
-      const compiled = await getStream(stream, {
-        encoding: 'binary'
-      });
-      totalBytes += compiled.length;
-
-      compiledPayloads.push({ compiled });
-
-      // flush compiled payloads after every 500 written to avoid unbounded memory growth
-      if (compiledPayloads.length >= 500) {
-        await this.wss.broadcast(session, compiledPayloads);
-        compiledPayloads.length = 0;
-      }
-
-      rowCount++;
-
-      if (markAsSeen) {
-        // RFC 7162: Any flag change MUST update the message's mod-sequence
-        // so CONDSTORE clients can detect the implicit \Seen change.
-        const newModseq = mailbox.modifyIndex + 1;
-        const sql = builder.build({
-          type: 'update',
-          table: 'Messages',
-          condition: {
-            _id: message._id.toString()
-          },
-          modifier: {
-            $set: prepareQuery(Messages.mapping, {
-              flags: message.flags,
-              unseen: false,
-              modseq: newModseq
-            })
-          }
-        });
-        ops.push([sql.query, sql.values]);
-
-        entries.push({
-          ignore: session.id,
-          command: 'FETCH',
-          uid: message.uid,
-          flags: message.flags,
-          message: message._id,
-          thread: message.thread,
-          modseq: newModseq,
-          // unseenChange is true when marking as seen via FETCH
-          unseenChange: true
-        });
-      }
-    }
+          entries.push({
+            ignore: session.id,
+            command: 'FETCH',
+            uid: message.uid,
+            flags: message.flags,
+            message: message._id,
+            thread: message.thread,
+            modseq: newModseq,
+            // unseenChange is true when marking as seen via FETCH
+            unseenChange: true
+          });
+        }
+      } // end for (pageResults)
+    } // end while (hasMore)
 
     // perform db operations
     if (ops.length > 0) {

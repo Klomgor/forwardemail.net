@@ -1601,9 +1601,12 @@ function parseSchema(Model, modelName = '') {
                   `        INSERT INTO ${name}_fts (rowid, _id, ${key})`,
                   `        VALUES (new.rowid, new._id, new.${key});`,
                   '    END;'
-                ].join('\n'),
-                // rebuild command — populates FTS5 index from existing content table rows
-                `INSERT INTO ${name}_fts(${name}_fts) VALUES('rebuild');`
+                ].join('\n')
+                // NOTE: rebuild removed — it was a synchronous full-table
+                // scan that blocked the event loop for 2-13s on large
+                // mailboxes.  New rows are indexed via the INSERT trigger;
+                // old rows fall back to LIKE queries via try/catch in
+                // on-search.js and messages.js.
               ];
           }
         }
