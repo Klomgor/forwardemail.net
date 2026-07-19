@@ -1024,9 +1024,12 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
         }
 
         {
-          const sql = builder.build({
-            type: 'remove',
+          // Batch the DELETE in chunks of 1000 rows to avoid blocking
+          // the event loop for seconds on large mailboxes.
+          const selectSql = builder.build({
+            type: 'select',
             table: 'Messages',
+            fields: ['_id'],
             condition: {
               $or: [
                 {
@@ -1061,10 +1064,30 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
                   }
                 }
               ]
-            }
+            },
+            limit: 1000
           });
-
-          db.prepare(sql.query).run(sql.values);
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const ids = db
+              .prepare(selectSql.query)
+              .pluck()
+              .all(selectSql.values);
+            if (ids.length === 0) break;
+            const placeholders = ids.map(() => '?').join(',');
+            db.prepare(
+              `DELETE FROM "Messages" WHERE "_id" IN (${placeholders})`
+            ).run(...ids);
+            // Yield to event loop between batches
+            if (ids.length >= 1000) {
+              await new Promise((resolve) => {
+                setImmediate(resolve);
+              });
+              if (!db.open) return;
+            } else {
+              break;
+            }
+          }
         }
 
         // TODO: wss broadcast changes here to connected clients
@@ -1081,7 +1104,7 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
         // bounded so memory stays constant.
         //
         const hashSet = new Set();
-        const PAGE_SIZE = 256;
+        const PAGE_SIZE = 1000;
         let offset = 0;
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -1205,9 +1228,25 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
         ms('1d')
       );
 
-      db.exec(
-        `DELETE FROM Threads WHERE _id NOT IN (SELECT thread FROM Messages);`
-      );
+      // Batch the DELETE in chunks of 1000 to avoid a full-table-scan
+      // NOT IN subquery blocking the event loop for seconds.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const deleted = db
+          .prepare(
+            `DELETE FROM Threads WHERE _id IN (` +
+              `SELECT t._id FROM Threads t ` +
+              `LEFT JOIN Messages m ON m.thread = t._id ` +
+              `WHERE m.thread IS NULL LIMIT 1000)`
+          )
+          .run();
+        if (deleted.changes < 1000) break;
+        // Yield to event loop between batches
+        await new Promise((resolve) => {
+          setImmediate(resolve);
+        });
+        if (!db.open) return;
+      }
     } catch (err) {
       logger.fatal(err, { session, resolver: instance.resolver });
     }

@@ -222,7 +222,7 @@ async function onFetch(mailboxId, options, session, fn) {
     // contains `await` calls and better-sqlite3 iterators hold a lock that
     // cannot span async boundaries.
     //
-    const PAGE_SIZE = 256;
+    const PAGE_SIZE = 2000;
     const sortClause = condition?.uid?.$eq ? undefined : 'uid';
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes

@@ -518,9 +518,18 @@ test('onAppend with public PGP', async (t) => {
     })
     .create();
 
+  // Generate a PGP key locally instead of relying on external WKD lookup
+  // (the WKD endpoint for support@forwardemail.net may be unavailable)
+  const { publicKey } = await openpgp.generateKey({
+    type: 'ecc',
+    curve: 'curve25519',
+    userIDs: [{ name: '', email: `${alias.name}@${domain.name}` }],
+    passphrase: 'super long and hard to guess secret',
+    format: 'armored'
+  });
+  alias.public_key = publicKey;
   const pass = await alias.createToken();
   await alias.save();
-
   const session = {
     user: {
       id: alias.id,
