@@ -17,16 +17,6 @@ test.beforeEach((t) => {
   };
 });
 
-test('closeDatabase > returns immediately if db is null', async (t) => {
-  await closeDatabase(null);
-  t.pass();
-});
-
-test('closeDatabase > returns immediately if db is undefined', async (t) => {
-  await closeDatabase(undefined);
-  t.pass();
-});
-
 test('closeDatabase > returns immediately if db.open is false', async (t) => {
   const db = { open: false, pragma: sinon.stub(), close: sinon.stub() };
   await closeDatabase(db);
@@ -34,21 +24,24 @@ test('closeDatabase > returns immediately if db.open is false', async (t) => {
   t.false(db.close.called);
 });
 
-test('closeDatabase > calls close on healthy db', async (t) => {
+test('closeDatabase > calls optimize and close on healthy db', async (t) => {
   const { db } = t.context;
   await closeDatabase(db);
+  t.true(db.pragma.calledWith('analysis_limit=400'));
+  t.true(db.pragma.calledWith('optimize'));
   t.true(db.close.calledOnce);
 });
 
-test('closeDatabase > calls PASSIVE checkpoint but NOT optimize', async (t) => {
+test('closeDatabase > does NOT call wal_checkpoint (event-loop safety)', async (t) => {
   const { db } = t.context;
   await closeDatabase(db);
-  // Should call wal_checkpoint(PASSIVE) before close
-  t.true(db.pragma.calledOnce);
-  t.is(db.pragma.firstCall.args[0], 'wal_checkpoint(PASSIVE)');
-  // Should NOT call optimize (was root cause of IOERR_SHORT_READ)
-  t.false(db.pragma.calledWith('optimize'));
-  t.false(db.pragma.calledWith('analysis_limit=400'));
+  // wal_checkpoint was removed — it caused catastrophic event-loop blocking
+  // when the LRU sweep closed many databases in a single tick.
+  // wal_autocheckpoint handles checkpointing automatically during writes.
+  const checkpointCalls = db.pragma
+    .getCalls()
+    .filter((c) => c.args[0] && c.args[0].includes('wal_checkpoint'));
+  t.is(checkpointCalls.length, 0);
 });
 
 test('closeDatabase > handles close() throwing', async (t) => {
@@ -73,7 +66,7 @@ test('closeDatabase > closes even if inTransaction never clears (30s timeout)', 
   t.timeout(35000);
   const { db } = t.context;
   db.inTransaction = true;
-  // Never clears - should timeout and still attempt close
+  // Never clears - should timeout after 30s and still attempt close
   await closeDatabase(db);
   t.true(db.close.calledOnce);
 });

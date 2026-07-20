@@ -1160,18 +1160,6 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
           );
       } // end else (mailboxes.length > 0)
 
-      // Reclaim free pages from INCREMENTAL auto_vacuum.
-      // Frees up to 512 pages (~2 MB) per maintenance run without blocking
-      // the event loop for extended periods like a full VACUUM would.
-      if (db && db.open && !db.inTransaction) {
-        try {
-          db.pragma('incremental_vacuum(512)');
-        } catch (err) {
-          // Non-fatal: incremental_vacuum failure doesn't affect correctness
-          logger.debug(err, { session, resolver: instance.resolver });
-        }
-      }
-
       // Optimize query planner (guard against busy/closed/in-transaction state)
       if (db && db.open && !db.inTransaction) {
         try {
@@ -1608,7 +1596,7 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
       //
       if (!db.open) throw new TypeError('database connection is not open');
       const autoVacuumMode = db.pragma('auto_vacuum', { simple: true });
-      if (autoVacuumMode !== 2) {
+      if (autoVacuumMode !== 1) {
         // get latest from cache in case another connection started a vacuum
         vacuumCheck = boolean(
           await instance.client.get(`vacuum_check:${session.user.alias_id}`)
@@ -1639,8 +1627,8 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
               // Checkpoint WAL so all committed data is in the main DB file
               db.pragma('wal_checkpoint(TRUNCATE)');
 
-              // Set auto_vacuum mode to INCREMENTAL and VACUUM INTO the temp file
-              db.pragma('auto_vacuum=INCREMENTAL');
+              // Set auto_vacuum mode to FULL and VACUUM INTO the temp file
+              db.pragma('auto_vacuum=FULL');
               db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
 
               //
@@ -1781,8 +1769,10 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
 
 function retryGetDatabase(...args) {
   return pRetry(() => getDatabase(...args), {
-    retries: 2,
-    minTimeout: ms('5s'),
+    retries: 10,
+    minTimeout: ms('1s'),
+    maxTimeout: ms('1s'),
+    factor: 1,
 
     async onFailedAttempt(error) {
       const instance = args[0];

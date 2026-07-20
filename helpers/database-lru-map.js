@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
-const { boolean } = require('boolean');
 const ms = require('ms');
 
 const closeDatabase = require('#helpers/close-database');
@@ -13,31 +12,27 @@ const logger = require('#helpers/logger');
 //
 // LRU Map for SQLite database connections.
 //
-// Drop-in replacement for Map() with:
-// - Max size limit (configurable, default 1000 per worker)
-// - Idle TTL (close databases not accessed within idleTTL)
-// - Batch eviction (10% of capacity when full)
-// - Transaction awareness (never evicts a DB mid-transaction)
-// - Safe async close via closeDatabase helper
+// The databaseMap previously used a plain Map() with no eviction,
+// causing unbounded memory growth (1.8-3.8 GB per worker) as every
+// IMAP user's database was opened and never closed until process restart.
 //
-// Protection against evicting active databases:
-// 1. get() updates lastAccess — any DB being actively used stays fresh
-// 2. inTransaction check — any DB mid-write is never evicted
-// 3. idleTTL (5m default) — only DBs untouched for 5 minutes are candidates
+// This class provides:
+// - Max size limit (configurable, default 200 per worker)
+// - Idle TTL (close databases not accessed for 5 minutes)
+// - LRU eviction (when max size reached, close least recently used)
+// - Safe async close with transaction awareness
 //
 class DatabaseLRUMap {
   constructor(options = {}) {
-    this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 1000;
+    this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 200;
     this.idleTTL = options.idleTTL || ms('5m');
-    // shrinkTTL: after this idle period, release page cache but keep connection open
-    this.shrinkTTL = options.shrinkTTL || ms('2m');
-    this._map = new Map(); // key -> { db, lastAccess, shrunk }
-    this._closing = new Set(); // keys currently being closed
+    this._map = new Map(); // alias_id -> { db, lastAccess }
+    this._closing = new Set(); // alias_ids currently being closed
 
-    // Periodic sweep to close idle databases (every 30s)
+    // Periodic sweep to close idle databases
     this._sweepInterval = setInterval(() => {
       this._sweepIdle();
-    }, ms('30s'));
+    }, ms('1m'));
     this._sweepInterval.unref();
   }
 
@@ -52,10 +47,8 @@ class DatabaseLRUMap {
   get(key) {
     const entry = this._map.get(key);
     if (!entry) return undefined;
-    // Update last access time (LRU touch) — this is what prevents
-    // eviction of actively-used databases without needing ref/unref.
+    // Update last access time (LRU touch)
     entry.lastAccess = Date.now();
-    entry.shrunk = false;
     return entry.db;
   }
 
@@ -68,15 +61,14 @@ class DatabaseLRUMap {
       return this;
     }
 
-    // Evict 10% of capacity when full (batch eviction)
+    // Evict LRU entries if at capacity
     if (this._map.size >= this.maxSize) {
-      this._evictBatch();
+      this._evictLRU();
     }
 
     this._map.set(key, {
       db,
-      lastAccess: Date.now(),
-      shrunk: false
+      lastAccess: Date.now()
     });
     return this;
   }
@@ -110,73 +102,53 @@ class DatabaseLRUMap {
     return this._map.keys();
   }
 
-  // Evict 10% of capacity (batch eviction when map is full)
-  _evictBatch() {
-    const count = Math.max(1, Math.ceil(this.maxSize * 0.1));
-    const candidates = [];
+  // For compatibility with graceful shutdown: get raw db by key without LRU touch
+  getRaw(key) {
+    const entry = this._map.get(key);
+    return entry ? entry.db : undefined;
+  }
+
+  // Evict the least recently used entry
+  _evictLRU() {
+    let oldestKey = null;
+    let oldestTime = Number.POSITIVE_INFINITY;
     for (const [key, entry] of this._map) {
-      // Skip entries currently being closed
+      // Skip entries currently being closed or in transaction
       if (this._closing.has(key)) continue;
-      // Skip entries mid-transaction (never evict during a write)
       if (entry.db && entry.db.inTransaction) continue;
-      // Skip entries with active deferred maintenance running
-      if (entry.maintenanceActive) continue;
-      if (entry.db && entry.db.open) {
-        candidates.push({ key, lastAccess: entry.lastAccess });
+      if (entry.lastAccess < oldestTime) {
+        oldestTime = entry.lastAccess;
+        oldestKey = key;
       }
     }
 
-    // Sort by lastAccess ascending (oldest first)
-    candidates.sort((a, b) => a.lastAccess - b.lastAccess);
-
-    const toEvict = candidates.slice(0, count);
-    for (const { key } of toEvict) {
-      const entry = this._map.get(key);
-      this._map.delete(key);
+    if (oldestKey !== null) {
+      const entry = this._map.get(oldestKey);
+      this._map.delete(oldestKey);
       if (entry && entry.db && entry.db.open) {
-        this._closing.add(key);
+        this._closing.add(oldestKey);
         closeDatabase(entry.db)
           .catch((err) => {
             logger.error(err);
           })
           .finally(() => {
-            this._closing.delete(key);
+            this._closing.delete(oldestKey);
           });
       }
     }
   }
 
-  // Sweep idle databases that haven't been accessed within TTL.
-  // Also release page cache (shrink_memory) for semi-idle DBs to
-  // prevent unbounded native memory growth from SQLite page caches.
+  // Sweep idle databases that haven't been accessed within TTL
   _sweepIdle() {
     const now = Date.now();
     const toEvict = [];
-    let shrunkCount = 0;
     for (const [key, entry] of this._map) {
-      if (!entry.db || !entry.db.open) continue;
-      if (this._closing.has(key)) continue;
-      if (entry.db.inTransaction) continue;
-      // Skip entries with active deferred maintenance running
-      if (entry.maintenanceActive) continue;
-
-      const idleMs = now - entry.lastAccess;
-
-      if (idleMs > this.idleTTL) {
-        // Fully idle — close the connection
+      if (now - entry.lastAccess > this.idleTTL) {
+        // Skip entries in transaction
+        if (entry.db && entry.db.inTransaction) continue;
+        // Skip entries currently being closed
+        if (this._closing.has(key)) continue;
         toEvict.push(key);
-      } else if (idleMs > this.shrinkTTL && !entry.shrunk) {
-        // Semi-idle — release page cache but keep connection open.
-        // This reclaims native memory (up to 16MB per DB) without
-        // the TTI penalty of reopening the connection on next access.
-        try {
-          entry.db.pragma('shrink_memory');
-          entry.shrunk = true;
-          shrunkCount++;
-        } catch (err) {
-          // Non-fatal: DB may have been closed concurrently
-          logger.debug(err);
-        }
       }
     }
 
@@ -195,43 +167,26 @@ class DatabaseLRUMap {
       }
     }
 
-    if (
-      (toEvict.length > 0 || shrunkCount > 0) &&
-      boolean(env.SQLITE_DEBUG_TIMERS)
-    ) {
-      console.debug('DatabaseLRUMap sweep', {
-        evicted: toEvict.length,
-        shrunk: shrunkCount,
-        duration_ms: Date.now() - now,
-        remaining: this._map.size
-      });
+    if (toEvict.length > 0) {
+      logger.debug(`DatabaseLRUMap: swept ${toEvict.length} idle databases`);
     }
   }
 
-  // Graceful shutdown — close all databases WITHOUT checkpoint.
-  // The cron reloads every 4-6h; WAL will be checkpointed on next open.
-  // Skipping checkpoint makes shutdown near-instant (~1-2s for 1300 DBs)
-  // instead of blowing the 30s kill_timeout and getting SIGKILLed.
+  // Graceful shutdown - close all databases
   async closeAll() {
     clearInterval(this._sweepInterval);
-    const t0 = Date.now();
     const promises = [];
     for (const entry of this._map.values()) {
       if (entry.db && entry.db.open) {
-        promises.push(closeDatabase(entry.db, { skipCheckpoint: true }));
+        promises.push(closeDatabase(entry.db));
       }
     }
 
     this._map.clear();
     await Promise.allSettled(promises);
-    console.log(
-      `[SHUTDOWN] closeAll completed in ${Date.now() - t0}ms (${
-        promises.length
-      } databases, checkpoint skipped)`
-    );
   }
 
-  // Destroy the interval (for tests and graceful shutdown)
+  // Destroy the interval (for tests)
   destroy() {
     clearInterval(this._sweepInterval);
     this._sweepInterval = null;

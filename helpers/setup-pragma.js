@@ -11,7 +11,6 @@ const pWaitFor = require('p-wait-for');
 const { mkdirp } = require('mkdirp');
 
 const config = require('#config');
-const env = require('#config/env');
 const logger = require('#helpers/logger');
 const IMAPError = require('#helpers/imap-error');
 const { decrypt } = require('#helpers/encrypt-decrypt');
@@ -70,27 +69,20 @@ async function setupPragma(db, session, cipher = 'chacha20') {
     throw err;
   }
 
-  //
-  // secure_delete disabled — all database content is already encrypted with
-  // ChaCha20 (via SQLite Multiple Ciphers), so zero-filling deleted pages
-  // provides no additional security and adds ~10-15% write overhead on every
-  // DELETE.  The encryption key is required to read any page content.
-  //
-  db.pragma('secure_delete=OFF');
+  // overwrite deleted content with zeros
+  // <https://www.sqlite.org/pragma.html#pragma_secure_delete>
+  db.pragma('secure_delete=ON');
 
   //
-  // INCREMENTAL auto_vacuum: reclaims free pages only when explicitly
-  // requested via `PRAGMA incremental_vacuum(N)` (run during deferred
-  // maintenance).  Unlike FULL auto_vacuum which rewrites pages on EVERY
-  // DELETE (causing write amplification and I/O stalls), INCREMENTAL
-  // defers the work to a controlled maintenance window.
-  //
-  // The sqlite-worker VACUUM INTO path handles the one-time migration
-  // from legacy databases (auto_vacuum=NONE) to INCREMENTAL.
-  //
+  // turn on auto vacuum (for large amounts of deleted content)
   // <https://www.sqlite.org/pragma.html#pragma_auto_vacuum>
   //
-  db.pragma('auto_vacuum=INCREMENTAL');
+  //
+  // NOTE: if you change this then uncomment `jobs/cleanup-sqlite`
+  //       and also optimize the 'vacuum' parse-payload switch/case
+  //       statement so that it checks for os.freemem() similar to 'backup'
+  //
+  db.pragma('auto_vacuum=FULL');
 
   // <https://litestream.io/tips/#busy-timeout>
   db.pragma(`busy_timeout=${config.busyTimeout}`);
@@ -103,11 +95,12 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   // Performance tuning PRAGMAs for high-concurrency WAL workloads
   //
 
-  // Increase page cache (negative = KiB, default 16 MB; configurable via SQLITE_CACHE_SIZE_KB)
-  // With 2500 open DBs, 16 MB * 2500 = 40 GB theoretical max (vs 64 MB * 3000 = 192 GB)
-  db.pragma(`cache_size=-${Number(env.SQLITE_CACHE_SIZE_KB) || 16384}`);
+  // Increase page cache to ~64 MB (negative = KiB)
+  // Default is ~2 MB which causes excessive I/O under concurrent readers
+  db.pragma('cache_size=-65536');
 
   // Limit WAL file growth to 256 MB
+  // Prevents unbounded WAL growth when checkpointing is deferred
   db.pragma('journal_size_limit=268435456');
 
   // NOTE: mmap disabled to prevent virtual memory accumulation
@@ -116,14 +109,11 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   db.pragma('mmap_size=0');
 
   //
-  // Auto-checkpoint every 2000 pages (~8 MB with 4096 page size).
-  // Higher than the default (1000) to reduce checkpoint frequency under
-  // write-heavy IMAP workloads (APPEND, STORE flags, EXPUNGE).
-  // Checkpoints still happen frequently enough to bound WAL growth.
+  // Auto-checkpoint every 1000 pages (default).
+  // We rely on this instead of per-query PASSIVE checkpoints
+  // to avoid SQLITE_BUSY_SNAPSHOT under concurrent readers.
   //
-  db.pragma(
-    `wal_autocheckpoint=${Number(env.SQLITE_WAL_AUTOCHECKPOINT) || 2000}`
-  );
+  db.pragma('wal_autocheckpoint=1000');
 
   // db.pragma(`user_version="1"`);
 

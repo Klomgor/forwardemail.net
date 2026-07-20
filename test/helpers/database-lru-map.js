@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: BUSL-1.1
  */
 
+const process = require('node:process');
 const test = require('ava');
 
 const DatabaseLRUMap = require('#helpers/database-lru-map');
@@ -17,10 +18,11 @@ test.afterEach((t) => {
 
 // --- Constructor ---
 
-test('constructor > defaults maxSize to 1000', (t) => {
+test('constructor > defaults maxSize from env (DATABASE_MAP_MAX_SIZE)', (t) => {
   const map = new DatabaseLRUMap();
   t.context.map = map;
-  t.is(map.maxSize, 1000);
+  // DATABASE_MAP_MAX_SIZE=3000 in .env.defaults; fallback is 200
+  t.is(map.maxSize, Number(process.env.DATABASE_MAP_MAX_SIZE) || 200);
 });
 
 test('constructor > accepts custom options', (t) => {
@@ -94,9 +96,9 @@ test('delete > returns false for missing key', (t) => {
   t.false(map.delete('missing'));
 });
 
-// --- Batch eviction on capacity overflow ---
+// --- LRU eviction on capacity overflow ---
 
-test('set > batch-evicts 10% of capacity when full', (t) => {
+test('set > evicts single LRU entry when full', (t) => {
   const map = new DatabaseLRUMap({ maxSize: 10 });
   t.context.map = map;
   // Fill to capacity
@@ -107,7 +109,7 @@ test('set > batch-evicts 10% of capacity when full', (t) => {
   }
 
   t.is(map.size, 10);
-  // Adding one more should batch-evict ceil(10 * 0.1) = 1 oldest entry
+  // Adding one more should evict the single oldest entry
   map.set('new', makeDb());
   t.true(map.has('new'));
   // key0 was the oldest, should be evicted

@@ -3,10 +3,8 @@
     {
       "name": "sqlite",
       "script": "sqlite.js",
-      "node_args": "--report-on-fatalerror --report-directory=/var/log/pm2 --max-old-space-size=14336",
       "max_restarts": 999,
-      "max_memory_restart": "16G",
-      "kill_timeout": 30000,
+      "max_memory_restart": "80G",
       "wait_ready": true,
       "exec_mode": "cluster",
       "instances": "4",
@@ -22,10 +20,8 @@
     {
       "name": "sqlite-bree",
       "script": "sqlite-bree.js",
-      "node_args": "--report-on-fatalerror --report-directory=/var/log/pm2 --max-old-space-size=65536",
       "max_restarts": 999,
       "max_memory_restart": "80G",
-      "kill_timeout": 30000,
       "exec_mode": "fork",
       "wait_ready": true,
       "instances": "1",
@@ -41,10 +37,8 @@
     {
       "name": "sqlite-worker",
       "script": "sqlite-worker.js",
-      "node_args": "--report-on-fatalerror --report-directory=/var/log/pm2 --max-old-space-size=14336",
       "max_restarts": 999,
       "max_memory_restart": "16G",
-      "kill_timeout": 30000,
       "exec_mode": "fork",
       "wait_ready": true,
       "instances": "1",
