@@ -1072,15 +1072,32 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
           });
           // eslint-disable-next-line no-constant-condition
           while (true) {
-            const ids = db
-              .prepare(selectSql.query)
-              .pluck()
-              .all(selectSql.values);
-            if (ids.length === 0) break;
-            const placeholders = ids.map(() => '?').join(',');
-            db.prepare(
-              `DELETE FROM "Messages" WHERE "_id" IN (${placeholders})`
-            ).run(...ids);
+            // Wrap SELECT+DELETE in a transaction so the FTS5 trigger
+            // fires atomically and no other operation can interleave
+            // on this db handle during the setImmediate yield.
+            if (!db.open) return;
+            db.exec('BEGIN IMMEDIATE');
+            let ids;
+            try {
+              ids = db.prepare(selectSql.query).pluck().all(selectSql.values);
+              if (ids.length === 0) {
+                db.exec('COMMIT');
+                break;
+              }
+
+              const placeholders = ids.map(() => '?').join(',');
+              db.prepare(
+                `DELETE FROM "Messages" WHERE "_id" IN (${placeholders})`
+              ).run(...ids);
+              db.exec('COMMIT');
+            } catch (batchErr) {
+              try {
+                db.exec('ROLLBACK');
+              } catch {}
+
+              throw batchErr;
+            }
+
             // Yield to event loop between batches
             if (ids.length >= 1000) {
               await new Promise((resolve) => {
@@ -1167,12 +1184,23 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
           // SQLITE_MAX_VARIABLE_NUMBER = 999)
           const DELETE_BATCH = 500;
           for (let i = 0; i < orphanHashes.length; i += DELETE_BATCH) {
+            if (!db.open) return;
             const batch = orphanHashes.slice(i, i + DELETE_BATCH);
             const placeholders = batch.map(() => '?').join(',');
-            db.prepare(
-              `DELETE FROM "Attachments" WHERE "hash" IN (${placeholders})` +
-                ` AND "created_at" <= ? AND "counterUpdated" <= ?`
-            ).run(...batch, now, now);
+            db.exec('BEGIN IMMEDIATE');
+            try {
+              db.prepare(
+                `DELETE FROM "Attachments" WHERE "hash" IN (${placeholders})` +
+                  ` AND "created_at" <= ? AND "counterUpdated" <= ?`
+              ).run(...batch, now, now);
+              db.exec('COMMIT');
+            } catch (batchErr) {
+              try {
+                db.exec('ROLLBACK');
+              } catch {}
+
+              throw batchErr;
+            }
 
             // Yield between batches
             if (i + DELETE_BATCH < orphanHashes.length) {
@@ -1219,6 +1247,56 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
   }
 
   //
+  // ── FTS5 integrity check & rebuild ────────────────────────────────────
+  // If the Messages_fts virtual table exists, verify its integrity.
+  // If corrupt (SQLITE_CORRUPT_VTAB), rebuild it from the content table.
+  // This repairs databases that were corrupted by the previous non-atomic
+  // batch DELETE (pre-transaction fix).
+  //
+  if (db && db.open && !db.inTransaction) {
+    try {
+      const hasFts = db.pragma('table_list(Messages_fts)').length > 0;
+      if (hasFts) {
+        try {
+          db.exec(
+            `INSERT INTO Messages_fts(Messages_fts) VALUES('integrity-check')`
+          );
+        } catch (ftsErr) {
+          // FTS5 index is corrupt — rebuild it from the content table
+          if (
+            ftsErr.code === 'SQLITE_CORRUPT_VTAB' ||
+            (ftsErr.message &&
+              ftsErr.message.includes('database disk image is malformed'))
+          ) {
+            logger.warn('FTS5 index corrupt, rebuilding', {
+              alias_id: session.user.alias_id,
+              alias_name: session.user.alias_name
+            });
+            try {
+              db.exec(
+                `INSERT INTO Messages_fts(Messages_fts) VALUES('rebuild')`
+              );
+            } catch (rebuildErr) {
+              // If rebuild also fails, drop and recreate the FTS table
+              logger.fatal(rebuildErr, {
+                session,
+                resolver: instance.resolver
+              });
+              try {
+                db.exec('DROP TABLE IF EXISTS Messages_fts');
+                // The table will be recreated on next schema migration
+              } catch {}
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Non-fatal: don't let FTS check failure block other maintenance
+      logger.debug(err);
+    }
+  }
+
+  //
   // NOTE: we delete thread ids that don't correspond to messages anymore
   //
   _maint_t0 = Date.now();
@@ -1235,14 +1313,27 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
       // NOT IN subquery blocking the event loop for seconds.
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const deleted = db
-          .prepare(
-            `DELETE FROM Threads WHERE _id IN (` +
-              `SELECT t._id FROM Threads t ` +
-              `LEFT JOIN Messages m ON m.thread = t._id ` +
-              `WHERE m.thread IS NULL LIMIT 1000)`
-          )
-          .run();
+        if (!db.open) return;
+        db.exec('BEGIN IMMEDIATE');
+        let deleted;
+        try {
+          deleted = db
+            .prepare(
+              `DELETE FROM Threads WHERE _id IN (` +
+                `SELECT t._id FROM Threads t ` +
+                `LEFT JOIN Messages m ON m.thread = t._id ` +
+                `WHERE m.thread IS NULL LIMIT 1000)`
+            )
+            .run();
+          db.exec('COMMIT');
+        } catch (batchErr) {
+          try {
+            db.exec('ROLLBACK');
+          } catch {}
+
+          throw batchErr;
+        }
+
         if (deleted.changes < 1000) break;
         // Yield to event loop between batches
         await new Promise((resolve) => {
