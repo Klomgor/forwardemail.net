@@ -1247,16 +1247,25 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
   }
 
   //
-  // ── FTS5 integrity check & rebuild ────────────────────────────────────
-  // If the Messages_fts virtual table exists, verify its integrity.
-  // If corrupt (SQLITE_CORRUPT_VTAB), rebuild it from the content table.
-  // This repairs databases that were corrupted by the previous non-atomic
-  // batch DELETE (pre-transaction fix).
+  // ── FTS5 cleanup or integrity check ──────────────────────────────────────
+  // - When FTS5 is disabled: drop Messages_fts and its triggers if they exist
+  // - When FTS5 is enabled: verify integrity and rebuild if corrupt
   //
   if (db && db.open && !db.inTransaction) {
     try {
       const hasFts = db.pragma('table_list(Messages_fts)').length > 0;
-      if (hasFts) {
+      if (hasFts && !env.SQLITE_FTS5_ENABLED) {
+        // FTS5 is disabled — drop the virtual table and triggers
+        try {
+          db.exec('DROP TRIGGER IF EXISTS Messages_ai');
+          db.exec('DROP TRIGGER IF EXISTS Messages_ad');
+          db.exec('DROP TRIGGER IF EXISTS Messages_au');
+          db.exec('DROP TABLE IF EXISTS Messages_fts');
+        } catch (dropErr) {
+          logger.debug(dropErr);
+        }
+      } else if (hasFts && env.SQLITE_FTS5_ENABLED) {
+        // FTS5 is enabled — verify integrity
         try {
           db.exec(
             `INSERT INTO Messages_fts(Messages_fts) VALUES('integrity-check')`
@@ -1277,14 +1286,16 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
                 `INSERT INTO Messages_fts(Messages_fts) VALUES('rebuild')`
               );
             } catch (rebuildErr) {
-              // If rebuild also fails, drop and recreate the FTS table
+              // If rebuild also fails, drop the FTS table entirely
               logger.fatal(rebuildErr, {
                 session,
                 resolver: instance.resolver
               });
               try {
+                db.exec('DROP TRIGGER IF EXISTS Messages_ai');
+                db.exec('DROP TRIGGER IF EXISTS Messages_ad');
+                db.exec('DROP TRIGGER IF EXISTS Messages_au');
                 db.exec('DROP TABLE IF EXISTS Messages_fts');
-                // The table will be recreated on next schema migration
               } catch {}
             }
           }

@@ -371,6 +371,23 @@ async function migrateSchema(instance, db, session, tables) {
     await knexDatabase.destroy();
   }
 
+  //
+  // When FTS5 is disabled, drop the virtual table and triggers if they exist
+  //
+  if (!env.SQLITE_FTS5_ENABLED) {
+    try {
+      const hasFts = db.pragma('table_list(Messages_fts)').length > 0;
+      if (hasFts) {
+        commands.push(
+          'DROP TRIGGER IF EXISTS Messages_ai',
+          'DROP TRIGGER IF EXISTS Messages_ad',
+          'DROP TRIGGER IF EXISTS Messages_au',
+          'DROP TABLE IF EXISTS Messages_fts'
+        );
+      }
+    } catch {}
+  }
+
   return commands;
 }
 

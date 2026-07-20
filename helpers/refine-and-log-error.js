@@ -30,7 +30,7 @@ const INTERNAL_MESSAGE_PATTERNS = [
   'worker affinity fallback'
 ];
 
-// const env = require('#config/env');
+const env = require('#config/env');
 
 // this is sourced from FE original codebase
 function refineAndLogError(err, session, isIMAP = false, instance) {
@@ -73,6 +73,45 @@ function refineAndLogError(err, session, isIMAP = false, instance) {
       .catch((err) =>
         logger.fatal(err, { session, resolver: instance?.resolver })
       );
+  }
+
+  //
+  // FTS5 auto-repair: immediately fix corrupt FTS5 index on the next
+  // IMAP operation that hits it (don't wait for deferred maintenance)
+  //
+  if (
+    session?.db?.open &&
+    !session.db.inTransaction &&
+    (err.code === 'SQLITE_CORRUPT_VTAB' ||
+      (err.message && err.message.includes('database disk image is malformed')))
+  ) {
+    try {
+      const hasFts = session.db.pragma('table_list(Messages_fts)').length > 0;
+      if (hasFts) {
+        if (env.SQLITE_FTS5_ENABLED) {
+          // FTS5 is enabled — attempt rebuild
+          try {
+            session.db.exec(
+              `INSERT INTO Messages_fts(Messages_fts) VALUES('rebuild')`
+            );
+          } catch {
+            // Rebuild failed — drop as last resort
+            session.db.exec('DROP TRIGGER IF EXISTS Messages_ai');
+            session.db.exec('DROP TRIGGER IF EXISTS Messages_ad');
+            session.db.exec('DROP TRIGGER IF EXISTS Messages_au');
+            session.db.exec('DROP TABLE IF EXISTS Messages_fts');
+          }
+        } else {
+          // FTS5 is disabled — drop the table and triggers entirely
+          session.db.exec('DROP TRIGGER IF EXISTS Messages_ai');
+          session.db.exec('DROP TRIGGER IF EXISTS Messages_ad');
+          session.db.exec('DROP TRIGGER IF EXISTS Messages_au');
+          session.db.exec('DROP TABLE IF EXISTS Messages_fts');
+        }
+      }
+    } catch (ftsRepairErr) {
+      logger.debug(ftsRepairErr);
+    }
   }
 
   // if it was HTTP error and no `responseCode` set then try to parse it
