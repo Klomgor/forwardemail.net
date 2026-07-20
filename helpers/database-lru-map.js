@@ -21,12 +21,13 @@ const logger = require('#helpers/logger');
 // - Idle TTL (close databases not accessed for 5 minutes)
 // - LRU eviction (when max size reached, close least recently used)
 // - Safe async close with transaction awareness
+// - Reference counting to prevent closing databases with in-flight requests
 //
 class DatabaseLRUMap {
   constructor(options = {}) {
     this.maxSize = options.maxSize || Number(env.DATABASE_MAP_MAX_SIZE) || 200;
     this.idleTTL = options.idleTTL || ms('5m');
-    this._map = new Map(); // alias_id -> { db, lastAccess }
+    this._map = new Map(); // alias_id -> { db, lastAccess, refcount }
     this._closing = new Set(); // alias_ids currently being closed
 
     // Periodic sweep to close idle databases
@@ -52,6 +53,30 @@ class DatabaseLRUMap {
     return entry.db;
   }
 
+  //
+  // Acquire a reference to the database handle.
+  // Increments refcount so eviction/sweep will not close it.
+  // Caller MUST call release(key) when the request is done.
+  //
+  acquire(key) {
+    const entry = this._map.get(key);
+    if (!entry) return undefined;
+    entry.lastAccess = Date.now();
+    entry.refcount = (entry.refcount || 0) + 1;
+    return entry.db;
+  }
+
+  //
+  // Release a reference to the database handle.
+  // Decrements refcount. If the entry was marked for deferred close
+  // (removed from map while refcount > 0), close it now.
+  //
+  release(key) {
+    const entry = this._map.get(key);
+    if (!entry) return;
+    entry.refcount = Math.max(0, (entry.refcount || 0) - 1);
+  }
+
   set(key, db) {
     // If already exists, just update
     if (this._map.has(key)) {
@@ -68,7 +93,8 @@ class DatabaseLRUMap {
 
     this._map.set(key, {
       db,
-      lastAccess: Date.now()
+      lastAccess: Date.now(),
+      refcount: 0
     });
     return this;
   }
@@ -116,6 +142,8 @@ class DatabaseLRUMap {
       // Skip entries currently being closed or in transaction
       if (this._closing.has(key)) continue;
       if (entry.db && entry.db.inTransaction) continue;
+      // Skip entries with active references (in-flight requests)
+      if (entry.refcount > 0) continue;
       if (entry.lastAccess < oldestTime) {
         oldestTime = entry.lastAccess;
         oldestKey = key;
@@ -148,6 +176,8 @@ class DatabaseLRUMap {
         if (entry.db && entry.db.inTransaction) continue;
         // Skip entries currently being closed
         if (this._closing.has(key)) continue;
+        // Skip entries with active references (in-flight requests)
+        if (entry.refcount > 0) continue;
         toEvict.push(key);
       }
     }

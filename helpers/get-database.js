@@ -622,157 +622,67 @@ async function getDatabase(
     _maint_t0 = Date.now();
     if (!migrateCheck) {
       //
-      // PERFORMANCE: For LRU cache hits (db already open and previously
-      // migrated), defer migrateSchema to setImmediate. The schema was
-      // already applied on the initial open; the Redis TTL expiry is just
-      // a periodic re-validation. This eliminates the 14-17s inline block
-      // that was causing request queuing and identical stall patterns.
+      // NOTE: migrateSchema ALWAYS runs inline (never deferred).
+      // Deferring caused a race condition: concurrent requests could see
+      // isCacheHit=true before migration completes, leading to
+      // "no such table: Mailboxes" errors. migrateSchema is fast for
+      // already-migrated dbs (schema inspection + IF NOT EXISTS no-ops).
       //
-      // For fresh opens (cache miss), run inline to ensure tables exist
-      // before any queries execute.
-      //
-      if (isCacheHit) {
-        // Defer migration for cache hits — schema is already applied
-        const _dbRef = db;
-        const _sessionRef = { ...session, db: _dbRef };
-        const _aliasRef = alias;
-        const _instanceRef = instance;
-        setImmediate(async () => {
-          if (!_dbRef || !_dbRef.open) return;
-          try {
-            const commands = await migrateSchema(
-              _instanceRef,
-              _dbRef,
-              _sessionRef,
-              {
-                Mailboxes,
-                Messages,
-                Threads,
-                Attachments,
-                Calendars,
-                CalendarEvents,
-                AddressBooks,
-                Contacts
-              }
-            );
-
-            let hasCriticalError = false;
-            if (commands.length > 0) {
-              for (const command of commands) {
-                try {
-                  _dbRef.prepare(command).run();
-                } catch (err) {
-                  if (err.message.startsWith('duplicate column name:')) {
-                    logger.debug(err, {
-                      command,
-                      alias: _aliasRef,
-                      session: _sessionRef
-                    });
-                  } else {
-                    err.isCodeBug = true;
-                    logger.fatal(err, {
-                      command,
-                      alias: _aliasRef,
-                      session: _sessionRef
-                    });
-                    if (command.startsWith('CREATE TABLE'))
-                      hasCriticalError = true;
-                  }
-
-                  if (
-                    err.message.includes(
-                      'Cannot add a NOT NULL column with default value NULL'
-                    ) &&
-                    command.endsWith(' NOT NULL')
-                  ) {
-                    try {
-                      _dbRef.prepare(command.replace(' NOT NULL', '')).run();
-                    } catch (err) {
-                      err.isCodeBug = true;
-                      logger.fatal(err, {
-                        command,
-                        alias: _aliasRef,
-                        session: _sessionRef
-                      });
-                    }
-                  }
-                }
-              }
-            }
-
-            // Create compound indexes (deferred, IF NOT EXISTS = no-op after first run)
-            try {
-              if (_dbRef.open) {
-                _dbRef
-                  .prepare(
-                    'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
-                  )
-                  .run();
-                _dbRef
-                  .prepare(
-                    'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
-                  )
-                  .run();
-                _dbRef
-                  .prepare(
-                    'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
-                  )
-                  .run();
-              }
-            } catch (err) {
-              if (!err.message.includes('no such table')) {
-                logger.fatal(err, { session: _sessionRef });
-              }
-            }
-
-            if (!hasCriticalError && _instanceRef.client) {
-              await _instanceRef.client.set(
-                `migrate_check:${_sessionRef.user.alias_id}`,
-                true,
-                'PX',
-                ms('7d')
-              );
-            }
-          } catch (err) {
-            logger.fatal(err);
-          }
+      try {
+        //
+        // NOTE: if we change schema on db then we
+        //       need to stop sqlite server then
+        //       purge all migrate_check:* keys
+        //
+        const commands = await migrateSchema(instance, db, session, {
+          Mailboxes,
+          Messages,
+          Threads,
+          Attachments,
+          Calendars,
+          CalendarEvents,
+          AddressBooks,
+          Contacts
         });
-      } else {
-        // Fresh open (cache miss) — run migration inline
-        try {
-          //
-          // NOTE: if we change schema on db then we
-          //       need to stop sqlite server then
-          //       purge all migrate_check:* keys
-          //
-          const commands = await migrateSchema(instance, db, session, {
-            Mailboxes,
-            Messages,
-            Threads,
-            Attachments,
-            Calendars,
-            CalendarEvents,
-            AddressBooks,
-            Contacts
-          });
 
-          let hasCriticalError = false;
-          if (commands.length > 0) {
-            for (const command of commands) {
-              try {
-                // TODO: wsp here (?)
-                db.prepare(command).run();
-                // await knexDatabase.raw(command);
-              } catch (err) {
-                // duplicate column errors are expected when migration was already applied
-                if (err.message.startsWith('duplicate column name:')) {
-                  logger.debug(err, {
-                    command,
-                    alias,
-                    session,
-                    resolver: instance.resolver
-                  });
-                } else {
+        let hasCriticalError = false;
+        if (commands.length > 0) {
+          for (const command of commands) {
+            try {
+              // TODO: wsp here (?)
+              db.prepare(command).run();
+            } catch (err) {
+              // duplicate column errors are expected when migration was already applied
+              if (err.message.startsWith('duplicate column name:')) {
+                logger.debug(err, {
+                  command,
+                  alias,
+                  session,
+                  resolver: instance.resolver
+                });
+              } else {
+                err.isCodeBug = true;
+                logger.fatal(err, {
+                  command,
+                  alias,
+                  session,
+                  resolver: instance.resolver
+                });
+                // if a CREATE TABLE command failed then the database
+                // is in a broken state and we must not cache success
+                if (command.startsWith('CREATE TABLE')) hasCriticalError = true;
+              }
+
+              // migration support in case existing rows
+              if (
+                err.message.includes(
+                  'Cannot add a NOT NULL column with default value NULL'
+                ) &&
+                command.endsWith(' NOT NULL')
+              ) {
+                try {
+                  db.prepare(command.replace(' NOT NULL', '')).run();
+                } catch (err) {
                   err.isCodeBug = true;
                   logger.fatal(err, {
                     command,
@@ -780,72 +690,46 @@ async function getDatabase(
                     session,
                     resolver: instance.resolver
                   });
-
-                  // if a CREATE TABLE command failed then the database
-                  // is in a broken state and we must not cache success
-                  if (command.startsWith('CREATE TABLE'))
-                    hasCriticalError = true;
-                }
-
-                // migration support in case existing rows
-                if (
-                  err.message.includes(
-                    'Cannot add a NOT NULL column with default value NULL'
-                  ) &&
-                  command.endsWith(' NOT NULL')
-                ) {
-                  try {
-                    db.prepare(command.replace(' NOT NULL', '')).run();
-                  } catch (err) {
-                    err.isCodeBug = true;
-                    logger.fatal(err, {
-                      command,
-                      alias,
-                      session,
-                      resolver: instance.resolver
-                    });
-                  }
                 }
               }
             }
           }
-
-          //
-          // Compound covering indexes for hot IMAP queries.
-          // Created inline for fresh opens to ensure indexes exist before queries.
-          //
-          try {
-            db.prepare(
-              'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
-            ).run();
-            db.prepare(
-              'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
-            ).run();
-            db.prepare(
-              'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
-            ).run();
-          } catch (err) {
-            if (!err.message.includes('no such table')) {
-              logger.fatal(err, { session, resolver: instance.resolver });
-            }
-          }
-
-          //
-          // only cache migrate_check as successful if no CREATE TABLE
-          // commands failed; otherwise the next request will re-attempt
-          // migration instead of hitting "no such table" errors
-          //
-          if (!hasCriticalError) {
-            await instance.client.set(
-              `migrate_check:${session.user.alias_id}`,
-              true,
-              'PX',
-              ms('7d')
-            );
-          }
-        } catch (err) {
-          logger.fatal(err);
         }
+
+        //
+        // Compound covering indexes for hot IMAP queries.
+        //
+        try {
+          db.prepare(
+            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
+          ).run();
+          db.prepare(
+            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
+          ).run();
+          db.prepare(
+            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
+          ).run();
+        } catch (err) {
+          if (!err.message.includes('no such table')) {
+            logger.fatal(err, { session, resolver: instance.resolver });
+          }
+        }
+
+        //
+        // only cache migrate_check as successful if no CREATE TABLE
+        // commands failed; otherwise the next request will re-attempt
+        // migration instead of hitting "no such table" errors
+        //
+        if (!hasCriticalError) {
+          await instance.client.set(
+            `migrate_check:${session.user.alias_id}`,
+            true,
+            'PX',
+            ms('7d')
+          );
+        }
+      } catch (err) {
+        logger.fatal(err);
       }
     }
 
@@ -1104,6 +988,36 @@ async function getDatabase(
     // Final safety: if the handle was closed (e.g. by LRU sweep), throw so p-retry can reopen
     if (!db.open) {
       throw new TypeError('database connection is not open');
+    }
+
+    //
+    // ── INLINE FTS5 TRIGGER CLEANUP ─────────────────────────────────────────
+    // Drop FTS5 triggers BEFORE returning the db handle to the caller.
+    // If triggers exist but Messages_fts was dropped (or never created),
+    // any INSERT/UPDATE/DELETE on Messages will throw:
+    //   "no such table: Messages_fts"
+    // This MUST run inline (not deferred) because the very first write
+    // after getDatabase returns could trigger the error.
+    // DROP TRIGGER IF EXISTS is a no-op when triggers don't exist (~0ms).
+    //
+    if (db.open && !db.inTransaction) {
+      try {
+        db.exec('DROP TRIGGER IF EXISTS Messages_ai');
+        db.exec('DROP TRIGGER IF EXISTS Messages_ad');
+        db.exec('DROP TRIGGER IF EXISTS Messages_au');
+      } catch (triggerErr) {
+        // Non-fatal: log and continue
+        logger.debug(triggerErr);
+      }
+    }
+
+    //
+    // Acquire a reference so LRU eviction/sweep will not close this db
+    // while the caller's request is in-flight.  The caller MUST call
+    // instance.databaseMap.release(alias.id) when the request completes.
+    //
+    if (instance.databaseMap && instance.databaseMap.acquire) {
+      instance.databaseMap.acquire(alias.id);
     }
 
     return db;

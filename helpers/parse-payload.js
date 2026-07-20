@@ -2859,6 +2859,19 @@ async function parsePayload(data, ws) {
         })
       );
     }
+  } finally {
+    //
+    // Release the database reference acquired by getDatabase().
+    // This allows LRU eviction/sweep to close the handle once
+    // no in-flight requests are using it.
+    //
+    if (
+      this?.databaseMap &&
+      this.databaseMap.release &&
+      payload?.session?.user?.alias_id
+    ) {
+      this.databaseMap.release(payload.session.user.alias_id);
+    }
   }
 }
 
