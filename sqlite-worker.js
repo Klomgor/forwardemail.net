@@ -27,7 +27,7 @@ const email = require('#helpers/email');
 const i18n = require('#helpers/i18n');
 const logger = require('#helpers/logger');
 const setupMongoose = require('#helpers/setup-mongoose');
-const { backup, rekey } = require('#helpers/worker');
+const { backup, rekey, vacuum } = require('#helpers/worker');
 
 const imapSharedConfig = sharedConfig('IMAP');
 const client = new Redis(imapSharedConfig.redis, logger);
@@ -40,6 +40,7 @@ subscriber.setMaxListeners(0);
 // Configuration
 //
 const CHANNEL = `sqlite_backup_queue:${config.env}`;
+const VACUUM_CHANNEL = `sqlite_vacuum_queue:${config.env}`;
 const REKEY_QUEUE = `rekey_queue:${config.env}`;
 const BUSY_KEY = `sqlite_worker_busy:${config.env}`;
 const MAX_CONCURRENCY = 2;
@@ -96,6 +97,11 @@ async function processJob(payload, payloadStr) {
         break;
       }
 
+      case 'vacuum': {
+        await vacuum(payload);
+        break;
+      }
+
       default: {
         logger.warn('sqlite-worker received unknown action', {
           action: payload.action
@@ -138,7 +144,7 @@ async function processJob(payload, payloadStr) {
 // Redis Pub/Sub message handler (backups only — rekey uses List polling)
 //
 function onMessage(channel, message) {
-  if (channel !== CHANNEL) return;
+  if (channel !== CHANNEL && channel !== VACUUM_CHANNEL) return;
   if (isShuttingDown) return;
 
   let payload;
@@ -156,6 +162,30 @@ function onMessage(channel, message) {
     client
       .rpush(REKEY_QUEUE, message)
       .catch((err) => logger.fatal('Failed to redirect rekey to queue', err));
+    return;
+  }
+
+  //
+  // Vacuum jobs: same concurrency/memory gates as backup.
+  //
+  if (payload.action === 'vacuum') {
+    if (os.freemem() < MIN_FREE_MEM) {
+      logger.debug('sqlite-worker skipping vacuum due to low memory', {
+        freemem: os.freemem(),
+        alias_id: payload?.session?.user?.alias_id
+      });
+      return;
+    }
+
+    if (activeJobs >= MAX_CONCURRENCY) {
+      logger.debug('sqlite-worker skipping vacuum due to concurrency limit', {
+        activeJobs,
+        alias_id: payload?.session?.user?.alias_id
+      });
+      return;
+    }
+
+    processJob(payload, message);
     return;
   }
 
@@ -316,7 +346,7 @@ const graceful = new Graceful({
 
       // Unsubscribe to stop receiving new backup jobs
       try {
-        await subscriber.unsubscribe(CHANNEL);
+        await subscriber.unsubscribe(CHANNEL, VACUUM_CHANNEL);
       } catch (err) {
         logger.debug(err);
       }
@@ -379,7 +409,7 @@ graceful.listen();
 
     // Subscribe to the backup channel (backups still use Pub/Sub)
     subscriber.on('message', onMessage);
-    await subscriber.subscribe(CHANNEL);
+    await subscriber.subscribe(CHANNEL, VACUUM_CHANNEL);
 
     // Start polling the rekey queue (Redis List — persistent, survives restarts)
     pollRekeyQueue();
@@ -388,6 +418,7 @@ graceful.listen();
     logger.info('SQLite backup worker started', {
       hide_meta: true,
       channel: CHANNEL,
+      vacuumChannel: VACUUM_CHANNEL,
       rekeyQueue: REKEY_QUEUE,
       maxConcurrency: MAX_CONCURRENCY
     });

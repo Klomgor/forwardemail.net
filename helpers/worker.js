@@ -15,6 +15,7 @@ const punycode = require('node:punycode');
 const { PassThrough } = require('node:stream');
 
 const { setTimeout } = require('node:timers/promises');
+const Database = require('better-sqlite3-multiple-ciphers');
 const Graceful = require('@ladjs/graceful');
 const Redis = require('@ladjs/redis');
 const archiver = require('archiver');
@@ -41,6 +42,7 @@ const {
 const { Builder } = require('json-sql-enhanced');
 const { Upload } = require('@aws-sdk/lib-storage');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { boolean } = require('boolean');
 
 const isEmail = require('#helpers/is-email');
 const _ = require('#helpers/lodash');
@@ -62,11 +64,13 @@ const isRetryableError = require('#helpers/is-retryable-error');
 const logger = require('#helpers/logger');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const setupMongoose = require('#helpers/setup-mongoose');
+const setupPragma = require('#helpers/setup-pragma');
 const { decrypt } = require('#helpers/encrypt-decrypt');
 const checkS3BucketAccess = require('#helpers/check-s3-bucket-access');
 const createTangerine = require('#helpers/create-tangerine');
 const { getS3Client } = require('#helpers/get-s3-client');
 const { syncConvertResult } = require('#helpers/mongoose-to-sqlite');
+const env = require('#config/env');
 
 const builder = new Builder({ bufferAsNative: true });
 
@@ -1306,4 +1310,120 @@ async function backup(payload) {
     });
 }
 
-module.exports = { rekey, backup };
+//
+// Offloaded VACUUM: runs in the sqlite-worker process so it never blocks
+// the IMAP/POP3 event loop.  Opens the database directly (bypassing
+// getDatabase to avoid re-triggering maintenance), performs VACUUM INTO
+// with atomic rename, and updates MongoDB/Redis on success.
+//
+async function vacuum(payload) {
+  if (isCancelled) throw new ServerShutdownError();
+  await setupMongoose(logger);
+
+  const aliasId = payload.session.user.alias_id;
+  const storagePath = getPathToDatabase({
+    id: aliasId,
+    storage_location: payload.session.user.storage_location
+  });
+
+  // Check if file exists
+  let stats;
+  try {
+    stats = await fs.promises.stat(storagePath);
+  } catch (err) {
+    if (err.code === 'ENOENT') return;
+    throw err;
+  }
+
+  if (!stats.isFile() || stats.size === 0) return;
+
+  // Acquire distributed lock (prevents concurrent VACUUM across workers)
+  const vacuumLockKey = `vacuum_lock:${aliasId}`;
+  const acquired = await client.set(vacuumLockKey, '1', 'PX', ms('5m'), 'NX');
+  if (!acquired) return;
+
+  let db;
+  try {
+    // Open database directly (NOT via getDatabase) to avoid re-triggering
+    // maintenance or VACUUM recursion.
+    db = new Database(storagePath, {
+      timeout: config.busyTimeout,
+      verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+    });
+    await setupPragma(db, payload.session);
+
+    // Check if auto_vacuum is already enabled
+    const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
+    if (hasAutoVacuum) {
+      db.close();
+      db = null;
+      await client.set(`vacuum_check:${aliasId}`, 'true', 'PX', ms('7d'));
+      await client.del(vacuumLockKey);
+      return;
+    }
+
+    const tmpPath = `${storagePath}.vacuum-tmp`;
+
+    // Clean up any stale tmp file from a previous failed attempt
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {}
+
+    // Checkpoint WAL so all committed data is in the main DB file
+    db.pragma('wal_checkpoint(TRUNCATE)');
+
+    // Set auto_vacuum mode and VACUUM INTO the temp file
+    db.pragma('auto_vacuum=FULL');
+    db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
+
+    // Verify the new file is a valid encrypted database
+    let verifyDb;
+    try {
+      verifyDb = new Database(tmpPath, {
+        timeout: config.busyTimeout,
+        verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+      });
+      await setupPragma(verifyDb, payload.session);
+      const integrityResult = verifyDb.pragma('quick_check', {
+        simple: true
+      });
+      if (integrityResult !== 'ok') {
+        throw new Error(
+          `VACUUM INTO integrity check failed: ${integrityResult}`
+        );
+      }
+    } finally {
+      if (verifyDb && verifyDb.open) verifyDb.close();
+    }
+
+    // Close the current handle and atomic rename
+    db.close();
+    db = null;
+    fs.renameSync(tmpPath, storagePath);
+
+    // Mark migration complete in MongoDB
+    await Aliases.findByIdAndUpdate(aliasId, {
+      $set: { has_auto_vacuum_migration: true }
+    });
+
+    // Set Redis TTL so we don't re-run for 7 days
+    await client.set(`vacuum_check:${aliasId}`, 'true', 'PX', ms('7d'));
+
+    logger.info('VACUUM completed', {
+      alias_id: aliasId,
+      alias_name: payload.session.user.alias_name
+    });
+  } catch (err) {
+    err.isCodeBug = true;
+    logger.fatal(err, { alias_id: aliasId });
+  } finally {
+    if (db && db.open) db.close();
+    await client.del(vacuumLockKey);
+    // Clean up tmp file if it still exists (e.g. on error)
+    try {
+      fs.unlinkSync(`${storagePath}.vacuum-tmp`);
+    } catch {}
+  }
+}
+
+module.exports = { rekey, backup, vacuum };

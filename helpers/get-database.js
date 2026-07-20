@@ -814,48 +814,52 @@ async function getDatabase(
     // and auto-vacuum) are NOT required for correctness of the current request.
     // They are housekeeping tasks that can run in the background.
     //
-    // VACUUM must be awaited inline because it closes + replaces the db handle
-    // (session.db).  All other maintenance is deferred via setImmediate so it
-    // does not block the event loop or delay the current request.
+    // VACUUM is offloaded to the sqlite-worker process via Redis Pub/Sub so it
+    // never blocks the event loop.  All other maintenance is deferred via
+    // setImmediate so it does not delay the current request.
     // Redis TTLs prevent repeated runs (maintenance only fires once per TTL window).
     // The _deferredMaintenanceRunning guard prevents concurrent runs for the same alias.
     //
 
-    // ── Part 1: VACUUM (inline) ─────────────────────────────────────────
-    // VACUUM replaces the db handle so it MUST complete before we return.
+    // ── Part 1: VACUUM (offloaded to sqlite-worker process) ─────────────
+    // Instead of blocking the event loop for 10-14s, publish to Redis
+    // so the sqlite-worker handles VACUUM in a separate process.
     if (
       !vacuumCheck &&
+      !customDbFilePath &&
+      instance.client &&
       !_deferredMaintenanceRunning.has(session.user.alias_id)
     ) {
+      // Mark as running so Part 2 deferred maintenance is skipped for this
+      // call (mirrors old behavior where inline VACUUM blocked Part 2).
+      // Release the guard after a short delay so subsequent getDatabase()
+      // calls can run Part 2 normally.
       _deferredMaintenanceRunning.add(session.user.alias_id);
       try {
-        await _runDeferredMaintenance(instance, db, session, {
-          alias,
-          // Skip all non-VACUUM stages (they run in Part 2 below)
-          trashCheck: true,
-          threadCheck: true,
-          calendarDuplicateCheck: true,
-          highestmodseqCheck: true,
-          storageFormatCheck: true,
-          caldavHrefCheck: true,
-          calendarDateCheck: true,
-          vacuumCheck
-        });
+        await instance.client.publish(
+          `sqlite_vacuum_queue:${config.env}`,
+          safeStringify({
+            action: 'vacuum',
+            session: {
+              user: {
+                alias_id: session.user.alias_id,
+                alias_name: session.user.alias_name,
+                domain_name: session.user.domain_name,
+                password: session.user.password,
+                storage_location: session.user.storage_location
+              }
+            }
+          })
+        );
       } catch (err) {
-        err.isCodeBug = true;
-        logger.fatal(err, { session, resolver: instance.resolver });
-      } finally {
-        _deferredMaintenanceRunning.delete(session.user.alias_id);
+        logger.debug(err);
       }
 
-      // Re-fetch handle from databaseMap in case VACUUM replaced it
-      if (instance.databaseMap) {
-        const freshDb = instance.databaseMap.get(alias.id);
-        if (freshDb && freshDb.open) {
-          db = freshDb;
-          session.db = db;
-        }
-      }
+      // Release the guard after 5s so future calls can run deferred maintenance
+      const _aliasIdVac = session.user.alias_id;
+      setTimeout(() => {
+        _deferredMaintenanceRunning.delete(_aliasIdVac);
+      }, 5000);
     }
 
     // ── Part 2: Non-VACUUM maintenance (deferred / fire-and-forget) ─────
@@ -876,7 +880,6 @@ async function getDatabase(
       !_deferredMaintenanceRunning.has(session.user.alias_id)
     ) {
       // Capture references for the deferred closure.
-      // Use `db` which has already been updated by Part 1 if VACUUM ran.
       const _db = db;
       const _session = { ...session, db: _db };
       const _alias = alias;
@@ -892,7 +895,7 @@ async function getDatabase(
           storageFormatCheck,
           caldavHrefCheck,
           calendarDateCheck,
-          // Skip VACUUM — already handled inline above
+          // Skip VACUUM — offloaded to sqlite-worker process
           vacuumCheck: true
         })
           .catch((err) => {
