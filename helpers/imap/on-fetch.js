@@ -97,6 +97,7 @@ async function onFetch(mailboxId, options, session, fn) {
 
     let rowCount = 0;
     let totalBytes = 0;
+    let _lastFlushBytes = 0;
 
     await this.refreshSession(session, 'FETCH');
 
@@ -215,7 +216,7 @@ async function onFetch(mailboxId, options, session, fn) {
     // FETCH 1:* (BODY[]) on a mailbox with thousands of messages — each
     // mimeTree blob can be 15 MB+, so loading them all at once would OOM
     // the process.  We fetch PAGE_SIZE rows per iteration, process them
-    // (which involves async work like getQueryResponse/getStream), then
+    // (which involves async work like getQueryResponse), then
     // fetch the next page.  This keeps peak memory bounded.
     //
     // We still use .all() per page (not .iterate()) because the loop body
@@ -294,10 +295,14 @@ async function onFetch(mailboxId, options, session, fn) {
 
           compiledPayloads.push({ compiled });
 
-          // flush compiled payloads after every 500 written to avoid unbounded memory growth
-          if (compiledPayloads.length >= 500) {
+          // Flush at 500 messages OR 8MB accumulated, whichever comes first.
+          if (
+            compiledPayloads.length >= 500 ||
+            totalBytes - _lastFlushBytes >= 8_388_608
+          ) {
             await this.wss.broadcast(session, compiledPayloads);
             compiledPayloads.length = 0;
+            _lastFlushBytes = totalBytes;
           }
 
           // move along to next cursor
@@ -334,19 +339,23 @@ async function onFetch(mailboxId, options, session, fn) {
         });
 
         // <https://github.com/nodemailer/wildduck/issues/563#issuecomment-1826943401>
+        // NOTE: compiler() has a known encoding bug with 8-bit content.
+        // compileStream() + getStream.buffer() avoids the StringDecoder/join
+        // overhead (86% of heap allocations) while preserving correct encoding.
         const stream = imapHandler.compileStream(data);
-
-        const compiled = await getStream(stream, {
-          encoding: 'binary'
-        });
-        totalBytes += compiled.length;
-
+        const buf = await getStream.buffer(stream);
+        const compiled = buf.toString('binary');
+        totalBytes += buf.length;
         compiledPayloads.push({ compiled });
-
-        // flush compiled payloads after every 500 written to avoid unbounded memory growth
-        if (compiledPayloads.length >= 500) {
+        // Flush at 500 messages OR 8MB accumulated, whichever comes first.
+        // Count-only flushing allowed unbounded memory for large-body fetches.
+        if (
+          compiledPayloads.length >= 500 ||
+          totalBytes - _lastFlushBytes >= 8_388_608
+        ) {
           await this.wss.broadcast(session, compiledPayloads);
           compiledPayloads.length = 0;
+          _lastFlushBytes = totalBytes;
         }
 
         rowCount++;

@@ -135,50 +135,9 @@ function setCachedDiskSpace(storageLocation, value) {
   diskSpaceCache.set(storageLocation, { ts: Date.now(), value });
 }
 
-// ─── ATTACHMENT HASH CACHE ────────────────────────────────────────────────────
-// Attachments are immutable (once written, content never changes).
-// Caching SELECT * FROM Attachments WHERE hash = ? results eliminates
-// repeated SQLite reads when the Web API fetches message bodies.
-// Keyed by alias_id → Map<hash, {ts, data}>.
-const ATTACHMENT_CACHE_TTL_MS = 60_000;
-const ATTACHMENT_CACHE_MAX_PER_ALIAS = 2000;
-const ATTACHMENT_CACHE_MAX_ALIASES = 500;
-const attachmentCacheByAlias = new Map();
-
-function getAttachmentFromCache(aliasId, hash) {
-  const aliasCache = attachmentCacheByAlias.get(aliasId);
-  if (!aliasCache) return undefined;
-  const entry = aliasCache.get(hash);
-  if (!entry) return undefined;
-  if (Date.now() - entry.ts > ATTACHMENT_CACHE_TTL_MS) {
-    aliasCache.delete(hash);
-    return undefined;
-  }
-
-  return entry.data;
-}
-
-function setAttachmentInCache(aliasId, hash, data) {
-  let aliasCache = attachmentCacheByAlias.get(aliasId);
-  if (!aliasCache) {
-    // Evict oldest alias cache if at capacity
-    if (attachmentCacheByAlias.size >= ATTACHMENT_CACHE_MAX_ALIASES) {
-      const firstKey = attachmentCacheByAlias.keys().next().value;
-      attachmentCacheByAlias.delete(firstKey);
-    }
-
-    aliasCache = new Map();
-    attachmentCacheByAlias.set(aliasId, aliasCache);
-  }
-
-  // Evict oldest entry if at per-alias capacity
-  if (aliasCache.size >= ATTACHMENT_CACHE_MAX_PER_ALIAS) {
-    const firstKey = aliasCache.keys().next().value;
-    aliasCache.delete(firstKey);
-  }
-
-  aliasCache.set(hash, { ts: Date.now(), data });
-}
+// NOTE: Attachment hash cache removed — it was byte-unbounded and caused OOM.
+// Bodies >1MB cached across 500 aliases x 2000 entries exhausted heap (4GB+).
+// SQLite reads attachments fast enough via the BLOB page chain.
 
 const CHECKPOINTS = ['PASSIVE', 'FULL', 'RESTART', 'TRUNCATE'];
 
@@ -2341,43 +2300,10 @@ async function parsePayload(data, ws) {
             : JSON.stringify(payload.stmt)
         );
 
-        //
-        // ─── ATTACHMENT CACHE: check before hitting SQLite ───
         // Detect pattern: ['prepare', 'select * from "Attachments" where "hash" = $p1'],
         //                 ['get', { p1: <hash> }]
         //
         const aliasId = payload.session.user.alias_id;
-        let isAttachmentHashLookup = false;
-        let attachmentHash = null;
-
-        if (
-          payload.stmt.length === 2 &&
-          payload.stmt[0][0] === 'prepare' &&
-          typeof payload.stmt[0][1] === 'string' &&
-          payload.stmt[0][1].includes('"Attachments"') &&
-          payload.stmt[0][1].includes('"hash"') &&
-          payload.stmt[1][0] === 'get' &&
-          payload.stmt[1][1] &&
-          typeof payload.stmt[1][1] === 'object'
-        ) {
-          // Extract the hash value from the bind params
-          const bindParams = payload.stmt[1][1];
-          const hashParam = bindParams.p1 || bindParams.$p1;
-          if (typeof hashParam === 'string') {
-            isAttachmentHashLookup = true;
-            attachmentHash = hashParam;
-            // Check cache
-            const cached = getAttachmentFromCache(aliasId, attachmentHash);
-            if (cached !== undefined) {
-              response = {
-                id: payload.id,
-                data: cached
-              };
-              break;
-            }
-          }
-        }
-
         let stmt;
         let data;
 
@@ -2461,15 +2387,6 @@ async function parsePayload(data, ws) {
               throw new TypeError('Unknown operation');
             }
           }
-        }
-
-        // Populate attachment cache on successful lookup
-        if (isAttachmentHashLookup && attachmentHash) {
-          setAttachmentInCache(
-            aliasId,
-            attachmentHash,
-            typeof data === 'undefined' ? null : data
-          );
         }
 
         response = {
