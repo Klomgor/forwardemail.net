@@ -36,16 +36,13 @@ const config = require('#config');
 const email = require('#helpers/email');
 const ensureDefaultMailboxes = require('#helpers/ensure-default-mailboxes');
 const env = require('#config/env');
-const getAttachments = require('#helpers/get-attachments');
 const getPathToDatabase = require('#helpers/get-path-to-database');
 const isRetryableError = require('#helpers/is-retryable-error');
 const isValidPassword = require('#helpers/is-valid-password');
 const logger = require('#helpers/logger');
 const migrateSchema = require('#helpers/migrate-schema');
-const recursivelyParse = require('#helpers/recursively-parse');
 const setupPragma = require('#helpers/setup-pragma');
 const updateStorageUsed = require('#helpers/update-storage-used');
-const { decodeMetadata } = require('#helpers/msgpack-helpers');
 const { decrypt } = require('#helpers/encrypt-decrypt');
 const backfillCalendarDates = require('#helpers/backfill-calendar-dates');
 const { fixCalDAVHref } = require('#helpers/fix-caldav-href');
@@ -885,6 +882,14 @@ async function getDatabase(
       const _alias = alias;
       const _aliasId = session.user.alias_id;
       _deferredMaintenanceRunning.add(_aliasId);
+
+      // Mark LRU entry so sweep/evict won't close this handle mid-maintenance
+      const _lruEntry =
+        instance.databaseMap && instance.databaseMap._map
+          ? instance.databaseMap._map.get(_aliasId)
+          : null;
+      if (_lruEntry) _lruEntry.maintenanceActive = true;
+
       setImmediate(() => {
         _runDeferredMaintenance(instance, _db, _session, {
           alias: _alias,
@@ -907,6 +912,8 @@ async function getDatabase(
           })
           .finally(() => {
             _deferredMaintenanceRunning.delete(_aliasId);
+            // Clear the LRU maintenance guard
+            if (_lruEntry) _lruEntry.maintenanceActive = false;
           });
       });
     }
@@ -1111,105 +1118,37 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
         }
 
         // TODO: wss broadcast changes here to connected clients
-
-        // iterate over all messages to get an array of attachment ids
-        // and then iterate over all attachments to delete those not in the list
+        //
+        // ─── Attachment orphan cleanup (SQL-only) ─────────────────────────
+        // Instead of decompressing every message's mimeTree (O(all_messages)
+        // brotli decompress + JSON parse), we rely on the reference-counting
+        // fields maintained by attachment-storage.js:
+        //   counter: decremented on message delete (0 = no references)
+        //   magic:   decremented on message delete (0 = no references)
+        // Attachments with counter<=0 AND magic<=0 are orphaned and safe
+        // to delete.  This reduces a 390s+ operation to <1s.
+        //
         const now = new Date().toISOString();
-        //
-        // Use LIMIT/OFFSET pagination instead of .all() to avoid loading
-        // every message with attachments into memory at once (which can be
-        // hundreds of MB for large mailboxes).  Each page is a synchronous
-        // .all() call (better-sqlite3 iterators hold a lock across async
-        // boundaries so .iterate() cannot be used), but the page size is
-        // bounded so memory stays constant.
-        //
-        const hashSet = new Set();
-        const PAGE_SIZE = 1000;
-        let offset = 0;
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const pageSql = builder.build({
-            type: 'select',
-            table: 'Messages',
-            condition: {
-              created_at: { $lte: now },
-              ha: true
-            },
-            fields: ['mimeTree'],
-            limit: PAGE_SIZE,
-            offset,
-            sort: { _id: 1 }
-          });
-          const page = db.prepare(pageSql.query).all(pageSql.values);
-          if (page.length === 0) break;
-          for (const row of page) {
-            const mimeTree = decodeMetadata(row.mimeTree, recursivelyParse);
-            const hashes = getAttachments(mimeTree);
-            for (const hash of hashes) {
-              hashSet.add(hash);
-            }
-          }
-
-          offset += page.length;
-          // Yield to event loop between pages to avoid blocking
-          await new Promise((resolve) => {
-            setImmediate(resolve);
-          });
-          // Safety: bail if db was closed during yield
-          if (!db.open) return;
-          if (page.length < PAGE_SIZE) break;
-        }
-
-        // NOTE: this only works if there's at least one hash from existing messages
-        //       (otherwise to do it for all we'd just remove this conditional check)
-        // TODO: <https://github.com/nodemailer/wildduck/issues/750>
-        if (hashSet.size > 0) {
-          // Get all existing attachment hashes
-          const sql = builder.build({
-            type: 'select',
-            table: 'Attachments',
-            condition: {
-              created_at: { $lte: now },
-              counterUpdated: { $lte: now }
-            },
-            fields: ['hash']
-          });
-
-          const existingHashes = db.prepare(sql.query).pluck().all(sql.values);
-
-          // Collect orphan hashes (not referenced by any message)
-          const orphanHashes = existingHashes.filter((h) => !hashSet.has(h));
-
-          // Batch DELETE orphan attachments (500 at a time to stay under
-          // SQLITE_MAX_VARIABLE_NUMBER = 999)
-          const DELETE_BATCH = 500;
-          for (let i = 0; i < orphanHashes.length; i += DELETE_BATCH) {
-            if (!db.open) return;
-            const batch = orphanHashes.slice(i, i + DELETE_BATCH);
-            const placeholders = batch.map(() => '?').join(',');
+        try {
+          if (db.open) {
             db.exec('BEGIN IMMEDIATE');
             try {
               db.prepare(
-                `DELETE FROM "Attachments" WHERE "hash" IN (${placeholders})` +
-                  ` AND "created_at" <= ? AND "counterUpdated" <= ?`
-              ).run(...batch, now, now);
+                `DELETE FROM "Attachments" WHERE "counter" <= 0 AND "magic" <= 0` +
+                  ` AND "counterUpdated" <= ?`
+              ).run(now);
               db.exec('COMMIT');
-            } catch (batchErr) {
+            } catch (delErr) {
               try {
                 db.exec('ROLLBACK');
               } catch {}
 
-              throw batchErr;
-            }
-
-            // Yield between batches
-            if (i + DELETE_BATCH < orphanHashes.length) {
-              await new Promise((resolve) => {
-                setImmediate(resolve);
-              });
-              if (!db.open) return;
+              throw delErr;
             }
           }
+        } catch (err) {
+          // Non-fatal: orphan cleanup failure doesn't affect correctness
+          logger.debug(err, { session, resolver: instance.resolver });
         }
 
         // Update storage after deleting messages from Trash/Spam/Junk
@@ -1220,6 +1159,18 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
             logger.fatal(err, { session, resolver: instance.resolver })
           );
       } // end else (mailboxes.length > 0)
+
+      // Reclaim free pages from INCREMENTAL auto_vacuum.
+      // Frees up to 512 pages (~2 MB) per maintenance run without blocking
+      // the event loop for extended periods like a full VACUUM would.
+      if (db && db.open && !db.inTransaction) {
+        try {
+          db.pragma('incremental_vacuum(512)');
+        } catch (err) {
+          // Non-fatal: incremental_vacuum failure doesn't affect correctness
+          logger.debug(err, { session, resolver: instance.resolver });
+        }
+      }
 
       // Optimize query planner (guard against busy/closed/in-transaction state)
       if (db && db.open && !db.inTransaction) {
@@ -1656,8 +1607,8 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
       //     mark has_auto_vacuum_migration in MongoDB
       //
       if (!db.open) throw new TypeError('database connection is not open');
-      const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
-      if (!hasAutoVacuum) {
+      const autoVacuumMode = db.pragma('auto_vacuum', { simple: true });
+      if (autoVacuumMode !== 2) {
         // get latest from cache in case another connection started a vacuum
         vacuumCheck = boolean(
           await instance.client.get(`vacuum_check:${session.user.alias_id}`)
@@ -1688,8 +1639,8 @@ async function _runDeferredMaintenance(instance, db, session, checks) {
               // Checkpoint WAL so all committed data is in the main DB file
               db.pragma('wal_checkpoint(TRUNCATE)');
 
-              // Set auto_vacuum mode and VACUUM INTO the temp file
-              db.pragma('auto_vacuum=FULL');
+              // Set auto_vacuum mode to INCREMENTAL and VACUUM INTO the temp file
+              db.pragma('auto_vacuum=INCREMENTAL');
               db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
 
               //

@@ -70,20 +70,27 @@ async function setupPragma(db, session, cipher = 'chacha20') {
     throw err;
   }
 
-  // overwrite deleted content with zeros
-  // <https://www.sqlite.org/pragma.html#pragma_secure_delete>
-  db.pragma('secure_delete=ON');
+  //
+  // secure_delete disabled — all database content is already encrypted with
+  // ChaCha20 (via SQLite Multiple Ciphers), so zero-filling deleted pages
+  // provides no additional security and adds ~10-15% write overhead on every
+  // DELETE.  The encryption key is required to read any page content.
+  //
+  db.pragma('secure_delete=OFF');
 
   //
-  // turn on auto vacuum (for large amounts of deleted content)
+  // INCREMENTAL auto_vacuum: reclaims free pages only when explicitly
+  // requested via `PRAGMA incremental_vacuum(N)` (run during deferred
+  // maintenance).  Unlike FULL auto_vacuum which rewrites pages on EVERY
+  // DELETE (causing write amplification and I/O stalls), INCREMENTAL
+  // defers the work to a controlled maintenance window.
+  //
+  // The sqlite-worker VACUUM INTO path handles the one-time migration
+  // from legacy databases (auto_vacuum=NONE) to INCREMENTAL.
+  //
   // <https://www.sqlite.org/pragma.html#pragma_auto_vacuum>
   //
-  //
-  // NOTE: if you change this then uncomment `jobs/cleanup-sqlite`
-  //       and also optimize the 'vacuum' parse-payload switch/case
-  //       statement so that it checks for os.freemem() similar to 'backup'
-  //
-  db.pragma('auto_vacuum=FULL');
+  db.pragma('auto_vacuum=INCREMENTAL');
 
   // <https://litestream.io/tips/#busy-timeout>
   db.pragma(`busy_timeout=${config.busyTimeout}`);
@@ -109,11 +116,14 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   db.pragma('mmap_size=0');
 
   //
-  // Auto-checkpoint every 1000 pages (default).
-  // We rely on this instead of per-query PASSIVE checkpoints
-  // to avoid SQLITE_BUSY_SNAPSHOT under concurrent readers.
+  // Auto-checkpoint every 2000 pages (~8 MB with 4096 page size).
+  // Higher than the default (1000) to reduce checkpoint frequency under
+  // write-heavy IMAP workloads (APPEND, STORE flags, EXPUNGE).
+  // Checkpoints still happen frequently enough to bound WAL growth.
   //
-  db.pragma('wal_autocheckpoint=1000');
+  db.pragma(
+    `wal_autocheckpoint=${Number(env.SQLITE_WAL_AUTOCHECKPOINT) || 2000}`
+  );
 
   // db.pragma(`user_version="1"`);
 

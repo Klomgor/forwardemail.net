@@ -124,10 +124,10 @@ test('databaseMap fallback > falls through to tmp when db is closed', (t) => {
 
 // --- Configuration ---
 
-test('ecosystem-sqlite.json > max_memory_restart is 16G', (t) => {
+test('ecosystem-sqlite.json > max_memory_restart is 32G', (t) => {
   const ecosystem = require('../../ecosystem-sqlite.json');
   const app = ecosystem.apps.find((a) => a.name === 'sqlite');
-  t.is(app.max_memory_restart, '16G');
+  t.is(app.max_memory_restart, '32G');
 });
 
 test('setup-pragma > cache_size is 16MB for main databases', (t) => {

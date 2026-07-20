@@ -2242,7 +2242,17 @@ async function parsePayload(data, ws) {
         // slight overhead for backups
         const spaceRequired = maxQuotaPerAlias * 2;
 
-        const diskSpace = await checkDiskSpace(storagePath);
+        // Use cached disk space check (10s TTL) to avoid repeated
+        // statvfs syscalls for aliases on the same storage volume.
+        let diskSpace = getCachedDiskSpace(
+          storagePath,
+          payload.session.user.storage_location
+        );
+        if (!diskSpace) {
+          diskSpace = await checkDiskSpace(storagePath);
+          setCachedDiskSpace(payload.session.user.storage_location, diskSpace);
+        }
+
         if (diskSpace.free < spaceRequired)
           throw new TypeError(
             `Needed ${bytes(spaceRequired)} but only ${bytes(

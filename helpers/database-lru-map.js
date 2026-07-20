@@ -119,6 +119,8 @@ class DatabaseLRUMap {
       if (this._closing.has(key)) continue;
       // Skip entries mid-transaction (never evict during a write)
       if (entry.db && entry.db.inTransaction) continue;
+      // Skip entries with active deferred maintenance running
+      if (entry.maintenanceActive) continue;
       if (entry.db && entry.db.open) {
         candidates.push({ key, lastAccess: entry.lastAccess });
       }
@@ -155,6 +157,8 @@ class DatabaseLRUMap {
       if (!entry.db || !entry.db.open) continue;
       if (this._closing.has(key)) continue;
       if (entry.db.inTransaction) continue;
+      // Skip entries with active deferred maintenance running
+      if (entry.maintenanceActive) continue;
 
       const idleMs = now - entry.lastAccess;
 

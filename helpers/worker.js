@@ -1352,9 +1352,10 @@ async function vacuum(payload) {
     });
     await setupPragma(db, payload.session);
 
-    // Check if auto_vacuum is already enabled
-    const hasAutoVacuum = db.pragma('auto_vacuum', { simple: true }) === 1;
-    if (hasAutoVacuum) {
+    // Check if auto_vacuum is already enabled (FULL=1 or INCREMENTAL=2)
+    const autoVacuumMode = db.pragma('auto_vacuum', { simple: true });
+    if (autoVacuumMode === 2) {
+      // Already INCREMENTAL — nothing to do
       db.close();
       db = null;
       await client.set(`vacuum_check:${aliasId}`, 'true', 'PX', ms('7d'));
@@ -1372,8 +1373,10 @@ async function vacuum(payload) {
     // Checkpoint WAL so all committed data is in the main DB file
     db.pragma('wal_checkpoint(TRUNCATE)');
 
-    // Set auto_vacuum mode and VACUUM INTO the temp file
-    db.pragma('auto_vacuum=FULL');
+    // Set auto_vacuum mode to INCREMENTAL and VACUUM INTO the temp file.
+    // INCREMENTAL avoids per-DELETE page rewrites (unlike FULL) while still
+    // allowing controlled space reclamation via incremental_vacuum(N).
+    db.pragma('auto_vacuum=INCREMENTAL');
     db.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}';`);
 
     // Verify the new file is a valid encrypted database

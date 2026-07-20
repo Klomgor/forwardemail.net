@@ -397,7 +397,7 @@ const Aliases = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // tracks whether VACUUM INTO auto_vacuum=FULL migration has been completed
+  // tracks whether VACUUM INTO auto_vacuum migration has been completed
   has_auto_vacuum_migration: {
     type: Boolean,
     default: false
