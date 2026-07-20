@@ -497,9 +497,11 @@ async function getDatabase(
     const cachedDb = instance.databaseMap
       ? instance.databaseMap.get(alias.id)
       : undefined;
+    let isCacheHit = false;
     if (cachedDb && cachedDb.open === true && cachedDb.readonly === false) {
       db = cachedDb;
       session.db = db;
+      isCacheHit = true;
       if (boolean(env.SQLITE_DEBUG_TIMERS)) {
         console.debug('getDatabase cache hit', {
           alias_id: alias.id
@@ -619,63 +621,158 @@ async function getDatabase(
     // TODO: add p-timeout to the client.get calls below
     _maint_t0 = Date.now();
     if (!migrateCheck) {
-      try {
-        //
-        // NOTE: if we change schema on db then we
-        //       need to stop sqlite server then
-        //       purge all migrate_check:* keys
-        //
-        const commands = await migrateSchema(instance, db, session, {
-          Mailboxes,
-          Messages,
-          Threads,
-          Attachments,
-          Calendars,
-          CalendarEvents,
-          AddressBooks,
-          Contacts
-        });
-
-        let hasCriticalError = false;
-        if (commands.length > 0) {
-          for (const command of commands) {
-            try {
-              // TODO: wsp here (?)
-              db.prepare(command).run();
-              // await knexDatabase.raw(command);
-            } catch (err) {
-              // duplicate column errors are expected when migration was already applied
-              if (err.message.startsWith('duplicate column name:')) {
-                logger.debug(err, {
-                  command,
-                  alias,
-                  session,
-                  resolver: instance.resolver
-                });
-              } else {
-                err.isCodeBug = true;
-                logger.fatal(err, {
-                  command,
-                  alias,
-                  session,
-                  resolver: instance.resolver
-                });
-
-                // if a CREATE TABLE command failed then the database
-                // is in a broken state and we must not cache success
-                if (command.startsWith('CREATE TABLE')) hasCriticalError = true;
+      //
+      // PERFORMANCE: For LRU cache hits (db already open and previously
+      // migrated), defer migrateSchema to setImmediate. The schema was
+      // already applied on the initial open; the Redis TTL expiry is just
+      // a periodic re-validation. This eliminates the 14-17s inline block
+      // that was causing request queuing and identical stall patterns.
+      //
+      // For fresh opens (cache miss), run inline to ensure tables exist
+      // before any queries execute.
+      //
+      if (isCacheHit) {
+        // Defer migration for cache hits — schema is already applied
+        const _dbRef = db;
+        const _sessionRef = { ...session, db: _dbRef };
+        const _aliasRef = alias;
+        const _instanceRef = instance;
+        setImmediate(async () => {
+          if (!_dbRef || !_dbRef.open) return;
+          try {
+            const commands = await migrateSchema(
+              _instanceRef,
+              _dbRef,
+              _sessionRef,
+              {
+                Mailboxes,
+                Messages,
+                Threads,
+                Attachments,
+                Calendars,
+                CalendarEvents,
+                AddressBooks,
+                Contacts
               }
+            );
 
-              // migration support in case existing rows
-              if (
-                err.message.includes(
-                  'Cannot add a NOT NULL column with default value NULL'
-                ) &&
-                command.endsWith(' NOT NULL')
-              ) {
+            let hasCriticalError = false;
+            if (commands.length > 0) {
+              for (const command of commands) {
                 try {
-                  db.prepare(command.replace(' NOT NULL', '')).run();
+                  _dbRef.prepare(command).run();
                 } catch (err) {
+                  if (err.message.startsWith('duplicate column name:')) {
+                    logger.debug(err, {
+                      command,
+                      alias: _aliasRef,
+                      session: _sessionRef
+                    });
+                  } else {
+                    err.isCodeBug = true;
+                    logger.fatal(err, {
+                      command,
+                      alias: _aliasRef,
+                      session: _sessionRef
+                    });
+                    if (command.startsWith('CREATE TABLE'))
+                      hasCriticalError = true;
+                  }
+
+                  if (
+                    err.message.includes(
+                      'Cannot add a NOT NULL column with default value NULL'
+                    ) &&
+                    command.endsWith(' NOT NULL')
+                  ) {
+                    try {
+                      _dbRef.prepare(command.replace(' NOT NULL', '')).run();
+                    } catch (err) {
+                      err.isCodeBug = true;
+                      logger.fatal(err, {
+                        command,
+                        alias: _aliasRef,
+                        session: _sessionRef
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
+            // Create compound indexes (deferred, IF NOT EXISTS = no-op after first run)
+            try {
+              if (_dbRef.open) {
+                _dbRef
+                  .prepare(
+                    'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
+                  )
+                  .run();
+                _dbRef
+                  .prepare(
+                    'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
+                  )
+                  .run();
+                _dbRef
+                  .prepare(
+                    'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
+                  )
+                  .run();
+              }
+            } catch (err) {
+              if (!err.message.includes('no such table')) {
+                logger.fatal(err, { session: _sessionRef });
+              }
+            }
+
+            if (!hasCriticalError && _instanceRef.client) {
+              await _instanceRef.client.set(
+                `migrate_check:${_sessionRef.user.alias_id}`,
+                true,
+                'PX',
+                ms('7d')
+              );
+            }
+          } catch (err) {
+            logger.fatal(err);
+          }
+        });
+      } else {
+        // Fresh open (cache miss) — run migration inline
+        try {
+          //
+          // NOTE: if we change schema on db then we
+          //       need to stop sqlite server then
+          //       purge all migrate_check:* keys
+          //
+          const commands = await migrateSchema(instance, db, session, {
+            Mailboxes,
+            Messages,
+            Threads,
+            Attachments,
+            Calendars,
+            CalendarEvents,
+            AddressBooks,
+            Contacts
+          });
+
+          let hasCriticalError = false;
+          if (commands.length > 0) {
+            for (const command of commands) {
+              try {
+                // TODO: wsp here (?)
+                db.prepare(command).run();
+                // await knexDatabase.raw(command);
+              } catch (err) {
+                // duplicate column errors are expected when migration was already applied
+                if (err.message.startsWith('duplicate column name:')) {
+                  logger.debug(err, {
+                    command,
+                    alias,
+                    session,
+                    resolver: instance.resolver
+                  });
+                } else {
                   err.isCodeBug = true;
                   logger.fatal(err, {
                     command,
@@ -683,57 +780,72 @@ async function getDatabase(
                     session,
                     resolver: instance.resolver
                   });
+
+                  // if a CREATE TABLE command failed then the database
+                  // is in a broken state and we must not cache success
+                  if (command.startsWith('CREATE TABLE'))
+                    hasCriticalError = true;
+                }
+
+                // migration support in case existing rows
+                if (
+                  err.message.includes(
+                    'Cannot add a NOT NULL column with default value NULL'
+                  ) &&
+                  command.endsWith(' NOT NULL')
+                ) {
+                  try {
+                    db.prepare(command.replace(' NOT NULL', '')).run();
+                  } catch (err) {
+                    err.isCodeBug = true;
+                    logger.fatal(err, {
+                      command,
+                      alias,
+                      session,
+                      resolver: instance.resolver
+                    });
+                  }
                 }
               }
             }
           }
-        }
 
-        //
-        // Compound covering indexes for hot IMAP queries.
-        // These are created IF NOT EXISTS so they're idempotent.
-        //
-        // 1. (mailbox, uid) — covers the UID-list query (SELECT/EXAMINE)
-        //    and FETCH queries (WHERE mailbox = ? AND uid IN (...) ORDER BY uid)
-        //
-        // 2. (mailbox, unseen) — covers STATUS unseen count
-        //    (SELECT count(*) FROM Messages WHERE mailbox = ? AND unseen = 1)
-        //
-        // 3. (mailbox, undeleted, uid) — covers EXPUNGE
-        //    (DELETE FROM Messages WHERE mailbox = ? AND undeleted = 0 ORDER BY uid)
-        //
-        try {
-          db.prepare(
-            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
-          ).run();
-          db.prepare(
-            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
-          ).run();
-          db.prepare(
-            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
-          ).run();
-        } catch (err) {
-          // Ignore if table doesn't exist yet (fresh DB, will be created on next open)
-          if (!err.message.includes('no such table')) {
-            logger.fatal(err, { session, resolver: instance.resolver });
+          //
+          // Compound covering indexes for hot IMAP queries.
+          // Created inline for fresh opens to ensure indexes exist before queries.
+          //
+          try {
+            db.prepare(
+              'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
+            ).run();
+            db.prepare(
+              'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
+            ).run();
+            db.prepare(
+              'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
+            ).run();
+          } catch (err) {
+            if (!err.message.includes('no such table')) {
+              logger.fatal(err, { session, resolver: instance.resolver });
+            }
           }
-        }
 
-        //
-        // only cache migrate_check as successful if no CREATE TABLE
-        // commands failed; otherwise the next request will re-attempt
-        // migration instead of hitting "no such table" errors
-        //
-        if (!hasCriticalError) {
-          await instance.client.set(
-            `migrate_check:${session.user.alias_id}`,
-            true,
-            'PX',
-            ms('1d')
-          );
+          //
+          // only cache migrate_check as successful if no CREATE TABLE
+          // commands failed; otherwise the next request will re-attempt
+          // migration instead of hitting "no such table" errors
+          //
+          if (!hasCriticalError) {
+            await instance.client.set(
+              `migrate_check:${session.user.alias_id}`,
+              true,
+              'PX',
+              ms('7d')
+            );
+          }
+        } catch (err) {
+          logger.fatal(err);
         }
-      } catch (err) {
-        logger.fatal(err);
       }
     }
 
@@ -750,45 +862,116 @@ async function getDatabase(
 
     //
     // create initial folders for the user if they do not yet exist
-    // (only do this once every day)
+    // (only do this once every 7 days; flush folder_check:* after deploys)
     //
     _maint_t0 = Date.now();
     if (!folderCheck) {
-      try {
-        const isInitialSetup = await ensureDefaultMailboxes(instance, session);
-
-        // Send welcome email on first-time mailbox setup via email queue
-        // Only send for aliases with IMAP enabled and only once (persisted in MongoDB)
-        if (
-          isInitialSetup &&
-          config.env !== 'test' &&
-          session.user.alias_has_imap
-        ) {
-          const result = await Aliases.findOneAndUpdate(
-            {
-              id: session.user.alias_id,
-              welcome_email_sent_at: { $exists: false }
-            },
-            { $set: { welcome_email_sent_at: new Date() } }
+      //
+      // PERFORMANCE: For cache hits, defer folderCheck to setImmediate.
+      // Default mailboxes were already created on initial open; the Redis
+      // TTL expiry is just a periodic re-validation.
+      // For fresh opens (cache miss), run inline to ensure INBOX exists.
+      //
+      if (isCacheHit) {
+        const _instanceRef2 = instance;
+        const _sessionRef2 = { ...session, db };
+        setImmediate(async () => {
+          try {
+            const isInitialSetup = await ensureDefaultMailboxes(
+              _instanceRef2,
+              _sessionRef2
+            );
+            if (
+              isInitialSetup &&
+              config.env !== 'test' &&
+              _sessionRef2.user.alias_has_imap
+            ) {
+              Aliases.findOneAndUpdate(
+                {
+                  id: _sessionRef2.user.alias_id,
+                  welcome_email_sent_at: { $exists: false }
+                },
+                { $set: { welcome_email_sent_at: new Date() } }
+              )
+                .then((result) => {
+                  if (result) {
+                    const aliasAddress = _sessionRef2.user.username;
+                    email({
+                      template: 'welcome-mailbox',
+                      message: { to: aliasAddress },
+                      locals: {
+                        aliasAddress,
+                        locale: _sessionRef2.user.locale || 'en'
+                      }
+                    }).catch((err) =>
+                      logger.warn('Failed to send welcome email', {
+                        error: err.message
+                      })
+                    );
+                  }
+                })
+                .catch((err) =>
+                  logger.warn('Failed to update welcome_email_sent_at', {
+                    error: err.message
+                  })
+                );
+            }
+          } catch (err) {
+            logger.fatal(err, { session: _sessionRef2 });
+          }
+        });
+      } else {
+        // Fresh open — run folderCheck inline
+        try {
+          const isInitialSetup = await ensureDefaultMailboxes(
+            instance,
+            session
           );
 
-          // Only send if we successfully claimed the field (atomic dedup)
-          if (result) {
-            const aliasAddress = session.user.username;
-            email({
-              template: 'welcome-mailbox',
-              message: { to: aliasAddress },
-              locals: { aliasAddress, locale: session.user.locale || 'en' }
-            }).catch((err) =>
-              logger.warn('Failed to send welcome email', {
-                session,
-                error: err.message
+          // Send welcome email on first-time mailbox setup via email queue
+          // Only send for aliases with IMAP enabled and only once (persisted in MongoDB)
+          // Fire-and-forget: do NOT await MongoDB here — it can take seconds and
+          // blocks the database open path, causing 10-17s folderCheck durations.
+          if (
+            isInitialSetup &&
+            config.env !== 'test' &&
+            session.user.alias_has_imap
+          ) {
+            Aliases.findOneAndUpdate(
+              {
+                id: session.user.alias_id,
+                welcome_email_sent_at: { $exists: false }
+              },
+              { $set: { welcome_email_sent_at: new Date() } }
+            )
+              .then((result) => {
+                if (result) {
+                  const aliasAddress = session.user.username;
+                  email({
+                    template: 'welcome-mailbox',
+                    message: { to: aliasAddress },
+                    locals: {
+                      aliasAddress,
+                      locale: session.user.locale || 'en'
+                    }
+                  }).catch((err) =>
+                    logger.warn('Failed to send welcome email', {
+                      session,
+                      error: err.message
+                    })
+                  );
+                }
               })
-            );
+              .catch((err) =>
+                logger.warn('Failed to update welcome_email_sent_at', {
+                  session,
+                  error: err.message
+                })
+              );
           }
+        } catch (err) {
+          logger.fatal(err, { session, resolver: instance.resolver });
         }
-      } catch (err) {
-        logger.fatal(err, { session, resolver: instance.resolver });
       }
     }
 

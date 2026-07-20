@@ -69,7 +69,7 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
     }
 
     if (required.length === 0) {
-      await instance.client.set(cacheKey, true, 'PX', ms('1d'));
+      await instance.client.set(cacheKey, true, 'PX', ms('7d'));
       return isInitialSetup;
     }
 
@@ -116,7 +116,7 @@ async function ensureDefaultMailboxes(instance, session, purgeCache = false) {
       })
     );
 
-    await instance.client.set(cacheKey, true, 'PX', ms('1d'));
+    await instance.client.set(cacheKey, true, 'PX', ms('7d'));
     return isInitialSetup;
   } catch (err) {
     logger.fatal(err, { session, resolver: instance.resolver });

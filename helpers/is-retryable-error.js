@@ -219,12 +219,15 @@ function isRetryableError(err) {
   )
     return true;
 
+  //
+  // NOTE: 'no such table' and 'database disk image is malformed' are
+  // NOT retryable — they are permanent errors that will never succeed
+  // on retry and waste 10s (10 retries × 1s) blocking the worker.
+  //
   if (
     typeof err.message === 'string' &&
     (err.message.includes('busy executing a query') ||
-      err.message.includes('no such table') ||
-      err.message.includes('database is locked') ||
-      err.message.includes('database disk image is malformed'))
+      err.message.includes('database is locked'))
   )
     return true;
 
