@@ -621,14 +621,22 @@ async function getDatabase(
     // TODO: add p-timeout to the client.get calls below
     _maint_t0 = Date.now();
     if (!migrateCheck) {
-      //
-      // NOTE: migrateSchema ALWAYS runs inline (never deferred).
-      // Deferring caused a race condition: concurrent requests could see
-      // isCacheHit=true before migration completes, leading to
-      // "no such table: Mailboxes" errors. migrateSchema is fast for
-      // already-migrated dbs (schema inspection + IF NOT EXISTS no-ops).
-      //
       try {
+        //
+        // Set Redis key BEFORE running migrateSchema (same ordering as cc6c054d).
+        // This ensures concurrent requests for the same alias immediately
+        // see migrateCheck=true and skip the expensive schema inspection.
+        // Without this, 10+ concurrent IMAP requests all run migrateSchema
+        // simultaneously (each taking 6-9s), saturating the event loop.
+        // Use 1d TTL so a failed migration is retried within a day.
+        //
+        await instance.client.set(
+          `migrate_check:${session.user.alias_id}`,
+          true,
+          'PX',
+          ms('1d')
+        );
+
         //
         // NOTE: if we change schema on db then we
         //       need to stop sqlite server then
@@ -645,7 +653,6 @@ async function getDatabase(
           Contacts
         });
 
-        let hasCriticalError = false;
         if (commands.length > 0) {
           for (const command of commands) {
             try {
@@ -668,9 +675,6 @@ async function getDatabase(
                   session,
                   resolver: instance.resolver
                 });
-                // if a CREATE TABLE command failed then the database
-                // is in a broken state and we must not cache success
-                if (command.startsWith('CREATE TABLE')) hasCriticalError = true;
               }
 
               // migration support in case existing rows
@@ -698,36 +702,38 @@ async function getDatabase(
 
         //
         // Compound covering indexes for hot IMAP queries.
+        // Deferred to setImmediate so they don't block the current request.
+        // CREATE INDEX IF NOT EXISTS is idempotent and safe to run async.
         //
-        try {
-          db.prepare(
-            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
-          ).run();
-          db.prepare(
-            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
-          ).run();
-          db.prepare(
-            'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
-          ).run();
-        } catch (err) {
-          if (!err.message.includes('no such table')) {
-            logger.fatal(err, { session, resolver: instance.resolver });
+        const _dbForIdx = db;
+        const _sessionForIdx = session;
+        setImmediate(() => {
+          try {
+            if (!_dbForIdx.open) return;
+            _dbForIdx
+              .prepare(
+                'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
+              )
+              .run();
+            _dbForIdx
+              .prepare(
+                'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
+              )
+              .run();
+            _dbForIdx
+              .prepare(
+                'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
+              )
+              .run();
+          } catch (err) {
+            if (!err.message.includes('no such table')) {
+              logger.fatal(err, {
+                session: _sessionForIdx,
+                resolver: instance.resolver
+              });
+            }
           }
-        }
-
-        //
-        // only cache migrate_check as successful if no CREATE TABLE
-        // commands failed; otherwise the next request will re-attempt
-        // migration instead of hitting "no such table" errors
-        //
-        if (!hasCriticalError) {
-          await instance.client.set(
-            `migrate_check:${session.user.alias_id}`,
-            true,
-            'PX',
-            ms('7d')
-          );
-        }
+        });
       } catch (err) {
         logger.fatal(err);
       }
@@ -1000,7 +1006,7 @@ async function getDatabase(
     // after getDatabase returns could trigger the error.
     // DROP TRIGGER IF EXISTS is a no-op when triggers don't exist (~0ms).
     //
-    if (db.open && !db.inTransaction) {
+    if (db.open) {
       try {
         db.exec('DROP TRIGGER IF EXISTS Messages_ai');
         db.exec('DROP TRIGGER IF EXISTS Messages_ad');
@@ -1016,6 +1022,49 @@ async function getDatabase(
     // while the caller's request is in-flight.  The caller MUST call
     // instance.databaseMap.release(alias.id) when the request completes.
     //
+    //
+    // SAFETY: Verify the Mailboxes table exists before returning the handle.
+    // This guards against the race where a concurrent request gets a cached
+    // db handle + migrateCheck=true from Redis, but migrateSchema hasn't
+    // finished creating tables yet. The check is a cheap synchronous
+    // sqlite_master lookup (~0.1ms).
+    //
+    if (db.open && !db.wsp) {
+      try {
+        const tableExists = db
+          .prepare(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='Mailboxes' LIMIT 1"
+          )
+          .get();
+        if (!tableExists) {
+          // Tables don't exist yet — force migrateSchema now
+          const commands = await migrateSchema(instance, db, session, {
+            Mailboxes,
+            Messages,
+            Threads,
+            Attachments,
+            Calendars,
+            CalendarEvents,
+            AddressBooks,
+            Contacts
+          });
+          for (const command of commands) {
+            try {
+              db.prepare(command).run();
+            } catch (err) {
+              if (!err.message.startsWith('duplicate column name:')) {
+                logger.fatal(err, { command, session });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        // If the check itself fails (e.g. db was closed), log and continue
+        // — the caller will get a proper error on their actual query
+        logger.debug('table existence check failed', { err: err.message });
+      }
+    }
+
     if (instance.databaseMap && instance.databaseMap.acquire) {
       instance.databaseMap.acquire(alias.id);
     }
