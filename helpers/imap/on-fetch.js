@@ -224,7 +224,10 @@ async function onFetch(mailboxId, options, session, fn) {
     // contains `await` calls and better-sqlite3 iterators hold a lock that
     // cannot span async boundaries.
     //
-    const PAGE_SIZE = 2000;
+    // Use smaller pages for metadata-only queries (they're CPU-bound in
+    // compileImapResponse) to avoid blocking the event loop for too long.
+    // Full-body fetches already yield via stream I/O per message.
+    const PAGE_SIZE = options.metadataOnly ? 500 : 2000;
     const sortClause = condition?.uid?.$eq ? undefined : 'uid';
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
@@ -247,7 +250,15 @@ async function onFetch(mailboxId, options, session, fn) {
       offset += pageResults.length;
       if (pageResults.length === 0) break;
 
+      let _rowsInPage = 0;
       for (const result of pageResults) {
+        // Yield to the event loop every 100 rows to prevent macrotask
+        // starvation (fixes 146-1184 ms EVENT_LOOP_LAG spikes during
+        // large mailbox syncs)
+        if (++_rowsInPage % 100 === 0) {
+          await new Promise(setImmediate);
+        }
+
         const message = syncConvertResult(Messages, result, projection);
 
         // don't process messages that are new since query started

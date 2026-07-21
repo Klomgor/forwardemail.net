@@ -4,6 +4,7 @@
  */
 
 const path = require('node:path');
+const process = require('node:process');
 const punycode = require('node:punycode');
 const { Buffer } = require('node:buffer');
 
@@ -98,9 +99,12 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   // Performance tuning PRAGMAs for high-concurrency WAL workloads
   //
 
-  // Increase page cache to ~64 MB (negative = KiB)
-  // Default is ~2 MB which causes excessive I/O under concurrent readers
-  db.pragma('cache_size=-65536');
+  // Page cache per connection (negative = KiB).
+  // With DATABASE_MAP_MAX_SIZE=1000 and 5 cluster workers, 64 MB per DB
+  // caused 25 GB+ RSS (400 active DBs × 64 MB = 25.6 GB).  Configurable
+  // via SQLITE_CACHE_SIZE_KB env var (default 16384 = 16 MB).
+  const cacheSizeKB = Number(process.env.SQLITE_CACHE_SIZE_KB) || 16384;
+  db.pragma(`cache_size=-${cacheSizeKB}`);
 
   // Limit WAL file growth to 256 MB
   // Prevents unbounded WAL growth when checkpointing is deferred
