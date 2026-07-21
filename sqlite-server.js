@@ -6,15 +6,16 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
-const process = require('node:process');
 const { promisify } = require('node:util');
+const { randomUUID } = require('node:crypto');
+
 const Boom = require('@hapi/boom');
 const MessageHandler = require('@zone-eu/wildduck/lib/message-handler');
 
-const { boolean } = require('boolean');
 const auth = require('basic-auth');
 const isSANB = require('is-string-and-not-blank');
 const ms = require('ms');
+const pWaitFor = require('p-wait-for');
 const { WebSocketServer } = require('ws');
 const { mkdirp } = require('mkdirp');
 
@@ -31,25 +32,12 @@ const getTLSOptions = require('#helpers/get-tls-options');
 const i18n = require('#helpers/i18n');
 const isCodeBug = require('#helpers/is-code-bug');
 const isTimeoutError = require('#helpers/is-timeout-error');
+const isRetryableError = require('#helpers/is-retryable-error');
 const logger = require('#helpers/logger');
 const parsePayload = require('#helpers/parse-payload');
 const refreshSession = require('#helpers/refresh-session');
 const { decrypt } = require('#helpers/encrypt-decrypt');
 const { encoder } = require('#helpers/encoder-decoder');
-
-//
-// Event loop lag monitor: detects when the event loop is blocked > 100ms
-// Logs with worker PID so we can correlate with pm2 instance
-//
-let _lagPrev = Date.now();
-setInterval(() => {
-  const now = Date.now();
-  const lag = now - _lagPrev - 1000;
-  _lagPrev = now;
-  if (lag > 100) {
-    console.warn('[EVENT_LOOP_LAG] pid=%d lag=%dms', process.pid, lag);
-  }
-}, 1000).unref();
 
 class SQLite {
   constructor(options = {}) {
@@ -95,10 +83,6 @@ class SQLite {
       idleTTL: ms('2m')
     });
 
-    // Unique worker ID for filtering self-published Redis broadcast messages
-    // (prevents local clients from receiving the same broadcast twice)
-    this.workerId = `${process.pid}:${Date.now()}`;
-
     //
     // bind helpers so we can re-use IMAP helper commands
     // (mirrored from `imap-server.js`)
@@ -138,53 +122,70 @@ class SQLite {
     // this.wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
     this.wss = new WebSocketServer({
       noServer: true,
-      // Limit max payload to 256 MB to prevent OOM from malicious frames
-      maxPayload: 256 * 1024 * 1024
+      maxPayload: 0 // disable max payload size
     });
-    //
-    // Non-blocking broadcast: fire-and-forget to all local WebSocket clients
-    // and publish to Redis for cross-worker delivery. This replaces the old
-    // pWaitFor loop that blocked the event loop for up to 5 minutes waiting
-    // for a UUID ACK that might never arrive (disconnected IMAP client).
-    //
-    this.wss.broadcast = (session, payload) => {
-      const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
+
+    this.wss.broadcast = async (session, payload) => {
+      const uuid = randomUUID();
       const packed = encoder.pack({
+        uuid,
         session_id: session.id,
         alias_id: session.user.alias_id,
         payload
       });
-      // Send to all local WebSocket clients (fire-and-forget)
-      let localSent = 0;
-      for (const client of this.wss.clients) {
-        if (!client.isAlive || client.readyState !== 1) continue;
-        try {
-          client.send(packed);
-          localSent++;
-        } catch (err) {
-          logger.error(err);
+
+      //
+      // TODO: wss.broadcast should write to socket
+      //       of ALL connected clients where
+      //       selected mailbox and alias id are matching
+      //
+
+      //
+      // NOTE: redis pub/sub seemed to add +1-2ms overhead from testing
+      //
+      // NOTE: an existing websocket connection
+      //       (e.g. IMAP server could get restarted)
+      //       and so we can't just iterate over the current
+      //       we have to continously iterate over all clients
+      //       (sending the data every 5s until we get a response)
+      //
+      await pWaitFor(
+        async () => {
+          if (this.uuidsReceived.has(uuid)) return true;
+
+          for (const client of this.wss.clients) {
+            if (!client.isAlive) continue;
+            if (this.uuidsReceived.has(uuid)) break;
+
+            try {
+              client.send(packed);
+            } catch (err) {
+              err.client = client;
+              err.payload = payload;
+              logger.fatal(err);
+            }
+          }
+
+          try {
+            await pWaitFor(() => this.uuidsReceived.has(uuid), {
+              timeout: ms('10s'),
+              interval: 1
+            });
+            return true;
+          } catch (err) {
+            if (isRetryableError(err)) return false;
+            throw err;
+          }
+        },
+        {
+          timeout: ms('5m'),
+          interval: ms('5s')
         }
-      }
+      );
 
-      // Publish to Redis for cross-worker delivery in PM2 cluster
-      try {
-        const envelope = encoder.pack({
-          workerId: this.workerId,
-          data: packed
-        });
-        this.client.publish('wss_broadcast', envelope);
-      } catch (err) {
-        logger.error(err);
-      }
+      this.uuidsReceived.delete(uuid);
 
-      if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-        console.log('broadcast', {
-          duration_ms: Date.now() - t0,
-          local_clients: localSent,
-          session_id: session.id,
-          alias_id: session.user.alias_id
-        });
-      }
+      // TODO: do interval cleanup
     };
 
     this.server = server;
@@ -252,10 +253,12 @@ class SQLite {
       });
     });
 
+    this.uuidsReceived = new Set();
+
     this.wss.on('connection', (ws, request) => {
       ws.isAlive = true;
-      ws.missedPongs = 0;
       logger.debug('connection from %s', request.socket.remoteAddress);
+
       ws.on('error', (err) => {
         console.error(
           '[ERROR:sqlite-server] ws error',
@@ -268,35 +271,39 @@ class SQLite {
         );
         logger.error(err, { ws, request });
       });
+
       ws.on('ping', function () {
         // logger.debug('ping from %s', request.socket.remoteAddress);
         this.isAlive = true;
-        this.missedPongs = 0;
       });
+
       ws.on('pong', function () {
         // logger.debug('pong from %s', request.socket.remoteAddress);
         this.isAlive = true;
-        this.missedPongs = 0;
       });
+
       ws.on('message', (data) => {
         ws.isAlive = true;
+
         if (!data) return;
+
         // return early for ping/pong
         if (data.length === 4 && data.toString() === 'ping') {
           logger.debug('ping from %s', request.socket.remoteAddress);
           return;
         }
 
-        const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
+        // TODO: we could use redis instead
+        // return early for uuid from wss.broadcast
+        if (data.length === 36) {
+          const uuid = data.toString();
+          this.uuidsReceived.add(uuid);
+          return;
+        }
+
         parsePayload
           .call(this, data, ws)
-          .then(() => {
-            if (boolean(env.SQLITE_DEBUG_TIMERS)) {
-              console.log('parsePayload complete', {
-                duration_ms: Date.now() - t0
-              });
-            }
-          })
+          .then()
           .catch((err) => {
             // skip logging for timeout/transient errors (e.g. backup queue full)
             if (err.ignoreHook || isTimeoutError(err)) return;
@@ -339,48 +346,17 @@ class SQLite {
     // TODO: all subscribe/unsubscribe calls need `await`'ed
     this.subscriber.subscribe('sqlite_auth_response');
 
-    // Subscribe to cross-worker broadcast channel for PM2 cluster
-    this.subscriber.subscribe('wss_broadcast');
-    this.subscriber.on('messageBuffer', (channel, message) => {
-      if (channel.toString() !== 'wss_broadcast') return;
-      // Decode envelope to check workerId — skip self-published messages
-      // (local clients already received the broadcast directly)
-      try {
-        const envelope = encoder.unpack(message);
-        if (envelope.workerId === this.workerId) return;
-        // Forward the inner packed payload to all local WebSocket clients
-        for (const client of this.wss.clients) {
-          if (!client.isAlive || client.readyState !== 1) continue;
-          try {
-            client.send(envelope.data);
-          } catch (err) {
-            logger.error(err);
-          }
-        }
-      } catch (err) {
-        logger.error(err);
-      }
-    });
-
     this.wsInterval = setInterval(() => {
       for (const ws of this.wss.clients) {
-        //
-        // Graceful dead-connection cleanup:
-        // Terminate only after 3 consecutive missed pongs (~135s).
-        // This avoids reconnect storms from aggressive termination
-        // while still reclaiming half-open TCP connections.
-        //
+        /*
         if (ws.isAlive === false) {
-          ws.missedPongs = (ws.missedPongs || 0) + 1;
-          if (ws.missedPongs >= 3) {
-            ws.terminate();
-            continue;
-          }
-        } else {
-          ws.missedPongs = 0;
+          // <https://github.com/websockets/ws/issues/1142#issuecomment-1279826041>
+          // return ws.close();
+          return ws.terminate();
         }
 
         ws.isAlive = false;
+        */
         ws.ping();
       }
     }, ms('45s'));
@@ -390,7 +366,6 @@ class SQLite {
 
   async close() {
     this.subscriber.unsubscribe('sqlite_auth_response');
-    this.subscriber.unsubscribe('wss_broadcast');
     clearInterval(this.wsInterval);
 
     // clear notifier timers

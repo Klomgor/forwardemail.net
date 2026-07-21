@@ -154,7 +154,6 @@ const PAYLOAD_ACTIONS = new Set([
   'backup', // no db
   'rekey', // no db
   'reset', // no db
-  'touch', // no db
 
   // NOTE: 'copy_messages' removed — not yet implemented (no case handler)
 
@@ -2178,20 +2177,6 @@ async function parsePayload(data, ws) {
           data: errors
         };
 
-        break;
-      }
-
-      //
-      // Touch: refresh LRU lastAccess for a database to prevent eviction
-      // (called by IMAP keepalive interval for connected sessions)
-      //
-      case 'touch': {
-        const touchKey = payload.session.user.alias_id;
-        if (touchKey && this.databaseMap) {
-          this.databaseMap.get(touchKey); // .get() updates lastAccess
-        }
-
-        response = { id: payload.id, data: true };
         break;
       }
 

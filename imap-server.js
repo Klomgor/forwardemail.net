@@ -22,7 +22,8 @@ const MessageHandler = require('@zone-eu/wildduck/lib/message-handler');
 const RateLimiter = require('async-ratelimiter');
 const bytes = require('@forwardemail/bytes');
 const mongoose = require('mongoose');
-
+const pRetry = require('p-retry');
+const pWaitFor = require('p-wait-for');
 const pify = require('pify');
 const ms = require('ms');
 // const safeStringify = require('fast-safe-stringify');
@@ -45,6 +46,7 @@ if (env.IMAP_TLS_MIN_VERSION === 'TLSv1') {
   tls.DEFAULT_MIN_VERSION = 'TLSv1';
 }
 
+const isRetryableError = require('#helpers/is-retryable-error');
 const logger = require('#helpers/logger');
 const onAuth = require('#helpers/on-auth');
 const refreshSession = require('#helpers/refresh-session');
@@ -235,36 +237,63 @@ class IMAP {
     this._isClosing = false;
 
     // listen for websocket write stream
-    // NOTE: the sqlite-server broadcasts { session_id, alias_id, payload }
-    // directly to all connected WebSocket clients (fire-and-forget, no ACK).
-    // This handler writes the payload to the matching IMAP connection's stream.
-    this.wsp.onUnpackedMessage.addListener((data) => {
+    this.wsp.onUnpackedMessage.addListener(async (data) => {
       try {
         if (
-          typeof data !== 'object' ||
-          typeof data.session_id !== 'string' ||
-          typeof data.alias_id !== 'string' ||
-          data.payload === undefined
-        )
-          return;
+          typeof data === 'object' &&
+          typeof data.uuid === 'string' &&
+          typeof data.session_id === 'string' &&
+          typeof data.alias_id === 'string' &&
+          data.payload !== undefined
+        ) {
+          for (const connection of this.server.connections) {
+            if (
+              connection?.id !== data.session_id ||
+              connection?.session?.user?.alias_id !== data.alias_id
+            )
+              continue;
 
-        for (const connection of this.server.connections) {
-          // match on both session ID and alias ID for safety
-          if (
-            connection?.id !== data.session_id ||
-            connection?.session?.user?.alias_id !== data.alias_id
-          )
-            continue;
-
-          if (Array.isArray(data.payload)) {
-            for (const payload of data.payload) {
-              connection.session.writeStream.write(payload);
+            if (Array.isArray(data.payload)) {
+              for (const payload of data.payload) {
+                connection.session.writeStream.write(payload);
+              }
+            } else {
+              connection.session.writeStream.write(data.payload);
             }
-          } else {
-            connection.session.writeStream.write(data.payload);
-          }
 
-          break;
+            // attempt to send the request 3x
+            await pRetry(
+              async () => {
+                await pWaitFor(
+                  async () => {
+                    try {
+                      await this.wsp.open();
+                      return true;
+                    } catch (err) {
+                      logger.debug(err);
+                      return false;
+                    }
+                  },
+                  { timeout: ms('15s') }
+                );
+
+                this.wsp.send(data.uuid);
+              },
+              {
+                retries: 2,
+                onFailedAttempt(err) {
+                  logger.error(err);
+
+                  if (isRetryableError(err)) {
+                    return;
+                  }
+
+                  throw err;
+                }
+              }
+            );
+            break;
+          }
         }
       } catch (err) {
         logger.fatal(err);
@@ -413,28 +442,6 @@ class IMAP {
   async listen(port = env.IMAP_PORT, host = '::', ...args) {
     // this.subscriber.subscribe('sqlite_auth_request');
     this.subscriber.subscribe('sqlite_auth_reset');
-
-    //
-    // Keepalive: periodically touch all connected users' databases
-    // to prevent LRU eviction while they have active IMAP sessions.
-    //
-    this._keepaliveInterval = setInterval(() => {
-      if (!this?.server?.connections || this.server.connections.size === 0)
-        return;
-      const touched = new Set();
-      for (const connection of this.server.connections) {
-        const aliasId = connection?.session?.user?.alias_id;
-        if (!aliasId || touched.has(aliasId)) continue;
-        touched.add(aliasId);
-        this.wsp
-          .request({
-            action: 'touch',
-            session: { user: connection.session.user }
-          })
-          .catch(() => {});
-      }
-    }, ms('4m'));
-    this._keepaliveInterval.unref();
     await pify(this.server.listen).bind(this.server)(port, host, ...args);
   }
 
@@ -445,7 +452,6 @@ class IMAP {
       this._backupTimer = null;
     }
 
-    if (this._keepaliveInterval) clearInterval(this._keepaliveInterval);
     // this.subscriber.unsubscribe('sqlite_auth_request');
     this.subscriber.unsubscribe('sqlite_auth_reset');
     if (this.server.notifier) this.server.notifier.close();
