@@ -80,6 +80,15 @@ async function getTemporaryDatabase(session) {
   //
   tmpDb.pragma('cache_size = -2048');
 
+  //
+  // Override synchronous to NORMAL for temporary databases.
+  // Temp DBs hold ephemeral data that will be re-delivered by the MX server
+  // on crash — the durability guarantee of FULL is unnecessary here and the
+  // per-commit fsync adds ~5-10ms latency per write that compounds across
+  // many aliases (e.g. 50 aliases × 10ms = 500ms wasted).
+  //
+  tmpDb.pragma('synchronous=NORMAL');
+
   // migrate schema
   const commands = migrateSchema(this, tmpDb, tmpSession, {
     TemporaryMessages

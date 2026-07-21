@@ -109,11 +109,11 @@ const onStorePromise = pify(onStore, { multiArgs: true });
 const onSubscribePromise = pify(onSubscribe, { multiArgs: true });
 const onUnsubscribePromise = pify(onUnsubscribe, { multiArgs: true });
 
-// Reduced concurrency for tmp action to lower event loop pressure
-// from parallel PGP/S/MIME encryption operations (CPU-bound).
-// With 2 parallel aliases, the event loop can still service fetch/search/stmt
-// requests between encryption rounds.
-const TMP_CONCURRENCY = Math.min(2, os.cpus().length);
+// Concurrency for tmp action balances throughput vs event loop pressure.
+// Most per-alias work is I/O-bound (Redis, MongoDB, SQLite fsync), so 4
+// parallel aliases keeps the pipeline saturated while still yielding between
+// encryption rounds (the only CPU-bound step).
+const TMP_CONCURRENCY = Math.min(4, os.cpus().length);
 
 // In-memory cache for checkDiskSpace results (keyed by storage_location).
 // Avoids repeated statvfs syscalls when processing 50-100 aliases that
@@ -871,6 +871,28 @@ async function parsePayload(data, ws) {
           contentType.includes('text/calendar') ||
           contentType.includes('application/ics');
 
+        //
+        // Hoist simpleParser BEFORE the pMap loop so we parse the raw
+        // message at most once (instead of N times for N aliases).
+        // simpleParser is 20-100ms for a typical message; for 50 aliases
+        // that was 1-5 seconds of redundant CPU work eliminated.
+        //
+        let parsedEmailForImip = null;
+        if (mayHaveCalendar) {
+          try {
+            parsedEmailForImip = await simpleParser(payload.raw, {
+              skipHtmlToText: true,
+              skipTextLinks: true,
+              skipTextToHtml: true,
+              skipImageLinks: true
+            });
+          } catch (parseErr) {
+            logger.warn('Pre-pMap simpleParser failed', {
+              error: parseErr.message
+            });
+          }
+        }
+
         await pMap(
           payload.aliases,
 
@@ -1617,18 +1639,11 @@ async function parsePayload(data, ws) {
                     messageRaw = null;
 
                     // process iMIP (calendar scheduling) if applicable
-                    // Skip expensive simpleParser for non-calendar messages
-                    // (plain text/html without multipart or calendar content-type)
-                    if (mayHaveCalendar) {
+                    // Uses the pre-parsed result from before the pMap loop
+                    if (parsedEmailForImip) {
                       try {
-                        const parsedEmail = await simpleParser(payload.raw, {
-                          skipHtmlToText: true,
-                          skipTextLinks: true,
-                          skipTextToHtml: true,
-                          skipImageLinks: true
-                        });
-                        await checkAndProcessImipMessage(parsedEmail, {
-                          messageId: parsedEmail.messageId,
+                        await checkAndProcessImipMessage(parsedEmailForImip, {
+                          messageId: parsedEmailForImip.messageId,
                           fromEmail: payload.sender,
                           toEmail: session.user.username,
                           client: this.client,
@@ -2064,22 +2079,14 @@ async function parsePayload(data, ws) {
               // SECURITY: DKIM/DMARC already validated by MX server (is-authenticated-message.js)
               // Additional checks: sender/attendee match and rate limiting
               //
-              // Skip expensive simpleParser for non-calendar messages
-              // (plain text/html without multipart or calendar content-type)
-              if (mayHaveCalendar) {
+              // Uses the pre-parsed result from before the pMap loop
+              if (parsedEmailForImip) {
                 try {
-                  const parsedEmail = await simpleParser(payload.raw, {
-                    skipHtmlToText: true,
-                    skipTextLinks: true,
-                    skipTextToHtml: true,
-                    skipImageLinks: true
-                  });
-
                   // Try the comprehensive handler first (handles all methods)
                   const imipResult = await checkAndProcessImipMessage(
-                    parsedEmail,
+                    parsedEmailForImip,
                     {
-                      messageId: parsedEmail.messageId,
+                      messageId: parsedEmailForImip.messageId,
                       fromEmail: payload.sender,
                       toEmail: session.user.username,
                       client: this.client,
