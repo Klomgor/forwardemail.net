@@ -7447,6 +7447,10 @@
                                     "type": "string"
                                   }
                                 },
+                                "from": {
+                                  "type": "string",
+                                  "description": "Sender address (e.g. 'Alice <alice@example.com>')"
+                                },
                                 "subject": {
                                   "type": "string"
                                 },
@@ -7513,10 +7517,6 @@
                                   "type": "string",
                                   "format": "date-time"
                                 },
-                                "eml": {
-                                  "type": "string",
-                                  "description": "Raw email in RFC 5322 format. Use PostalMime or similar to parse on client side."
-                                },
                                 "object": {
                                   "type": "string",
                                   "enum": [
@@ -7548,7 +7548,7 @@
                             "is_draft": false,
                             "is_junk": false,
                             "has_attachment": false,
-                            "eml": "From: sender@example.com\\r\\nTo: user@example.com\\r\\nSubject: Hello World\\r\\n\\r\\nBody text",
+                            "from": "sender@example.com",
                             "object": "message",
                             "is_encrypted": false,
                             "is_deleted": false,

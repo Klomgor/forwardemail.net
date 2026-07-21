@@ -81,41 +81,41 @@ async function getTemporaryDatabase(session) {
   tmpDb.pragma('cache_size = -2048');
 
   // migrate schema
-  const commands = await migrateSchema(this, tmpDb, tmpSession, {
+  const commands = migrateSchema(this, tmpDb, tmpSession, {
     TemporaryMessages
   });
 
   if (commands.length > 0) {
-    for (const command of commands) {
-      try {
-        // TODO: wsp here (?)
-        tmpDb.prepare(command).run();
-        // await knexDatabase.raw(command);
-      } catch (err) {
-        // duplicate column errors are expected when migration was already applied
-        if (err.message.startsWith('duplicate column name:')) {
-          logger.debug(err, { command });
-        } else {
-          err.isCodeBug = true;
-          logger.fatal(err, { command });
-        }
-
-        // migration support in case existing rows
-        if (
-          err.message.includes(
-            'Cannot add a NOT NULL column with default value NULL'
-          ) &&
-          command.endsWith(' NOT NULL')
-        ) {
-          try {
-            tmpDb.prepare(command.replace(' NOT NULL', '')).run();
-          } catch (err) {
+    tmpDb.transaction(() => {
+      for (const command of commands) {
+        try {
+          tmpDb.prepare(command).run();
+        } catch (err) {
+          // duplicate column errors are expected when migration was already applied
+          if (err.message.startsWith('duplicate column name:')) {
+            logger.debug(err, { command });
+          } else {
             err.isCodeBug = true;
             logger.fatal(err, { command });
           }
+
+          // migration support in case existing rows
+          if (
+            err.message.includes(
+              'Cannot add a NOT NULL column with default value NULL'
+            ) &&
+            command.endsWith(' NOT NULL')
+          ) {
+            try {
+              tmpDb.prepare(command.replace(' NOT NULL', '')).run();
+            } catch (err) {
+              err.isCodeBug = true;
+              logger.fatal(err, { command });
+            }
+          }
         }
       }
-    }
+    })();
   }
 
   // Store in the LRU cache so subsequent calls reuse this connection

@@ -7,7 +7,6 @@ const process = require('node:process');
 const fs = require('node:fs');
 const os = require('node:os');
 
-// <https://github.com/knex/knex-schema-inspector/pull/146>
 const Database = require('better-sqlite3-multiple-ciphers');
 const dayjs = require('dayjs-with-plugins');
 const isSANB = require('is-string-and-not-blank');
@@ -55,6 +54,13 @@ const HOSTNAME = os.hostname();
 // Once maintenance begins, the alias_id is added here;
 // it is removed when maintenance completes (success or failure).
 const _deferredMaintenanceRunning = new Set();
+
+// Guard to prevent concurrent database opens for the same alias within
+// a single process.  When the first open is in-flight (setupPragma is async),
+// subsequent callers await the same promise instead of opening a second handle.
+// This prevents the race where two handles initialize the same new encrypted
+// file simultaneously, causing SQLITE_NOTADB / "database disk image is malformed".
+const _dbOpenInflight = new Map();
 
 // always ensure `rclone.conf` is an empty file
 // function syncRcloneConfig() {
@@ -165,7 +171,6 @@ async function getDatabase(
 
   // if true then `?mode=ro` will get appended below
   // <https://www.sqlite.org/c3ref/open.html>
-  // <https://github.com/knex/knex/issues/1287>
   let readonly = true;
   if (!instance.wsp) readonly = false;
 
@@ -507,26 +512,50 @@ async function getDatabase(
           alias_id: alias.id
         });
       }
+    } else if (_dbOpenInflight.has(alias.id)) {
+      //
+      // Another call is already opening this database (setupPragma is async
+      // and yields the event loop).  Await the same promise to avoid opening
+      // a second handle to the same file — which causes SQLITE_NOTADB when
+      // two handles race on a brand-new encrypted database.
+      //
+      db = await _dbOpenInflight.get(alias.id);
+      session.db = db;
+      isCacheHit = true;
     } else {
       const t0 = boolean(env.SQLITE_DEBUG_TIMERS) ? Date.now() : 0;
-      db = new Database(dbFilePath, {
-        readonly,
-        fileMustExist: readonly,
-        timeout: config.busyTimeout,
-        // <https://github.com/WiseLibs/better-sqlite3/issues/217#issuecomment-456535384>
-        verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
-      });
 
-      try {
-        await setupPragma(db, session); // takes about 30ms
-      } catch (pragmaErr) {
-        // Close the handle to prevent file descriptor leak
-        // (the handle is NOT in the cache since we set() after success)
+      // Wrap the open+setupPragma in a tracked promise so concurrent
+      // callers for the same alias coalesce onto a single handle.
+      const openPromise = (async () => {
+        const handle = new Database(dbFilePath, {
+          readonly,
+          fileMustExist: readonly,
+          timeout: config.busyTimeout,
+          // <https://github.com/WiseLibs/better-sqlite3/issues/217#issuecomment-456535384>
+          verbose: boolean(env.SQLITE_VERBOSE) ? console.log : null
+        });
+
         try {
-          db.close();
-        } catch {}
+          await setupPragma(handle, session); // takes about 30ms
+        } catch (pragmaErr) {
+          // Close the handle to prevent file descriptor leak
+          // (the handle is NOT in the cache since we set() after success)
+          try {
+            handle.close();
+          } catch {}
 
-        throw pragmaErr;
+          throw pragmaErr;
+        }
+
+        return handle;
+      })();
+
+      _dbOpenInflight.set(alias.id, openPromise);
+      try {
+        db = await openPromise;
+      } finally {
+        _dbOpenInflight.delete(alias.id);
       }
 
       // Store in-memory open connection AFTER setupPragma succeeds.
@@ -623,117 +652,127 @@ async function getDatabase(
     if (!migrateCheck) {
       try {
         //
-        // Set Redis key BEFORE running migrateSchema (same ordering as cc6c054d).
-        // This ensures concurrent requests for the same alias immediately
-        // see migrateCheck=true and skip the expensive schema inspection.
-        // Without this, 10+ concurrent IMAP requests all run migrateSchema
-        // simultaneously (each taking 6-9s), saturating the event loop.
+        // Acquire exclusive migration lock via NX (only one process wins).
+        // This prevents multiple PM2 workers from running migrateSchema
+        // simultaneously on the same brand-new database, which can cause
+        // corruption (SQLITE_NOTADB / "database disk image is malformed").
         // Use 1d TTL so a failed migration is retried within a day.
         //
-        await instance.client.set(
+        const migrateAcquired = await instance.client.set(
           `migrate_check:${session.user.alias_id}`,
           true,
           'PX',
-          ms('1d')
+          ms('1d'),
+          'NX'
         );
 
-        //
-        // NOTE: if we change schema on db then we
-        //       need to stop sqlite server then
-        //       purge all migrate_check:* keys
-        //
-        const commands = await migrateSchema(instance, db, session, {
-          Mailboxes,
-          Messages,
-          Threads,
-          Attachments,
-          Calendars,
-          CalendarEvents,
-          AddressBooks,
-          Contacts
-        });
-
-        if (commands.length > 0) {
-          for (const command of commands) {
-            try {
-              // TODO: wsp here (?)
-              db.prepare(command).run();
-            } catch (err) {
-              // duplicate column errors are expected when migration was already applied
-              if (err.message.startsWith('duplicate column name:')) {
-                logger.debug(err, {
-                  command,
-                  alias,
-                  session,
-                  resolver: instance.resolver
-                });
-              } else {
-                err.isCodeBug = true;
-                logger.fatal(err, {
-                  command,
-                  alias,
-                  session,
-                  resolver: instance.resolver
-                });
-              }
-
-              // migration support in case existing rows
-              if (
-                err.message.includes(
-                  'Cannot add a NOT NULL column with default value NULL'
-                ) &&
-                command.endsWith(' NOT NULL')
-              ) {
-                try {
-                  db.prepare(command.replace(' NOT NULL', '')).run();
-                } catch (err) {
-                  err.isCodeBug = true;
-                  logger.fatal(err, {
-                    command,
-                    alias,
-                    session,
-                    resolver: instance.resolver
-                  });
-                }
-              }
-            }
-          }
+        // If another process already holds the lock, skip migration.
+        // The winning process will complete the schema setup.
+        if (!migrateAcquired) {
+          migrateCheck = true;
         }
 
-        //
-        // Compound covering indexes for hot IMAP queries.
-        // Deferred to setImmediate so they don't block the current request.
-        // CREATE INDEX IF NOT EXISTS is idempotent and safe to run async.
-        //
-        const _dbForIdx = db;
-        const _sessionForIdx = session;
-        setImmediate(() => {
-          try {
-            if (!_dbForIdx.open) return;
-            _dbForIdx
-              .prepare(
-                'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
-              )
-              .run();
-            _dbForIdx
-              .prepare(
-                'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
-              )
-              .run();
-            _dbForIdx
-              .prepare(
-                'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
-              )
-              .run();
-          } catch (err) {
-            if (!err.message.includes('no such table')) {
-              logger.fatal(err, {
-                session: _sessionForIdx,
-                resolver: instance.resolver
-              });
-            }
+        if (migrateAcquired) {
+          //
+          // NOTE: if we change schema on db then we
+          //       need to stop sqlite server then
+          //       purge all migrate_check:* keys
+          //
+          const commands = migrateSchema(instance, db, session, {
+            Mailboxes,
+            Messages,
+            Threads,
+            Attachments,
+            Calendars,
+            CalendarEvents,
+            AddressBooks,
+            Contacts
+          });
+
+          if (commands.length > 0) {
+            db.transaction(() => {
+              for (const command of commands) {
+                try {
+                  // TODO: wsp here (?)
+                  db.prepare(command).run();
+                } catch (err) {
+                  // duplicate column errors are expected when migration was already applied
+                  if (err.message.startsWith('duplicate column name:')) {
+                    logger.debug(err, {
+                      command,
+                      alias,
+                      session,
+                      resolver: instance.resolver
+                    });
+                  } else {
+                    err.isCodeBug = true;
+                    logger.fatal(err, {
+                      command,
+                      alias,
+                      session,
+                      resolver: instance.resolver
+                    });
+                  }
+
+                  // migration support in case existing rows
+                  if (
+                    err.message.includes(
+                      'Cannot add a NOT NULL column with default value NULL'
+                    ) &&
+                    command.endsWith(' NOT NULL')
+                  ) {
+                    try {
+                      db.prepare(command.replace(' NOT NULL', '')).run();
+                    } catch (err) {
+                      err.isCodeBug = true;
+                      logger.fatal(err, {
+                        command,
+                        alias,
+                        session,
+                        resolver: instance.resolver
+                      });
+                    }
+                  }
+                }
+              }
+            })();
           }
-        });
+
+          //
+          // Compound covering indexes for hot IMAP queries.
+          // Deferred to setImmediate so they don't block the current request.
+          // CREATE INDEX IF NOT EXISTS is idempotent and safe to run async.
+          //
+          const _dbForIdx = db;
+          const _sessionForIdx = session;
+          setImmediate(() => {
+            try {
+              if (!_dbForIdx.open) return;
+              _dbForIdx
+                .prepare(
+                  'CREATE INDEX IF NOT EXISTS "Messages_mailbox_uid" ON "Messages" ("mailbox", "uid")'
+                )
+                .run();
+              _dbForIdx
+                .prepare(
+                  'CREATE INDEX IF NOT EXISTS "Messages_mailbox_unseen" ON "Messages" ("mailbox", "unseen")'
+                )
+                .run();
+              _dbForIdx
+                .prepare(
+                  'CREATE INDEX IF NOT EXISTS "Messages_mailbox_undeleted_uid" ON "Messages" ("mailbox", "undeleted", "uid")'
+                )
+                .run();
+            } catch (err) {
+              if (!err.message.includes('no such table')) {
+                logger.fatal(err, {
+                  session: _sessionForIdx,
+                  resolver: instance.resolver
+                });
+              }
+            }
+          });
+        } // end if (migrateAcquired)
       } catch (err) {
         logger.fatal(err);
       }
@@ -1005,8 +1044,9 @@ async function getDatabase(
     // This MUST run inline (not deferred) because the very first write
     // after getDatabase returns could trigger the error.
     // DROP TRIGGER IF EXISTS is a no-op when triggers don't exist (~0ms).
+    // Only drop when FTS5 is disabled; when enabled the triggers are needed.
     //
-    if (db.open) {
+    if (db.open && !env.SQLITE_FTS5_ENABLED) {
       try {
         db.exec('DROP TRIGGER IF EXISTS Messages_ai');
         db.exec('DROP TRIGGER IF EXISTS Messages_ad');
@@ -1038,7 +1078,7 @@ async function getDatabase(
           .get();
         if (!tableExists) {
           // Tables don't exist yet — force migrateSchema now
-          const commands = await migrateSchema(instance, db, session, {
+          const commands = migrateSchema(instance, db, session, {
             Mailboxes,
             Messages,
             Threads,
@@ -1048,14 +1088,18 @@ async function getDatabase(
             AddressBooks,
             Contacts
           });
-          for (const command of commands) {
-            try {
-              db.prepare(command).run();
-            } catch (err) {
-              if (!err.message.startsWith('duplicate column name:')) {
-                logger.fatal(err, { command, session });
+          if (commands.length > 0) {
+            db.transaction(() => {
+              for (const command of commands) {
+                try {
+                  db.prepare(command).run();
+                } catch (err) {
+                  if (!err.message.startsWith('duplicate column name:')) {
+                    logger.fatal(err, { command, session });
+                  }
+                }
               }
-            }
+            })();
           }
         }
       } catch (err) {

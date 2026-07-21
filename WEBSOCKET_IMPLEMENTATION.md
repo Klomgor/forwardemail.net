@@ -100,9 +100,9 @@ All internal communication uses `msgpackr` for efficiency. The client determines
 
 ## Enriched Payloads
 
-To prevent clients from needing to make follow-up HTTP requests, notification payloads include the full resource object, mirroring the REST API responses.
+To prevent clients from needing to make follow-up HTTP requests, notification payloads include lightweight metadata fields that mirror the REST API responses.
 
-* **IMAP message events** include the full raw email in an `eml` field.
+* **IMAP message events** include structured metadata (`from`, `subject`, `flags`, `size`, etc.) but **not** the raw email body. Clients should fetch the full message on demand via IMAP or the REST API.
 * **CalDAV events** include the full iCalendar data in an `ical` field.
 * **CardDAV events** include the full vCard data in a `content` field.
 * **App release events** include a `release` object with details from the GitHub Release.
@@ -113,13 +113,18 @@ To prevent clients from needing to make follow-up HTTP requests, notification pa
 {
   "event": "newMessage",
   "timestamp": 1739347200000,
-  "mailbox": "67abcdef1234567890abcdef",
+  "mailbox": "INBOX",
   "message": {
     "id": "67abcdef1234567890abcdef",
     "uid": 42,
+    "from": "sender@example.com",
     "subject": "Hello World",
     "size": 1234,
-    "eml": "From: sender@example.com\r\nTo: recipient@example.com\r\n..."
+    "flags": [],
+    "is_unread": true,
+    "is_flagged": false,
+    "has_attachment": false,
+    "object": "message"
   }
 }
 ```
@@ -163,7 +168,7 @@ The implementation covers 20 distinct event types across three protocols and one
 
 | Event              | Trigger                    | Key Payload Fields                                                   |
 | ------------------ | -------------------------- | -------------------------------------------------------------------- |
-| `newMessage`       | `APPEND` / SMTP delivery   | `mailbox`, `message` (with `eml`)                                    |
+| `newMessage`       | `APPEND` / SMTP delivery   | `mailbox`, `message` (with `from`, `subject`, metadata flags)        |
 | `messagesMoved`    | `MOVE`                     | `sourceMailbox`, `destinationMailbox`, `sourceUid`, `destinationUid` |
 | `messagesCopied`   | `COPY`                     | `sourceMailbox`, `destinationMailbox`, `sourceUid`, `destinationUid` |
 | `flagsUpdated`     | `STORE` / implicit `\Seen` | `mailbox`, `action`, `flags`, `uid`                                  |

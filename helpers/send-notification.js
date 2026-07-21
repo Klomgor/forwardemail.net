@@ -152,21 +152,52 @@ function sendNotificationWithDependencies({
       });
 
       const { payload } = message;
-      // Walk one level into data.* objects to find large string fields
-      if (payload.data && typeof payload.data === 'object') {
-        for (const key of Object.keys(payload.data)) {
-          const val = payload.data[key];
-          if (val && typeof val === 'object') {
-            for (const field of LARGE_FIELDS) {
-              if (typeof val[field] === 'string') {
-                val[field] = { truncated: true };
-              }
-            }
+      // Recursively walk nested objects (max 4 levels) to find large string fields
+      // (covers payload.message.eml, payload.data.contact.content, etc.)
+      const truncateDeep = (obj, depth = 0) => {
+        if (depth > 4 || !obj || typeof obj !== 'object' || Array.isArray(obj))
+          return;
+        for (const field of LARGE_FIELDS) {
+          if (typeof obj[field] === 'string') {
+            obj[field] = { truncated: true };
           }
         }
-      }
+
+        for (const key of Object.keys(obj)) {
+          const val = obj[key];
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            truncateDeep(val, depth + 1);
+          }
+        }
+      };
+
+      truncateDeep(payload);
 
       packed = encoder.pack(message);
+    }
+
+    // Eagerly release large string references from the payload object
+    // so GC can reclaim them while the async publish is in flight.
+    // The `packed` buffer already contains the serialized form.
+    if (message.payload) {
+      const nullifyDeep = (obj, depth = 0) => {
+        if (depth > 4 || !obj || typeof obj !== 'object' || Array.isArray(obj))
+          return;
+        for (const field of LARGE_FIELDS) {
+          if (typeof obj[field] === 'string' && obj[field].length > 1024) {
+            obj[field] = null;
+          }
+        }
+
+        for (const key of Object.keys(obj)) {
+          const val = obj[key];
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            nullifyDeep(val, depth + 1);
+          }
+        }
+      };
+
+      nullifyDeep(message.payload);
     }
 
     // Push and WebSocket are intentionally started here, from the same

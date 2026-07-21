@@ -124,6 +124,10 @@ async function syncTemporaryMailbox(session) {
           appendedIds.push(m._id);
           deleted++;
 
+          // Release the raw buffer reference so GC can reclaim it
+          // before the next message is processed
+          m.raw = null;
+
           // yield event loop between messages so other requests aren't starved
           await new Promise(setImmediate);
         } catch (_err) {

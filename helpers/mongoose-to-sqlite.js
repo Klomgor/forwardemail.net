@@ -1287,7 +1287,7 @@ function parseSchema(Model, modelName = '') {
   for (const key of Object.keys(schema.paths)) {
     const obj = schema.paths[key];
 
-    // these match knex-schema-inspector property naming
+    // these match the column metadata shape used by migrateSchema
     let data_type;
     let default_value = null;
     let is_nullable = true; // if false then set 'NOT NULL'
@@ -1614,7 +1614,7 @@ function parseSchema(Model, modelName = '') {
     }
 
     mapping[key] = {
-      // these match knex-schema-inspector property naming
+      // these match the column metadata shape used by migrateSchema
       data_type,
       default_value,
       max_length: null,

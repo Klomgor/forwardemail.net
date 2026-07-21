@@ -502,8 +502,8 @@ test('receives binary msgpackr frames when msgpackr=true', async (t) => {
       message: {
         id: 'msg-1',
         uid: 42,
+        from: 'test@example.com',
         subject: 'Binary Test',
-        eml: 'From: test@example.com\r\nSubject: Binary Test\r\n\r\nBody',
         object: 'message'
       }
     }
@@ -513,14 +513,14 @@ test('receives binary msgpackr frames when msgpackr=true', async (t) => {
   t.is(msg.event, 'newMessage');
   t.is(msg.data.message.uid, 42);
   t.is(msg.data.message.subject, 'Binary Test');
-  t.truthy(msg.data.message.eml);
+  t.is(msg.data.message.from, 'test@example.com');
 
   ws.close();
 });
 
 // ─── IMAP Event Tests with Enriched Payloads ────────────────────────────────
 
-test('receives newMessage with full message object and eml', async (t) => {
+test('receives newMessage with full message metadata (no eml)', async (t) => {
   const { apiURL, client } = t.context;
   const { alias, domain, pass } = await createTestAlias(t);
   const wsURL = apiURL.replace(/^http/, 'ws') + '/v1/ws';
@@ -530,9 +530,6 @@ test('receives newMessage with full message object and eml', async (t) => {
   });
 
   await waitForMessage(ws); // consume connected
-
-  const rawEml =
-    'From: sender@example.com\r\nTo: user@example.com\r\nSubject: Hello World\r\n\r\nBody text';
 
   publishNotification(client, alias.id, 'newMessage', {
     data: {
@@ -545,6 +542,7 @@ test('receives newMessage with full message object and eml', async (t) => {
         modseq: 100,
         flags: [],
         labels: [],
+        from: 'sender@example.com',
         subject: 'Hello World',
         size: 1234,
         is_unread: true,
@@ -558,7 +556,6 @@ test('receives newMessage with full message object and eml', async (t) => {
         is_expired: false,
         has_attachment: false,
         internal_date: new Date().toISOString(),
-        eml: rawEml,
         object: 'message'
       }
     }
@@ -567,20 +564,20 @@ test('receives newMessage with full message object and eml', async (t) => {
   const msg = await waitForMessage(ws);
   t.is(msg.event, 'newMessage');
   t.truthy(msg.timestamp);
-  // Verify enriched data
+  // Verify enriched metadata
   t.is(msg.data.mailbox, 'INBOX');
   t.is(msg.data.message.id, '60d5f484f1a2c8b1f8e4e1a1');
   t.is(msg.data.message.uid, 42);
   t.is(msg.data.message.modseq, 100);
+  t.is(msg.data.message.from, 'sender@example.com');
   t.is(msg.data.message.subject, 'Hello World');
   t.is(msg.data.message.size, 1234);
   t.is(msg.data.message.is_unread, true);
   t.is(msg.data.message.is_encrypted, false);
   t.is(msg.data.message.object, 'message');
   t.deepEqual(msg.data.message.flags, []);
-  // Verify raw eml is included
-  t.is(msg.data.message.eml, rawEml);
-  t.true(msg.data.message.eml.includes('Subject: Hello World'));
+  // eml is intentionally omitted to prevent memory bloat
+  t.is(msg.data.message.eml, undefined);
 
   ws.close();
 });
@@ -602,8 +599,8 @@ test('receives newMessage via API token auth with enriched payload', async (t) =
       message: {
         id: 'msg-api-token',
         uid: 99,
+        from: 'test@example.com',
         subject: 'API Token Test',
-        eml: 'From: test@example.com\r\nSubject: API Token Test\r\n\r\nBody',
         object: 'message'
       }
     }
@@ -613,7 +610,7 @@ test('receives newMessage via API token auth with enriched payload', async (t) =
   t.is(msg.event, 'newMessage');
   t.is(msg.data.message.uid, 99);
   t.is(msg.data.message.subject, 'API Token Test');
-  t.truthy(msg.data.message.eml);
+  t.is(msg.data.message.from, 'test@example.com');
 
   ws.close();
 });
@@ -1234,7 +1231,7 @@ test('rapid sequential events are all delivered in order', async (t) => {
       event: 'newMessage',
       data: {
         mailbox: 'INBOX',
-        message: { uid: 1, eml: 'raw1', object: 'message' }
+        message: { uid: 1, from: 'test@example.com', object: 'message' }
       }
     },
     {
@@ -1287,7 +1284,7 @@ test('rapid sequential events are all delivered in order', async (t) => {
 
 // ─── msgpackr E2E with Enriched Payloads ────────────────────────────────────
 
-test('msgpackr mode delivers full message payload with eml', async (t) => {
+test('msgpackr mode delivers full message metadata (no eml)', async (t) => {
   const { apiURL, client } = t.context;
   const { alias, domain, pass } = await createTestAlias(t);
   const wsURL = apiURL.replace(/^http/, 'ws') + '/v1/ws?msgpackr=true';
@@ -1302,9 +1299,6 @@ test('msgpackr mode delivers full message payload with eml', async (t) => {
 
   await waitForMessage(ws); // consume connected
 
-  const rawEml =
-    'From: alice@example.com\r\nTo: bob@example.com\r\nSubject: msgpackr Test\r\nContent-Type: text/plain\r\n\r\nHello from msgpackr!';
-
   publishNotification(client, alias.id, 'newMessage', {
     data: {
       mailbox: 'INBOX',
@@ -1313,11 +1307,11 @@ test('msgpackr mode delivers full message payload with eml', async (t) => {
         uid: 77,
         modseq: 200,
         flags: ['\\Recent'],
+        from: 'alice@example.com',
         subject: 'msgpackr Test',
-        size: rawEml.length,
+        size: 120,
         is_unread: true,
         is_encrypted: false,
-        eml: rawEml,
         object: 'message'
       }
     }
@@ -1326,10 +1320,10 @@ test('msgpackr mode delivers full message payload with eml', async (t) => {
   const msg = await waitForMessage(ws);
   t.is(msg.event, 'newMessage');
   t.is(msg.data.message.uid, 77);
+  t.is(msg.data.message.from, 'alice@example.com');
   t.is(msg.data.message.subject, 'msgpackr Test');
   t.deepEqual(msg.data.message.flags, ['\\Recent']);
-  t.is(msg.data.message.eml, rawEml);
-  t.true(msg.data.message.eml.includes('Hello from msgpackr!'));
+  t.is(msg.data.message.eml, undefined);
   t.is(msg.data.message.is_encrypted, false);
   t.is(msg.data.message.object, 'message');
 
@@ -1438,7 +1432,12 @@ test('sendNotification publishes msgpackr to Redis', async (t) => {
     notificationId: 'caller-controlled-id',
     data: {
       mailbox: 'INBOX',
-      message: { uid: 7, eml: 'raw email', object: 'message' }
+      message: {
+        uid: 7,
+        from: 'test@example.com',
+        subject: 'Test',
+        object: 'message'
+      }
     }
   });
 
@@ -1446,7 +1445,7 @@ test('sendNotification publishes msgpackr to Redis', async (t) => {
   t.is(received.aliasId, 'test-alias-id');
   t.is(received.payload.event, 'newMessage');
   t.is(received.payload.data.message.uid, 7);
-  t.is(received.payload.data.message.eml, 'raw email');
+  t.is(received.payload.data.message.from, 'test@example.com');
   t.truthy(received.payload.timestamp);
   t.regex(
     received.payload.notificationId,
@@ -1538,7 +1537,7 @@ test('rejects connection when Redis rate limit exceeded', async (t) => {
 
 // ─── Payload Truncation Tests ───────────────────────────────────────────────
 
-test('truncates oversized payload fields (eml, content, ical)', async (t) => {
+test('truncates oversized payload fields (content, ical)', async (t) => {
   const { apiURL, client } = t.context;
   const { alias, domain, pass } = await createTestAlias(t);
   const wsURL = apiURL.replace(/^http/, 'ws') + '/v1/ws';
@@ -1550,26 +1549,24 @@ test('truncates oversized payload fields (eml, content, ical)', async (t) => {
 
   await waitForMessage(ws); // consume connected
 
-  // Create a 2 MB eml string to exceed the 1 MB limit
-  const largeEml = 'X'.repeat(2 * 1024 * 1024);
+  // Create a 2 MB content string to exceed the 1 MB limit
+  const largeContent = 'X'.repeat(2 * 1024 * 1024);
 
-  sendNotification(client, alias.id, 'newMessage', {
+  sendNotification(client, alias.id, 'contactCreated', {
     data: {
-      mailbox: 'INBOX',
-      message: {
-        uid: 1,
-        subject: 'Large email',
-        eml: largeEml,
-        object: 'message'
+      addressBook: 'contacts',
+      contact: {
+        id: 'contact-1',
+        content: largeContent,
+        object: 'contact'
       }
     }
   });
 
   const msg = await waitForMessage(ws);
-  t.is(msg.event, 'newMessage');
-  t.is(msg.data.message.subject, 'Large email');
-  // eml should be truncated
-  t.deepEqual(msg.data.message.eml, { truncated: true });
+  t.is(msg.event, 'contactCreated');
+  // content should be truncated
+  t.deepEqual(msg.data.contact.content, { truncated: true });
 
   ws.close();
 });

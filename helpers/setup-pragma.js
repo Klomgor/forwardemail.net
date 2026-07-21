@@ -88,7 +88,10 @@ async function setupPragma(db, session, cipher = 'chacha20') {
   db.pragma(`busy_timeout=${config.busyTimeout}`);
 
   // <https://litestream.io/tips/#synchronous-pragma>
-  db.pragma('synchronous=NORMAL');
+  // NOTE: FULL ensures durability on process crash (not just power loss).
+  // With WAL mode, FULL syncs at every commit which prevents corruption
+  // when a worker is OOM-killed mid-transaction.
+  db.pragma('synchronous=FULL');
   // db.pragma('synchronous=EXTRA');
 
   //

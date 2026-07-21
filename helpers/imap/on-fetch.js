@@ -27,6 +27,7 @@ const getQueryResponse = require('#helpers/get-query-response');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
 const sendNotification = require('#helpers/send-notification');
+const compileImapResponse = require('#helpers/imap/compile-imap-response');
 const {
   prepareQuery,
   syncConvertResult
@@ -286,10 +287,7 @@ async function onFetch(mailboxId, options, session, fn) {
             query: options.query,
             values
           });
-
-          const compiled = imapHandler.compiler(data);
-
-          // `compiled` is a 'binary' string
+          const compiled = compileImapResponse(data);
           totalBytes += compiled.length;
           rowCount++;
 

@@ -187,6 +187,13 @@ function getNodemailerMessageFromRequest(ctx) {
       '"watchHtml" cannot use "path" nor "href" properties; https://nodemailer.com/message/attachments/'
     );
 
+  // safeguard: raw must be a string (RFC 5322 message) — reject object forms
+  // that could bypass disableFileAccess/disableUrlAccess (GHSA-p6gq-j5cr-w38f)
+  if (typeof message.raw !== 'undefined' && typeof message.raw !== 'string')
+    throw Boom.badRequest(
+      '"raw" must be a string containing a complete RFC 5322 message'
+    );
+
   // file and url access override for security
   message.disableFileAccess = true;
   message.disableUrlAccess = true;

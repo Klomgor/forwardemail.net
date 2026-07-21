@@ -1474,7 +1474,11 @@ async function parsePayload(data, ws) {
               const targetFlags = sieveResult.flags || [];
 
               // Use modified raw message if header changes were applied (editheader extension)
-              const messageRaw = sieveResult.modifiedRaw || payload.raw;
+              // NOTE: use a per-alias copy so encryption (S/MIME, PGP) below
+              // does not mutate the shared payload.raw across concurrent aliases
+              let messageRaw = sieveResult.modifiedRaw
+                ? Buffer.from(sieveResult.modifiedRaw)
+                : Buffer.from(payload.raw);
 
               if (session.db) {
                 try {
@@ -1592,9 +1596,12 @@ async function parsePayload(data, ws) {
                         logger.fatal(err, { session, resolver: this.resolver })
                       );
                     // send websocket push notification
+                    // NOTE: do not include full eml — see comment at line 2032
                     sendNotification(this.client, alias.id, 'newMessage', {
                       mailbox: targetFolder || 'INBOX',
                       message: {
+                        from: payload.sender || '',
+                        subject: payload.subject || '',
                         folder_path: targetFolder || 'INBOX',
                         flags: targetFlags || [],
                         is_unread: !(targetFlags || []).includes('\\Seen'),
@@ -1602,14 +1609,13 @@ async function parsePayload(data, ws) {
                         is_deleted: (targetFlags || []).includes('\\Deleted'),
                         is_draft: (targetFlags || []).includes('\\Draft'),
                         is_encrypted: false,
-                        eml: Buffer.isBuffer(messageRaw)
-                          ? messageRaw.toString()
-                          : typeof messageRaw === 'string'
-                          ? messageRaw
-                          : '',
                         object: 'message'
                       }
                     });
+
+                    // Release per-alias raw buffer for GC
+                    messageRaw = null;
+
                     // process iMIP (calendar scheduling) if applicable
                     // Skip expensive simpleParser for non-calendar messages
                     // (plain text/html without multipart or calendar content-type)
@@ -1679,9 +1685,9 @@ async function parsePayload(data, ws) {
                   ) {
                     try {
                       // NOTE: encryptMessageSMIME won't encrypt message if it already is
-                      payload.raw = await encryptMessageSMIME(
+                      messageRaw = await encryptMessageSMIME(
                         session.user.alias_smime_certificate,
-                        payload.raw
+                        messageRaw
                       );
                       // unset smime_error_sent_at if it was a date and more than 1h ago
                       Aliases.findOneAndUpdate(
@@ -1803,9 +1809,9 @@ async function parsePayload(data, ws) {
                   ) {
                     try {
                       // NOTE: encryptMessage won't encrypt message if it already is
-                      payload.raw = await encryptMessage(
+                      messageRaw = await encryptMessage(
                         session.user.alias_public_key,
-                        payload.raw
+                        messageRaw
                       );
 
                       // Notify user once (30d Redis cache) if their RSA key is < 2048 bits during grace period
@@ -2029,10 +2035,15 @@ async function parsePayload(data, ws) {
                   logger.fatal(err, { session, resolver: this.resolver })
                 );
 
-              // send websocket push notification (enriched payload with eml)
+              // send websocket push notification
+              // NOTE: do not include full eml here — it can be up to 50 MB,
+              // which doubles memory (Buffer→String copy) and bloats Redis pub/sub.
+              // Clients should fetch the message on demand via IMAP/API.
               sendNotification(this.client, alias.id, 'newMessage', {
                 mailbox: targetFolder || 'INBOX',
                 message: {
+                  from: payload.sender || '',
+                  subject: payload.subject || '',
                   folder_path: targetFolder || 'INBOX',
                   flags: targetFlags || [],
                   is_unread: !(targetFlags || []).includes('\\Seen'),
@@ -2040,14 +2051,11 @@ async function parsePayload(data, ws) {
                   is_deleted: (targetFlags || []).includes('\\Deleted'),
                   is_draft: (targetFlags || []).includes('\\Draft'),
                   is_encrypted: false,
-                  eml: Buffer.isBuffer(messageRaw)
-                    ? messageRaw.toString()
-                    : typeof messageRaw === 'string'
-                    ? messageRaw
-                    : '',
                   object: 'message'
                 }
               });
+              // Release per-alias raw buffer for GC (iMIP below uses payload.raw)
+              messageRaw = null;
 
               //
               // Process iMIP messages (calendar scheduling via email)

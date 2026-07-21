@@ -20,6 +20,12 @@ async function updateStorageUsed(id, client) {
 
   if (!client) throw new TypeError('Redis client missing');
 
+  // OPTIMIZATION: Redis debounce — skip recalculation if another caller
+  // already computed storage within the last 10 seconds.
+  const debounceKey = `storage_debounce:${id}`;
+  const acquired = await client.set(debounceKey, '1', 'PX', 10_000, 'NX');
+  if (!acquired) return -1; // debounced, skip
+
   // OPTIMIZATION: Fetch alias with all needed fields in one query
   // Previously this was fetched twice - once for storage location, once for update
   const alias = await Aliases.findById(id)

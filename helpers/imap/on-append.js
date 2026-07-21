@@ -926,6 +926,12 @@ async function onAppend(path, flags, date, raw, session, fn) {
         modseq: message.modseq,
         flags: message.flags,
         labels: message.labels || [],
+        from:
+          envelope && envelope.from && envelope.from[0]
+            ? envelope.from[0].name
+              ? `${envelope.from[0].name} <${envelope.from[0].address}>`
+              : envelope.from[0].address || ''
+            : '',
         subject: message.subject || '',
         size: message.size > 0 ? message.size : size,
         is_unread: !message.flags.includes('\\Seen'),
@@ -945,10 +951,14 @@ async function onAppend(path, flags, date, raw, session, fn) {
         transaction: message.transaction,
         created_at: message.created_at,
         updated_at: message.updated_at,
-        eml: Buffer.isBuffer(raw) ? raw.toString() : raw,
+        // NOTE: eml omitted to prevent 50 MB Buffer→String copy per message;
+        // clients fetch full message on demand via IMAP/API
         object: 'message'
       }
     });
+
+    // Release raw buffer for GC now that it's been written to SQLite
+    raw = null;
   } catch (err) {
     // delete attachments if we need to cleanup
     const attachmentIds =
