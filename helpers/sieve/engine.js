@@ -804,7 +804,8 @@ class SieveEngine {
           headerValue = this.getMimeStructuredValue(
             checkPart,
             test.mimeType,
-            test.mimeParam
+            test.mimeParam,
+            headerName
           );
         } else {
           // Regular header lookup on the MIME part
@@ -842,39 +843,71 @@ class SieveEngine {
 
   /**
    * Get structured MIME value based on :type/:subtype/:contenttype/:param tags
+   * Per RFC 5703 §4.1:
+   *   - For Content-Type: :type = major type, :subtype = subtype
+   *   - For Content-Disposition: :type = disposition value (e.g. "inline"/"attachment")
+   *   - For other headers: :type/:subtype return blank string
+   *   - :param extracts parameters from the header actually being tested
+   *
    * @param {Object} part - MIME part
    * @param {string} mimeType - One of 'type', 'subtype', 'contenttype', 'param'
    * @param {string} mimeParam - Parameter name (for :param)
+   * @param {string} headerName - The header being tested
    * @returns {string|undefined} The extracted value
    */
-  getMimeStructuredValue(part, mimeType, mimeParam) {
+  getMimeStructuredValue(part, mimeType, mimeParam, headerName) {
+    const normalizedHeader = (headerName || '').toLowerCase().trim();
     const ct = part.contentType || '';
+    const cd = (part.headers && part.headers['content-disposition']) || '';
 
     switch (mimeType) {
       case 'type': {
-        // Major type (e.g., "text" from "text/plain")
-        const slashIdx = ct.indexOf('/');
-        return slashIdx > 0 ? ct.slice(0, slashIdx) : ct;
+        if (normalizedHeader === 'content-type') {
+          // Major type (e.g., "text" from "text/plain")
+          const slashIdx = ct.indexOf('/');
+          return slashIdx > 0 ? ct.slice(0, slashIdx) : ct;
+        }
+
+        if (normalizedHeader === 'content-disposition') {
+          // Disposition value (e.g., "inline" or "attachment")
+          const semi = cd.indexOf(';');
+          return (semi > 0 ? cd.slice(0, semi) : cd).trim().toLowerCase();
+        }
+
+        // Other headers: blank string per RFC 5703
+        return '';
       }
 
       case 'subtype': {
-        // Subtype (e.g., "plain" from "text/plain")
-        const slashIdx2 = ct.indexOf('/');
-        return slashIdx2 > 0 ? ct.slice(slashIdx2 + 1) : '';
+        if (normalizedHeader === 'content-type') {
+          const slashIdx2 = ct.indexOf('/');
+          return slashIdx2 > 0 ? ct.slice(slashIdx2 + 1) : '';
+        }
+
+        // :subtype is only meaningful for Content-Type
+        return '';
       }
 
       case 'contenttype': {
-        // Full content-type value
-        return ct;
+        if (normalizedHeader === 'content-type') {
+          return ct;
+        }
+
+        if (normalizedHeader === 'content-disposition') {
+          return cd;
+        }
+
+        // Return the raw header value for other headers
+        return (part.headers && part.headers[normalizedHeader]) || '';
       }
 
       case 'param': {
-        // Content-Type parameter value
         if (!mimeParam || !part.headers) {
           return undefined;
         }
 
-        const ctHeader = part.headers['content-type'] || '';
+        // Extract parameter from the header actually being tested
+        const rawHeader = part.headers[normalizedHeader] || '';
         const paramRegex = new RegExp(
           `${mimeParam.replace(
             /[.*+?^${}()|[\]\\]/g,
@@ -882,7 +915,7 @@ class SieveEngine {
           )}\\s*=\\s*(?:"([^"]*)"|([^;\\s]*))`,
           'i'
         );
-        const match = ctHeader.match(paramRegex);
+        const match = rawHeader.match(paramRegex);
         return match ? match[1] || match[2] : undefined;
       }
 
@@ -1050,6 +1083,35 @@ class SieveEngine {
    */
   evaluateExistsTest(test, state) {
     const { headers } = test;
+
+    // RFC 5703 §4.3: exists with :mime checks MIME part headers
+    if (test.mime) {
+      const part = this.getCurrentMimePart(state);
+      if (!part) return false;
+
+      const partsToCheck = test.anychild
+        ? this.getDescendantParts(state)
+        : [part];
+
+      for (const headerName of headers) {
+        let found = false;
+        for (const checkPart of partsToCheck) {
+          if (
+            checkPart.headers &&
+            checkPart.headers[headerName.toLowerCase()] !== undefined
+          ) {
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) return false;
+      }
+
+      return true;
+    }
+
+    // Standard exists test on message-level headers
     const { message } = state;
 
     for (const headerName of headers) {

@@ -485,6 +485,29 @@ class SieveIntegration {
         });
       }
 
+      // Handle replace actions (RFC 5703 §5)
+      if (
+        filterResult.replaceActions &&
+        filterResult.replaceActions.length > 0
+      ) {
+        // Apply replace actions to the raw message
+        const sourceRaw = result.modifiedRaw || raw;
+        result.modifiedRaw = this.applyReplaceActions(
+          sourceRaw,
+          filterResult.replaceActions
+        );
+        logger.info('sieve replace', {
+          ignore_hook: false,
+          session,
+          sieve: {
+            action: 'replace',
+            script: script.name,
+            alias: aliasAddress,
+            parts: filterResult.replaceActions.map((r) => r.partIndex)
+          }
+        });
+      }
+
       // Handle notifications (enotify extension)
       if (filterResult.notifications && filterResult.notifications.length > 0) {
         for (const notification of filterResult.notifications) {
@@ -1002,6 +1025,56 @@ class SieveIntegration {
     headerSection = headers.map((h) => h.name + ':' + h.value).join('\r\n');
 
     return Buffer.from(headerSection + bodySection, 'utf8');
+  }
+
+  /**
+   * Apply RFC 5703 replace actions to a raw MIME message.
+   * Replaces the body of specified MIME parts while preserving headers.
+   *
+   * @param {Buffer} raw - The raw message
+   * @param {Array} replaceActions - Array of {partIndex, replacement, mime}
+   * @returns {Buffer} Modified raw message
+   */
+  applyReplaceActions(raw, replaceActions) {
+    if (!replaceActions || replaceActions.length === 0) return raw;
+
+    let rawStr = raw.toString('utf8');
+
+    // Find the boundary from the top-level Content-Type
+    const ctMatch = rawStr.match(
+      /content-type:[^\r\n]*boundary="?([^"\s;]+)"?/i
+    );
+    if (!ctMatch) {
+      // Not a multipart message — cannot apply replace
+      return raw;
+    }
+
+    const boundary = ctMatch[1];
+    const delimiter = '--' + boundary;
+    const parts = rawStr.split(delimiter);
+
+    // parts[0] = preamble, parts[1..n-1] = MIME parts, parts[n] = epilogue (starts with --)
+    // MIME part indices in the engine are 0-based over the parsed tree;
+    // for a simple multipart message, part index 0 = the multipart wrapper,
+    // indices 1..n map to the split segments parts[1..n].
+    for (const action of replaceActions) {
+      // The engine assigns partIndex relative to the flattened MIME tree.
+      // For top-level multipart, child parts start at index 1.
+      const segIdx = action.partIndex;
+      if (segIdx < 1 || segIdx >= parts.length - 1) continue;
+
+      const segment = parts[segIdx];
+      // Split segment into headers and body at first blank line
+      const blankLine = segment.indexOf('\r\n\r\n');
+      if (blankLine === -1) continue;
+
+      const partHeaders = segment.slice(0, blankLine);
+      // Replace the body with the replacement text
+      parts[segIdx] = partHeaders + '\r\n\r\n' + action.replacement + '\r\n';
+    }
+
+    rawStr = parts.join(delimiter);
+    return Buffer.from(rawStr, 'utf8');
   }
 
   /**

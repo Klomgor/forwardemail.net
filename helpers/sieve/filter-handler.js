@@ -197,6 +197,7 @@ class SieveFilterHandler {
         reject: null,
         flags: engineResult.flags || [],
         headerChanges: [],
+        replaceActions: [],
         notifications: [],
         implicitKeep: engineResult.implicitKeep !== false
       };
@@ -308,6 +309,18 @@ class SieveFilterHandler {
             break;
           }
 
+          case 'replace': {
+            // RFC 5703 §5: replace the body of a MIME part
+            result.replaceActions.push({
+              partIndex: action.partIndex,
+              replacement: action.replacement,
+              mime: action.mime || false,
+              subject: action.subject || null,
+              from: action.from || null
+            });
+            break;
+          }
+
           case 'keep': {
             // Keep is implicit, just merge flags
             if (action.flags && action.flags.length > 0) {
@@ -361,7 +374,8 @@ class SieveFilterHandler {
       rejected: false,
       discarded: false,
       vacation: null,
-      headerChanges: []
+      headerChanges: [],
+      partReplacements: []
     };
 
     for (const action of result.actions) {
@@ -502,6 +516,24 @@ class SieveFilterHandler {
             sieve: {
               action: 'deleteheader',
               name: action.name
+            }
+          });
+          break;
+        }
+
+        case 'replace': {
+          applied.partReplacements.push({
+            partIndex: action.partIndex,
+            replacement: action.replacement,
+            mime: action.mime || false,
+            subject: action.subject || null,
+            from: action.from || null
+          });
+          logger.info('sieve action replace', {
+            ignore_hook: true,
+            sieve: {
+              action: 'replace',
+              partIndex: action.partIndex
             }
           });
           break;

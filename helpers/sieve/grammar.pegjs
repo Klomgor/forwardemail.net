@@ -490,9 +490,29 @@ SizeTest
     }
 
 ExistsTest
-  = "exists"i _ headers:StringList {
-      return node('ExistsTest', { headers });
+  = "exists"i _ opts:ExistsTestOptions _ headers:StringList {
+      return node('ExistsTest', {
+        mime: opts.mime || false,
+        anychild: opts.anychild || false,
+        headers
+      });
     }
+  / "exists"i _ headers:StringList {
+      return node('ExistsTest', { mime: false, anychild: false, headers });
+    }
+
+ExistsTestOptions
+  = opts:(ExistsTestOption _)+ {
+      const result = { mime: false, anychild: false };
+      for (const [opt] of opts) {
+        Object.assign(result, opt);
+      }
+      return result;
+    }
+
+ExistsTestOption
+  = ":mime"i { return { mime: true }; }
+  / ":anychild"i { return { anychild: true }; }
 
 // Body Extension (RFC 5173)
 BodyTest
