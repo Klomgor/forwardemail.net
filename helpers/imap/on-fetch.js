@@ -227,10 +227,14 @@ async function onFetch(mailboxId, options, session, fn) {
 
     //
     // Batch mode enables intermediate flushing via wss.broadcast() for
-    // large result sets. Disabled for single messages (no flush needed)
-    // and small fetches where total payload is unlikely to exceed threshold.
+    // large result sets. Currently disabled because wss.broadcast() uses
+    // ACK-based backpressure (pWaitFor with 10s inner timeout + 5m outer)
+    // which blocks the iterate loop waiting for the IMAP server to ACK
+    // each chunk — causing severe latency spikes on multi-message FETCH.
     //
-    const isBatchMode = !isSingleMessage;
+    // TODO: re-enable once broadcast uses a non-blocking write path
+    //
+    const isBatchMode = false;
     let pendingBytes = 0;
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
