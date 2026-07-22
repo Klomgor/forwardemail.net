@@ -153,11 +153,12 @@ block body
                 alt="Two-factor authentication QR code"
               )
             .form-group.floating-label
-              input#input-token.form-control.form-control-lg.verification-form(
+              input#input-token.form-control.form-control-lg(
                 type="text",
                 name="token",
                 required,
-                placeholder=" "
+                placeholder=" ",
+                class=user[config.userFields.hasSetPassword] ? undefined : "verification-form"
               )
               label(for="input-token") Verification Token
             .form-group

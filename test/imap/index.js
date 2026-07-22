@@ -4313,3 +4313,508 @@ test('MOVE operation maintains modseq integrity', async (t) => {
     });
   }, 'STORE should work on moved message');
 });
+
+// ─── E2E tests for single-message .get() fast path and streaming flush ──────
+// These tests exercise the optimized code paths in on-fetch, on-store, on-copy,
+// and on-move that use stmt.get() for single-message operations and byte-based
+// streaming flush for multi-message FETCH.
+
+test('single-message FETCH returns correct envelope and body', async (t) => {
+  const { imapFlow, alias, domain } = t.context;
+  const subject = `single-fetch-test-${randomUUID()}`;
+  const body = 'This is the body of the single fetch test message.';
+  const raw = `Date: ${new Date().toISOString()}
+MIME-Version: 1.0
+To: ${alias.name}@${domain.name}
+From: ${alias.name}@${domain.name}
+Subject: ${subject}
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+${body}`.trim();
+  const result = await imapFlow.append(
+    'INBOX',
+    Buffer.from(raw),
+    [],
+    new Date()
+  );
+  t.true(result.uid > 0, 'Appended message should have a UID');
+  await imapFlow.mailboxOpen('INBOX');
+  // Single-message FETCH by UID (exercises stmt.get() fast path in on-fetch)
+  const message = await imapFlow.fetchOne(String(result.uid), {
+    envelope: true,
+    uid: true
+  });
+  t.truthy(message, 'fetchOne should return a message');
+  t.is(message.uid, result.uid, 'UID should match');
+  t.is(message.envelope.subject, subject, 'Subject should match');
+  // Verify body download works for single-message FETCH (BODY[] path)
+  const download = await imapFlow.download(String(result.uid), undefined, {
+    uid: true
+  });
+  const content = await getStream(download.content);
+  t.true(content.includes(body), 'Downloaded body should contain message text');
+  t.true(content.includes(subject), 'Downloaded body should contain subject');
+});
+
+test('single-message STORE updates flags correctly via .get() path', async (t) => {
+  const { imapFlow } = t.context;
+  // Append a message with no flags
+  const result = await imapFlow.append(
+    'INBOX',
+    Buffer.from(
+      `Subject: store-get-test-${randomUUID()}\r\n\r\nStore test body`
+    ),
+    []
+  );
+  const uid = String(result.uid);
+  await imapFlow.mailboxOpen('INBOX');
+  // Single-message STORE by UID (exercises stmt.get() fast path in on-store)
+  await imapFlow.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+  let message = await imapFlow.fetchOne(uid, { flags: true });
+  t.true(
+    message.flags.has('\\Seen'),
+    'Should have \\Seen after single-msg STORE add'
+  );
+  // Replace flags on single message
+  await imapFlow.messageFlagsSet(uid, ['\\Flagged', '\\Draft']);
+  message = await imapFlow.fetchOne(uid, { flags: true });
+  t.true(
+    message.flags.has('\\Flagged'),
+    'Should have \\Flagged after single-msg STORE set'
+  );
+  t.true(
+    message.flags.has('\\Draft'),
+    'Should have \\Draft after single-msg STORE set'
+  );
+  t.false(message.flags.has('\\Seen'), 'Should NOT have \\Seen after replace');
+  // Remove a flag on single message
+  await imapFlow.messageFlagsRemove(uid, ['\\Draft']);
+  message = await imapFlow.fetchOne(uid, { flags: true });
+  t.false(
+    message.flags.has('\\Draft'),
+    'Should NOT have \\Draft after single-msg STORE remove'
+  );
+  t.true(message.flags.has('\\Flagged'), '\\Flagged should remain');
+});
+
+test('single-message COPY via .get() path preserves content and flags', async (t) => {
+  const { imapFlow } = t.context;
+  const subject = `copy-get-test-${randomUUID()}`;
+  const result = await imapFlow.append(
+    'INBOX',
+    Buffer.from(`Subject: ${subject}\r\n\r\nCopy test body`),
+    ['\\Seen', '\\Flagged']
+  );
+  const uid = String(result.uid);
+  await imapFlow.mailboxOpen('INBOX');
+  // Single-message COPY by UID (exercises stmt.get() fast path in on-copy)
+  const copyResult = await imapFlow.messageCopy(uid, 'Archive', { uid: true });
+  t.truthy(copyResult, 'Copy should succeed');
+  t.is(copyResult.uidMap.size, 1, 'Should copy exactly 1 message');
+  const newUid = String(copyResult.uidMap.get(Number(uid)));
+  // Verify the copied message in Archive
+  await imapFlow.mailboxOpen('Archive');
+  const message = await imapFlow.fetchOne(newUid, {
+    flags: true,
+    envelope: true
+  });
+  t.truthy(message, 'Copied message should exist in Archive');
+  t.is(message.envelope.subject, subject, 'Subject should be preserved');
+  t.true(message.flags.has('\\Seen'), '\\Seen flag should be preserved');
+  t.true(message.flags.has('\\Flagged'), '\\Flagged flag should be preserved');
+  // Verify original still exists in INBOX
+  await imapFlow.mailboxOpen('INBOX');
+  const original = await imapFlow.fetchOne(uid, { flags: true });
+  t.truthy(original, 'Original message should still exist after COPY');
+});
+
+test('single-message MOVE via .get() path preserves content and flags', async (t) => {
+  const { imapFlow } = t.context;
+  const subject = `move-get-test-${randomUUID()}`;
+  const result = await imapFlow.append(
+    'INBOX',
+    Buffer.from(`Subject: ${subject}\r\n\r\nMove test body`),
+    ['\\Seen']
+  );
+  const uid = String(result.uid);
+  await imapFlow.mailboxOpen('INBOX');
+  // Single-message MOVE by UID (exercises stmt.get() fast path in on-move)
+  const moveResult = await imapFlow.messageMove(uid, 'Trash', { uid: true });
+  t.truthy(moveResult, 'Move should succeed');
+  t.is(moveResult.uidMap.size, 1, 'Should move exactly 1 message');
+  const newUid = String(moveResult.uidMap.get(Number(uid)));
+  // Verify the moved message in Trash
+  await imapFlow.mailboxOpen('Trash');
+  const message = await imapFlow.fetchOne(newUid, {
+    flags: true,
+    envelope: true
+  });
+  t.truthy(message, 'Moved message should exist in Trash');
+  t.is(message.envelope.subject, subject, 'Subject should be preserved');
+  t.true(message.flags.has('\\Seen'), '\\Seen flag should be preserved');
+  // Verify original is gone from INBOX
+  await imapFlow.mailboxOpen('INBOX');
+  const status = await imapFlow.status('INBOX', { messages: true });
+  t.is(status.messages, 0, 'INBOX should be empty after MOVE');
+});
+
+test('multi-message FETCH returns all messages correctly (streaming flush path)', async (t) => {
+  const { imapFlow, alias, domain } = t.context;
+  const messageCount = 20;
+  // Append multiple messages to exercise the multi-message iterate + flush path
+  for (let i = 0; i < messageCount; i++) {
+    const raw = `Date: ${new Date().toISOString()}
+MIME-Version: 1.0
+To: ${alias.name}@${domain.name}
+From: ${alias.name}@${domain.name}
+Subject: multi-fetch-${i}
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+Message body number ${i}`.trim();
+    await imapFlow.append('INBOX', Buffer.from(raw), [], new Date());
+  }
+
+  await imapFlow.mailboxOpen('INBOX');
+  // FETCH all messages (exercises stmt.iterate() + byte-based flush in on-fetch)
+  const fetched = [];
+  for await (const message of imapFlow.fetch('1:*', {
+    envelope: true,
+    uid: true
+  })) {
+    fetched.push(message);
+  }
+
+  t.is(
+    fetched.length,
+    messageCount,
+    `Should fetch all ${messageCount} messages`
+  );
+  // Verify each message has correct subject
+  const subjects = new Set(fetched.map((m) => m.envelope.subject).sort());
+  for (let i = 0; i < messageCount; i++) {
+    t.true(
+      subjects.has(`multi-fetch-${i}`),
+      `Should contain message with subject multi-fetch-${i}`
+    );
+  }
+
+  // Verify UIDs are unique and sequential
+  const uids = fetched.map((m) => m.uid).sort((a, b) => a - b);
+  t.is(new Set(uids).size, messageCount, 'All UIDs should be unique');
+  t.is(uids[0], 1, 'First UID should be 1');
+  t.is(
+    uids[uids.length - 1],
+    messageCount,
+    `Last UID should be ${messageCount}`
+  );
+});
+
+test('multi-message FETCH with body download works correctly', async (t) => {
+  const { imapFlow, alias, domain } = t.context;
+  const messageCount = 5;
+  const bodies = [];
+  // Append messages with distinct bodies
+  for (let i = 0; i < messageCount; i++) {
+    const body = `Unique body content for message ${i}: ${randomUUID()}`;
+    bodies.push(body);
+    const raw = `Date: ${new Date().toISOString()}
+MIME-Version: 1.0
+To: ${alias.name}@${domain.name}
+From: ${alias.name}@${domain.name}
+Subject: body-fetch-${i}
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+${body}`.trim();
+    await imapFlow.append('INBOX', Buffer.from(raw), [], new Date());
+  }
+
+  await imapFlow.mailboxOpen('INBOX');
+  // Download each message body individually (single-message .get() path per download)
+  for (let i = 0; i < messageCount; i++) {
+    const uid = i + 1;
+    const download = await imapFlow.download(String(uid), undefined, {
+      uid: true
+    });
+    const content = await getStream(download.content);
+    t.true(
+      content.includes(bodies[i]),
+      `Message ${uid} body should contain expected content`
+    );
+  }
+});
+
+test('multi-message STORE updates all messages correctly', async (t) => {
+  const { imapFlow } = t.context;
+  const messageCount = 10;
+  // Append multiple messages with no flags
+  for (let i = 0; i < messageCount; i++) {
+    await imapFlow.append(
+      'INBOX',
+      Buffer.from(`Subject: multi-store-${i}\r\n\r\nBody ${i}`),
+      []
+    );
+  }
+
+  await imapFlow.mailboxOpen('INBOX');
+  // STORE flags on all messages at once (exercises .all() multi-message path in on-store)
+  await imapFlow.messageFlagsAdd('1:*', ['\\Seen']);
+  // Verify all messages have the flag
+  for await (const message of imapFlow.fetch('1:*', {
+    flags: true,
+    uid: true
+  })) {
+    t.true(
+      message.flags.has('\\Seen'),
+      `Message UID ${message.uid} should have \\Seen flag`
+    );
+  }
+
+  // STORE flags on a range (still multi-message)
+  await imapFlow.messageFlagsAdd('1:5', ['\\Flagged']);
+  const flagged = [];
+  const unflagged = [];
+  for await (const message of imapFlow.fetch('1:*', {
+    flags: true,
+    uid: true
+  })) {
+    if (message.flags.has('\\Flagged')) {
+      flagged.push(message.uid);
+    } else {
+      unflagged.push(message.uid);
+    }
+  }
+
+  t.is(flagged.length, 5, 'First 5 messages should be flagged');
+  t.is(unflagged.length, 5, 'Last 5 messages should not be flagged');
+});
+
+test('multi-message COPY copies all messages correctly', async (t) => {
+  const { imapFlow } = t.context;
+  const messageCount = 10;
+  // Append multiple messages
+  for (let i = 0; i < messageCount; i++) {
+    await imapFlow.append(
+      'INBOX',
+      Buffer.from(`Subject: multi-copy-${i}\r\n\r\nBody ${i}`),
+      ['\\Seen']
+    );
+  }
+
+  await imapFlow.mailboxOpen('INBOX');
+  // COPY all messages (exercises .all() multi-message path in on-copy)
+  const copyResult = await imapFlow.messageCopy('1:*', 'Archive', {
+    uid: true
+  });
+  t.truthy(copyResult, 'Multi-message COPY should succeed');
+  t.is(
+    copyResult.uidMap.size,
+    messageCount,
+    `Should copy all ${messageCount} messages`
+  );
+  // Verify all messages exist in Archive with correct flags
+  await imapFlow.mailboxOpen('Archive');
+  const fetched = [];
+  for await (const message of imapFlow.fetch('1:*', {
+    flags: true,
+    envelope: true
+  })) {
+    fetched.push(message);
+  }
+
+  t.is(
+    fetched.length,
+    messageCount,
+    `Archive should have ${messageCount} messages`
+  );
+  for (const message of fetched) {
+    t.true(
+      message.flags.has('\\Seen'),
+      'Copied messages should preserve \\Seen flag'
+    );
+  }
+
+  // Verify originals still exist in INBOX
+  await imapFlow.mailboxOpen('INBOX');
+  const inboxStatus = await imapFlow.status('INBOX', { messages: true });
+  t.is(
+    inboxStatus.messages,
+    messageCount,
+    'INBOX should still have all messages'
+  );
+});
+
+test('multi-message MOVE moves all messages correctly', async (t) => {
+  const { imapFlow } = t.context;
+  const messageCount = 10;
+  await imapFlow.mailboxCreate('move-source');
+  // Append multiple messages
+  for (let i = 0; i < messageCount; i++) {
+    await imapFlow.append(
+      'move-source',
+      Buffer.from(`Subject: multi-move-${i}\r\n\r\nBody ${i}`),
+      ['\\Seen']
+    );
+  }
+
+  await imapFlow.mailboxOpen('move-source');
+  // MOVE all messages (exercises [...stmt.iterate()] multi-message path in on-move)
+  await imapFlow.mailboxCreate('move-dest');
+  const moveResult = await imapFlow.messageMove('1:*', 'move-dest');
+  t.truthy(moveResult, 'Multi-message MOVE should succeed');
+  t.is(
+    moveResult.uidMap.size,
+    messageCount,
+    `Should move all ${messageCount} messages`
+  );
+  // Verify source is empty
+  const sourceStatus = await imapFlow.status('move-source', { messages: true });
+  t.is(sourceStatus.messages, 0, 'Source should be empty after MOVE');
+  // Verify all messages exist in destination with correct flags
+  await imapFlow.mailboxOpen('move-dest');
+  const fetched = [];
+  for await (const message of imapFlow.fetch('1:*', {
+    flags: true,
+    envelope: true
+  })) {
+    fetched.push(message);
+  }
+
+  t.is(
+    fetched.length,
+    messageCount,
+    `Destination should have ${messageCount} messages`
+  );
+  for (const message of fetched) {
+    t.true(
+      message.flags.has('\\Seen'),
+      'Moved messages should preserve \\Seen flag'
+    );
+  }
+});
+
+test('single-message FETCH with large body exercises .get() without streaming flush', async (t) => {
+  const { imapFlow, alias, domain } = t.context;
+  // Create a message that stays under APPENDLIMIT but is large enough to
+  // exercise the .get() path with a non-trivial body size.
+  // Use 80% of SMTP_MESSAGE_MAX_SIZE to stay safely under the server limit.
+  const maxMsg = bytes(env.SMTP_MESSAGE_MAX_SIZE);
+  const headerSize = 256; // approximate header overhead
+  const bodySize = Math.min(Math.floor(maxMsg * 0.8) - headerSize, 500 * 1024);
+  const largeBody = 'X'.repeat(bodySize);
+  const raw = `Date: ${new Date().toISOString()}
+MIME-Version: 1.0
+To: ${alias.name}@${domain.name}
+From: ${alias.name}@${domain.name}
+Subject: large-single-fetch
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+${largeBody}`.trim();
+  await imapFlow.append('INBOX', Buffer.from(raw), [], new Date());
+  await imapFlow.mailboxOpen('INBOX');
+  // Single-message FETCH of large body (exercises .get() path, no flush)
+  const download = await imapFlow.download('1', undefined, { uid: true });
+  const content = await getStream(download.content);
+  t.true(
+    content.length > bodySize,
+    `Downloaded content should be > ${bodySize} bytes`
+  );
+  t.true(content.includes('XXXXXXXX'), 'Content should contain the large body');
+});
+
+test('multi-message FETCH with large bodies exercises streaming flush', async (t) => {
+  const { imapFlow, alias, domain } = t.context;
+  const messageCount = 5;
+  // Create multiple messages with bodies that collectively exceed FLUSH_BYTES (1MB)
+  // Each message must stay under APPENDLIMIT individually.
+  // Use 50% of SMTP_MESSAGE_MAX_SIZE per message (safe margin for headers).
+  const maxMsg = bytes(env.SMTP_MESSAGE_MAX_SIZE);
+  const bodySize = Math.min(Math.floor(maxMsg * 0.5), 300 * 1024);
+  for (let i = 0; i < messageCount; i++) {
+    const body = String(i).repeat(bodySize);
+    const raw = `Date: ${new Date().toISOString()}
+MIME-Version: 1.0
+To: ${alias.name}@${domain.name}
+From: ${alias.name}@${domain.name}
+Subject: large-multi-fetch-${i}
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+${body}`.trim();
+    await imapFlow.append('INBOX', Buffer.from(raw), [], new Date());
+  }
+
+  await imapFlow.mailboxOpen('INBOX');
+  // FETCH all messages with body (exercises iterate + byte-based flush)
+  const fetched = [];
+  for await (const message of imapFlow.fetch('1:*', {
+    envelope: true,
+    uid: true
+  })) {
+    fetched.push(message);
+  }
+
+  t.is(
+    fetched.length,
+    messageCount,
+    `Should fetch all ${messageCount} large messages`
+  );
+  // Verify each message can be downloaded individually
+  for (let i = 0; i < messageCount; i++) {
+    const download = await imapFlow.download(String(i + 1), undefined, {
+      uid: true
+    });
+    const content = await getStream(download.content);
+    t.true(
+      content.length > bodySize,
+      `Message ${i + 1} body should be > ${bodySize} bytes`
+    );
+  }
+});
+
+test('interleaved single-message operations work correctly', async (t) => {
+  const { imapFlow } = t.context;
+  // This test verifies that rapid single-message operations (the most common
+  // real-world pattern: user clicks through messages) all work correctly
+  const messageCount = 5;
+  const uids = [];
+  for (let i = 0; i < messageCount; i++) {
+    const result = await imapFlow.append(
+      'INBOX',
+      Buffer.from(`Subject: interleave-${i}\r\n\r\nBody ${i}`),
+      []
+    );
+    uids.push(result.uid);
+  }
+
+  await imapFlow.mailboxOpen('INBOX');
+  // Simulate user clicking through messages: FETCH envelope, mark as read, FETCH next
+  for (const uid of uids) {
+    // Single-message FETCH (on-fetch .get() path)
+    const message = await imapFlow.fetchOne(String(uid), {
+      envelope: true,
+      flags: true
+    });
+    t.truthy(message, `Should fetch message UID ${uid}`);
+    t.false(
+      message.flags.has('\\Seen'),
+      `Message ${uid} should be unseen initially`
+    );
+    // Single-message STORE (on-store .get() path)
+    await imapFlow.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
+    // Verify the flag was set
+    const updated = await imapFlow.fetchOne(String(uid), { flags: true });
+    t.true(
+      updated.flags.has('\\Seen'),
+      `Message ${uid} should be seen after STORE`
+    );
+  }
+
+  // Verify all messages are now seen
+  for await (const message of imapFlow.fetch('1:*', { flags: true })) {
+    t.true(message.flags.has('\\Seen'), 'All messages should be seen');
+  }
+});
