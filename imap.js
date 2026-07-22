@@ -42,17 +42,23 @@ const graceful = new Graceful({
   redisClients: [client, subscriber],
   logger,
   customHandlers: [
+    //
+    // Single sequential handler to enforce strict shutdown ordering.
+    // @ladjs/graceful runs customHandlers in parallel via Promise.all(),
+    // so we consolidate into one async function to guarantee:
+    //   1. Wait for connection rate limiter / releaseConnection handlers
+    //   2. Set isClosing to reject new IMAP commands
+    //   3. Close the WebSocket to the SQLite server
+    //
     async () => {
-      // wait for connection rate limiter to finish
-      // (since `onClose` is run in the background)
-      // (and `releaseConnection` handlers get run in background)
+      // 1. Wait for connection rate limiter to finish
+      //    (onClose and releaseConnection handlers run in background)
       await setTimeout(ms('3s'));
-    },
-    () => {
+
+      // 2. Signal IMAP command handlers to reject new work
       imap.isClosing = true;
-    },
-    // <https://github.com/vitalets/websocket-as-promised#wspclosecode-reason--promiseevent>
-    () => {
+
+      // 3. Close WebSocket connection to SQLite server
       try {
         wsp.close();
       } catch (err) {

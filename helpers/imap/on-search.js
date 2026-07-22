@@ -782,6 +782,34 @@ async function onSearch(mailboxId, options, session, fn) {
 
     if (returned) return;
 
+    //
+    // When subqueries (TEXT/BODY/HEADER/keyword) have narrowed results
+    // to a known set of _id values, inject them directly into the SQL
+    // WHERE clause instead of fetching all rows and filtering in JS.
+    // This avoids a full-table iterate + per-row Set.has() check that
+    // dominated CPU in profiling (57% of total CPU time).
+    //
+    if (mustIncludeIds) {
+      if (set.size === 0) {
+        // Subqueries matched nothing — short-circuit with empty result
+        fn(null, { uidList: [], highestModseq: 0 });
+        return;
+      }
+
+      const ids = [...set];
+      // SQLITE_MAX_VARIABLE_NUMBER defaults to 999; chunk to stay safe
+      if (ids.length <= 900) {
+        $and.push({ _id: { $in: ids } });
+      } else {
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 900) {
+          chunks.push({ _id: { $in: ids.slice(i, i + 900) } });
+        }
+
+        $and.push({ $or: chunks });
+      }
+    }
+
     if ($and.length > 0) query.$and = $and;
 
     const condition = query;
@@ -794,24 +822,7 @@ async function onSearch(mailboxId, options, session, fn) {
     });
 
     try {
-      //
-      // NOTE: using `all()` currently for faster performance
-      //       (since we don't write to the socket here)
-      //
-      // const messages = session.db.prepare(sql.query).all(sql.values);
-      // for (const message of messages) {
-      //   // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-      //   if (set.size > 0 && !set.has(message._id)) continue;
-
-      //   if (highestModseq < message.modseq) highestModseq = message.modseq;
-      //   uidList.add(message.uid);
-      // }
-
-      // less memory consumption
       for (const message of session.db.prepare(sql.query).iterate(sql.values)) {
-        // SQLITE_MAX_VARIABLE_NUMBER which defaults to 999
-        if ((set.size > 0 || mustIncludeIds) && !set.has(message._id)) continue;
-
         if (highestModseq < message.modseq) highestModseq = message.modseq;
         uidList.add(message.uid);
       }

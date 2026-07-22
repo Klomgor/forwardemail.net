@@ -73,14 +73,15 @@ class SQLite {
     this.databaseMap = new DatabaseLRUMap();
 
     //
-    // Separate LRU for temporary databases (smaller capacity, shorter TTL)
-    // Temp DBs hold queued messages during main-DB unavailability and are
-    // accessed infrequently, so a smaller cache_size (2MB) and shorter idle
-    // TTL (2min) prevent wasted memory while still avoiding re-open overhead.
+    // Separate LRU for temporary databases.
+    // Temp DBs hold queued messages during main-DB unavailability.
+    // A longer idle TTL (10min) avoids repeated SQLCipher key derivation
+    // (~100-200ms per open) when the same alias receives multiple messages
+    // in quick succession while the main DB is unavailable.
     //
     this.temporaryDatabaseMap = new DatabaseLRUMap({
-      maxSize: 500,
-      idleTTL: ms('2m')
+      maxSize: 1000,
+      idleTTL: ms('10m')
     });
 
     //
