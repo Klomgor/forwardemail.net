@@ -49,6 +49,7 @@ const getReceivedHeader = require('#helpers/get-received-header');
 const Domains = require('#models/domains');
 const DenylistError = require('#helpers/denylist-error');
 const { isPrivateHostResolved } = require('#helpers/is-private-host');
+const ServerShutdownError = require('#helpers/server-shutdown-error');
 const SMTPError = require('#helpers/smtp-error');
 const checkSRS = require('#helpers/check-srs');
 const combineErrors = require('#helpers/combine-errors');
@@ -519,6 +520,11 @@ async function imap(alias, headers, session, body) {
       authResults: session.arc.authResults,
       cv: session.arc.status.result
     });
+
+    // Reject early if server is shutting down — avoids sending a
+    // contradictory 421 after the sender has already transmitted the
+    // full message body.
+    if (this.isClosing) throw new ServerShutdownError();
 
     // <https://github.com/websockets/ws/issues/1959>
     const startTime = Date.now();

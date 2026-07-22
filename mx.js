@@ -43,9 +43,11 @@ const graceful = new Graceful({
       mx.isClosing = true;
     },
     async () => {
-      // wait for connection rate limiter to finish
-      // (since `onClose` is run in the background)
-      await setTimeout(ms('3s'));
+      // Wait for in-flight DATA handlers to complete before closing WSP.
+      // The IMAP append timeout is 1m, but most complete within seconds.
+      // 15s gives active deliveries time to finish while still allowing
+      // reasonably fast restarts during deploys.
+      await setTimeout(ms('15s'));
     },
     // <https://github.com/vitalets/websocket-as-promised#wspclosecode-reason--promiseevent>
     () => {
