@@ -76,6 +76,7 @@ const {
 const debounce = require('./debounce');
 const logger = require('./logger');
 const sendRequest = require('./send-request');
+const { createAjaxFormWithTurnstile } = require('./turnstile');
 
 //
 // Handle explicit Cloudflare Turnstile (Advanced Example with Bootstrap/Modals/Responsive Support)
@@ -323,9 +324,10 @@ window.addEventListener(
     );
 
     // Bind ajax form submission and handle Stripe tokens in forms
-    $body.on('submit.ajaxForm', 'form.ajax-form', ajaxForm);
+    const ajaxFormWithTurnstile = createAjaxFormWithTurnstile($, ajaxForm);
+    $body.on('submit.ajaxForm', 'form.ajax-form', ajaxFormWithTurnstile);
     // Bind ajax link submission
-    $body.on('click', 'a.ajax-form', ajaxForm);
+    $body.on('click', 'a.ajax-form', ajaxFormWithTurnstile);
 
     // Domain Connect 1-Click Setup: open apply URL in new tab, show verify modal
     $body.on('submit', 'form.domain-connect-form', async function (ev) {
