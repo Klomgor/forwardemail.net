@@ -109,11 +109,9 @@ const onStorePromise = pify(onStore, { multiArgs: true });
 const onSubscribePromise = pify(onSubscribe, { multiArgs: true });
 const onUnsubscribePromise = pify(onUnsubscribe, { multiArgs: true });
 
-// Concurrency for tmp action balances throughput vs event loop pressure.
-// Most per-alias work is I/O-bound (Redis, MongoDB, SQLite fsync), so 4
-// parallel aliases keeps the pipeline saturated while still yielding between
-// encryption rounds (the only CPU-bound step).
-const TMP_CONCURRENCY = Math.min(4, os.cpus().length);
+// Concurrency for tmp action — most per-alias work is I/O-bound
+// (Redis, MongoDB, SQLite fsync), so use all available CPUs.
+const concurrency = os.cpus().length;
 
 // In-memory cache for checkDiskSpace results (keyed by storage_location).
 // Avoids repeated statvfs syscalls when processing 50-100 aliases that
@@ -1495,11 +1493,7 @@ async function parsePayload(data, ws) {
               const targetFlags = sieveResult.flags || [];
 
               // Use modified raw message if header changes were applied (editheader extension)
-              // NOTE: use a per-alias copy so encryption (S/MIME, PGP) below
-              // does not mutate the shared payload.raw across concurrent aliases
-              let messageRaw = sieveResult.modifiedRaw
-                ? Buffer.from(sieveResult.modifiedRaw)
-                : Buffer.from(payload.raw);
+              let messageRaw = sieveResult.modifiedRaw || payload.raw;
 
               if (session.db) {
                 try {
@@ -2169,7 +2163,7 @@ async function parsePayload(data, ws) {
               );
             }
           },
-          { concurrency: TMP_CONCURRENCY }
+          { concurrency }
         );
 
         response = {

@@ -39,6 +39,14 @@ const builder = new Builder({ bufferAsNative: true });
 
 const { formatResponse } = IMAPConnection.prototype;
 
+//
+// Byte-based flush threshold for batch mode.
+// Batch mode enables intermediate flushing of compiledPayloads via
+// wss.broadcast() which provides backpressure through UUID ACK.
+// This prevents unbounded memory growth when fetching large messages.
+//
+const FLUSH_BYTES = 1024 * 1024; // 1 MB
+
 async function onFetch(mailboxId, options, session, fn) {
   this.logger.debug('FETCH', { mailboxId, options, session });
 
@@ -151,22 +159,11 @@ async function onFetch(mailboxId, options, session, fn) {
 
     let queryAll = false;
 
-    /*
-    // return early if no messages
-    // (we could also do `_id: -1` as a query)
+    // return early if no messages requested
     if (options.messages.length === 0) {
-      return fn(
-        null,
-        true,
-        {
-          rowCount,
-          totalBytes
-        },
-        compiledPayloads,
-        entries
-      );
+      fn(null, true, { rowCount, totalBytes }, compiledPayloads, entries);
+      return;
     }
-    */
 
     if (
       !options.isUid &&
@@ -222,24 +219,34 @@ async function onFetch(mailboxId, options, session, fn) {
     const stmt = session.db.prepare(sql.query);
 
     //
-    // NOTE: we explicitly disable `isBatchMode` for now since there is a bug somewhere
-    //       in the logic for `await this.wss.broadcast(...)` below which code lies in `sqlite-server.js`
-    //       and the loop itself has a `5m` timeout, so basically FETCH calls were taking 5m+ before timing out
+    // Single-message fast path: use stmt.get() instead of stmt.iterate()
+    // to avoid iterator allocation overhead. This is the most common FETCH
+    // pattern (user opens a single message in their mail client).
     //
-    const isBatchMode = false; // count > 1000;
+    const isSingleMessage = Boolean(condition?.uid?.$eq);
+
+    //
+    // Batch mode enables intermediate flushing via wss.broadcast() for
+    // large result sets. Disabled for single messages (no flush needed)
+    // and small fetches where total payload is unlikely to exceed threshold.
+    //
+    const isBatchMode = !isSingleMessage;
+    let pendingBytes = 0;
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
     const uidSet = queryAll ? new Set(session.selected.uidList) : null;
 
-    for (const result of isBatchMode
-      ? stmt.all(sql.values)
-      : stmt.iterate(sql.values)) {
+    //
+    // processMessage handles a single row from the query result.
+    // Extracted to avoid duplicating logic between .get() and .iterate() paths.
+    //
+    const processMessage = async (result) => {
       const message = syncConvertResult(Messages, result, projection);
 
       // don't process messages that are new since query started
       // <https://github.com/nodemailer/wildduck/issues/708>
       if (queryAll && !uidSet.has(message.uid)) {
-        continue;
+        return;
       }
 
       const markAsSeen =
@@ -281,11 +288,13 @@ async function onFetch(mailboxId, options, session, fn) {
         rowCount++;
 
         compiledPayloads.push({ compiled });
+        pendingBytes += compiled.length;
 
-        // flush compiled payloads after every 500 written
-        if (isBatchMode && compiledPayloads.length >= 500) {
+        // flush compiled payloads when accumulated bytes exceed threshold
+        if (isBatchMode && pendingBytes >= FLUSH_BYTES) {
           await this.wss.broadcast(session, compiledPayloads);
           compiledPayloads.length = 0;
+          pendingBytes = 0;
         }
 
         //
@@ -294,8 +303,7 @@ async function onFetch(mailboxId, options, session, fn) {
         // (e.g. so we can do `await Promise.resolve((resolve) => setImmediate(resolve));`)
         //
 
-        // move along to next cursor
-        continue;
+        return;
       }
 
       //
@@ -336,11 +344,13 @@ async function onFetch(mailboxId, options, session, fn) {
       totalBytes += compiled.length;
 
       compiledPayloads.push({ compiled });
+      pendingBytes += compiled.length;
 
-      // flush compiled payloads after every 500 written
-      if (isBatchMode && compiledPayloads.length >= 500) {
+      // flush compiled payloads when accumulated bytes exceed threshold
+      if (isBatchMode && pendingBytes >= FLUSH_BYTES) {
         await this.wss.broadcast(session, compiledPayloads);
         compiledPayloads.length = 0;
+        pendingBytes = 0;
       }
 
       rowCount++;
@@ -349,7 +359,7 @@ async function onFetch(mailboxId, options, session, fn) {
         // RFC 7162: Any flag change MUST update the message's mod-sequence
         // so CONDSTORE clients can detect the implicit \Seen change.
         const newModseq = mailbox.modifyIndex + 1;
-        const sql = builder.build({
+        const updateSql = builder.build({
           type: 'update',
           table: 'Messages',
           condition: {
@@ -363,7 +373,7 @@ async function onFetch(mailboxId, options, session, fn) {
             })
           }
         });
-        ops.push([sql.query, sql.values]);
+        ops.push([updateSql.query, updateSql.values]);
 
         entries.push({
           ignore: session.id,
@@ -377,13 +387,26 @@ async function onFetch(mailboxId, options, session, fn) {
           unseenChange: true
         });
       }
+    };
+
+    if (isSingleMessage) {
+      // Fast path: single row lookup via .get() avoids iterator overhead
+      const result = stmt.get(sql.values);
+      if (result) {
+        await processMessage(result);
+      }
+    } else {
+      // Multi-message path: iterate with byte-based flush for backpressure
+      for (const result of stmt.iterate(sql.values)) {
+        await processMessage(result);
+      }
     }
 
     // perform db operations
     if (ops.length > 0) {
       session.db
-        .transaction((ops) => {
-          for (const op of ops) {
+        .transaction((txOps) => {
+          for (const op of txOps) {
             session.db.prepare(op[0]).run(op[1]);
           }
 

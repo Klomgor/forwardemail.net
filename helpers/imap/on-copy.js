@@ -179,22 +179,28 @@ async function onCopy(connection, mailboxId, update, session, fn) {
       uid: tools.checkRangeQuery(update.messages)
     };
 
+    //
+    // Single-message fast path: use .get() when condition.uid.$eq is set
+    // (most common COPY — user copies one message to another folder).
+    // Avoids array allocation overhead for a single row.
+    //
+    const isSingleMessage = Boolean(condition?.uid?.$eq);
     const sql = builder.build({
       type: 'select',
       table: 'Messages',
       condition,
-      // sort required for IMAP UIDPLUS
-      sort: 'uid'
+      // sort required for IMAP UIDPLUS (skip for single message)
+      sort: isSingleMessage ? undefined : 'uid'
     });
 
     let { uidNext } = targetMailbox;
 
-    // const stmt = session.db.prepare(sql.query);
-    // for (const m of stmt.iterate(sql.values))
-    //
-    // NOTE: this is inefficient but works for now
-    //
-    const messages = session.db.prepare(sql.query).all(sql.values);
+    const messages = isSingleMessage
+      ? (() => {
+          const row = session.db.prepare(sql.query).get(sql.values);
+          return row ? [row] : [];
+        })()
+      : session.db.prepare(sql.query).all(sql.values);
 
     if (messages.length > 0)
       session.db

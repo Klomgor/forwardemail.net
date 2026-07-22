@@ -130,15 +130,15 @@ test('ecosystem-sqlite.json > max_memory_restart is 80G', (t) => {
   t.is(app.max_memory_restart, '80G');
 });
 
-test('setup-pragma > cache_size is 64MB for main databases', (t) => {
+test('setup-pragma > cache_size defaults to 16MB for main databases', (t) => {
   const fs = require('node:fs');
   const path = require('node:path');
   const content = fs.readFileSync(
     path.join(__dirname, '../../helpers/setup-pragma.js'),
     'utf8'
   );
-  // cache_size=-65536 means 65536 KiB = 64MB
-  t.true(content.includes('65536'));
+  // cache_size default is 16384 KiB = 16MB (configurable via SQLITE_CACHE_SIZE_KB)
+  t.true(content.includes('16384'));
 });
 
 test('get-temporary-database > cache_size override is 2MB for temp databases', (t) => {

@@ -3159,19 +3159,20 @@ async function getMaxQuota(
   _id,
   aliasId,
   locale = i18n.config.defaultLocale,
-  { pooled = false } = {}
+  { pooled = false, domain: _domain } = {}
 ) {
   if (typeof conn?.models?.Aliases?.findOne !== 'function')
     throw new TypeError('Aliases model is not ready');
 
   const [domain, alias] = await Promise.all([
-    this.findById(_id)
-      .populate(
-        'members.user',
-        `_id id plan ${config.userFields.isBanned} ${config.userFields.hasVerifiedEmail} ${config.userFields.maxQuotaPerAlias} ${config.userFields.planExpiresAt} ${config.userFields.stripeSubscriptionID} ${config.userFields.paypalSubscriptionID}`
-      )
-      .lean()
-      .exec(),
+    _domain ||
+      this.findById(_id)
+        .populate(
+          'members.user',
+          `_id id plan ${config.userFields.isBanned} ${config.userFields.hasVerifiedEmail} ${config.userFields.maxQuotaPerAlias} ${config.userFields.planExpiresAt} ${config.userFields.stripeSubscriptionID} ${config.userFields.paypalSubscriptionID}`
+        )
+        .lean()
+        .exec(),
     typeof aliasId === 'string'
       ? conn.models.Aliases.findOne({ id: aliasId })
           .select('max_quota')
@@ -3335,19 +3336,26 @@ async function getMaxQuota(
 
 Domains.statics.getMaxQuota = getMaxQuota;
 
-async function getStorageUsed(_id, _locale, aliasesOnly = false) {
+async function getStorageUsed(
+  _id,
+  _locale,
+  aliasesOnly = false,
+  { domain: _domain } = {}
+) {
   //
   // calculate storage used across entire domain and its admin users domains
   // (this is rudimentary storage system and has edge cases)
   // (e.g. multi-accounts when users on team plan edge case)
   //
-  const domain = await this.findById(_id)
-    .populate(
-      'members.user',
-      `_id id plan ${config.userFields.isBanned} ${config.userFields.hasVerifiedEmail} ${config.userFields.planExpiresAt} ${config.userFields.stripeSubscriptionID} ${config.userFields.paypalSubscriptionID}`
-    )
-    .lean()
-    .exec();
+  const domain =
+    _domain ||
+    (await this.findById(_id)
+      .populate(
+        'members.user',
+        `_id id plan ${config.userFields.isBanned} ${config.userFields.hasVerifiedEmail} ${config.userFields.planExpiresAt} ${config.userFields.stripeSubscriptionID} ${config.userFields.paypalSubscriptionID}`
+      )
+      .lean()
+      .exec());
 
   if (!domain) {
     throw Boom.badRequest(

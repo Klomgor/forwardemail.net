@@ -1355,6 +1355,17 @@ Aliases.statics.isOverQuota = async function (
 
   const domainId = alias?.domain?._id || alias.domain;
 
+  // Fetch the domain document ONCE with the superset of populated fields
+  // needed by both getMaxQuota and getStorageUsed (eliminates 2 redundant
+  // Domains.findById().populate('members.user') MongoDB round-trips).
+  const domain = await conn.models.Domains.findById(domainId)
+    .populate(
+      'members.user',
+      `_id id plan ${config.userFields.isBanned} ${config.userFields.hasVerifiedEmail} ${config.userFields.maxQuotaPerAlias} ${config.userFields.planExpiresAt} ${config.userFields.stripeSubscriptionID} ${config.userFields.paypalSubscriptionID}`
+    )
+    .lean()
+    .exec();
+
   // Fetch storage usage (always fresh) and any uncached quota config in parallel
   const [storageUsed, _maxQuotaPerAlias, domainStorageUsed, _domainMaxQuota] =
     await Promise.all([
@@ -1368,17 +1379,22 @@ Aliases.statics.isOverQuota = async function (
         ),
       // Alias-specific quota cap (getMaxQuota with alias id for per-alias limit)
       maxQuotaPerAlias === undefined
-        ? conn.models.Domains.getMaxQuota(domainId, alias.id)
+        ? conn.models.Domains.getMaxQuota(domainId, alias.id, undefined, {
+            domain
+          })
         : maxQuotaPerAlias,
       // Total storage used by all aliases on this domain (always fetched fresh)
       conn.models.Domains.getStorageUsed(
         domainId,
         alias.locale || i18n.config.defaultLocale,
-        true // aliasesOnly = true (this domain's aliases only, not pooled across admin's domains)
+        true, // aliasesOnly = true (this domain's aliases only, not pooled across admin's domains)
+        { domain }
       ),
       // Domain-level quota (without alias-specific cap applied)
       domainMaxQuota === undefined
-        ? conn.models.Domains.getMaxQuota(domainId)
+        ? conn.models.Domains.getMaxQuota(domainId, undefined, undefined, {
+            domain
+          })
         : domainMaxQuota
     ]);
 

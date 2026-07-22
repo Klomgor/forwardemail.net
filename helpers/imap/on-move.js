@@ -297,16 +297,29 @@ async function onMove(mailboxId, update, session, fn) {
     const modifyIndex = targetMailbox.modifyIndex + 1;
     let { uidNext } = targetMailbox;
 
+    //
+    // Single-message fast path: use .get() when condition resolves to a
+    // single row (condition._id or condition.uid.$eq). Most common MOVE
+    // is user dragging one message to another folder or archiving.
+    //
+    const isSingleMessage = Boolean(condition._id || condition?.uid?.$eq);
     const sql = builder.build({
       type: 'select',
       table: 'Messages',
       condition,
-      // sort required for IMAP UIDPLUS
-      sort: 'uid'
+      // sort required for IMAP UIDPLUS (skip for single message)
+      sort: isSingleMessage ? undefined : 'uid'
     });
 
     const stmt = session.db.prepare(sql.query);
-    for (const m of stmt.iterate(sql.values)) {
+    const rows = isSingleMessage
+      ? (() => {
+          const row = stmt.get(sql.values);
+          return row ? [row] : [];
+        })()
+      : [...stmt.iterate(sql.values)];
+
+    for (const m of rows) {
       // add to source uid array
       sourceUid.push(m.uid);
       destinationUid.push(uidNext);

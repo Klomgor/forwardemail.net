@@ -287,15 +287,26 @@ async function onStore(mailboxId, update, session, fn) {
 
     const fields = Object.keys(projection);
 
+    //
+    // Single-message fast path: use .get() when condition.uid.$eq is set
+    // (most common STORE — user toggles read/flag on one message).
+    // Avoids array allocation and iterator overhead for a single row.
+    //
+    const isSingleMessage = Boolean(condition?.uid?.$eq);
     const sql = builder.build({
       type: 'select',
       table: 'Messages',
       condition,
       fields,
-      // sort required for IMAP UIDPLUS
-      sort: 'uid'
+      // sort required for IMAP UIDPLUS (skip for single message)
+      sort: isSingleMessage ? undefined : 'uid'
     });
-    const messages = session.db.prepare(sql.query).all(sql.values);
+    const messages = isSingleMessage
+      ? (() => {
+          const row = session.db.prepare(sql.query).get(sql.values);
+          return row ? [row] : [];
+        })()
+      : session.db.prepare(sql.query).all(sql.values);
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
     const uidSet = queryAll ? new Set(session.selected.uidList) : null;
