@@ -438,6 +438,10 @@ async function parsePayload(data, ws) {
     //       (e.g. `const alias = await Aliases.findOne(...)` and `alias.storage_location`
     //
 
+    // Reject new work immediately when the server is shutting down.
+    // This prevents new requests from acquiring database handles during drain.
+    if (this.isClosing) throw new ServerShutdownError();
+
     // handle action
     switch (payload.action) {
       // append

@@ -81,13 +81,23 @@ const graceful = new Graceful({
         logger.error(err);
       }
 
-      // 4. Close all normal databases
+      // 4. Close all normal databases (checkpoint WAL first for durability)
       if (sqlite.databaseMap && sqlite.databaseMap.size > 0) {
         await Promise.allSettled(
           [...sqlite.databaseMap.keys()].map(async (key) => {
             const db = sqlite.databaseMap.get(key);
             if (db) {
               sqlite.databaseMap.evict(key);
+              // Checkpoint WAL to main DB file before closing to prevent
+              // corruption if pm2 SIGKILLs before OS flushes WAL pages.
+              try {
+                if (db.open && !db.readonly) {
+                  db.pragma('wal_checkpoint(PASSIVE)');
+                }
+              } catch (err) {
+                logger.error(err);
+              }
+
               await closeDatabase(db);
             }
           })

@@ -15,7 +15,8 @@
       "error_file": "/var/log/pm2/sqlite-error.log",
       "out_file": "/var/log/pm2/sqlite-out.log",
       "combine_logs": true,
-      "merge_logs": true
+      "merge_logs": true,
+      "kill_timeout": 65000
     },
     {
       "name": "sqlite-bree",
@@ -32,7 +33,8 @@
       "error_file": "/var/log/pm2/sqlite-bree-error.log",
       "out_file": "/var/log/pm2/sqlite-bree-out.log",
       "combine_logs": true,
-      "merge_logs": true
+      "merge_logs": true,
+      "kill_timeout": 65000
     },
     {
       "name": "sqlite-worker",
@@ -49,7 +51,8 @@
       "error_file": "/var/log/pm2/sqlite-worker-error.log",
       "out_file": "/var/log/pm2/sqlite-worker-out.log",
       "combine_logs": true,
-      "merge_logs": true
+      "merge_logs": true,
+      "kill_timeout": 65000
     }
   ],
   "deploy": {

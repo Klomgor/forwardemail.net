@@ -4,6 +4,7 @@
       "name": "sqlite",
       "script": "sqlite.js",
       "wait_ready": true,
+      "kill_timeout": 65000,
       "exec_mode": "cluster",
       "instances": "max",
       "pmx": false,
@@ -16,6 +17,7 @@
       "script": "sqlite-bree.js",
       "exec_mode": "fork",
       "wait_ready": true,
+      "kill_timeout": 65000,
       "instances": "1",
       "pmx": false,
       "env_production": {
@@ -27,6 +29,7 @@
       "script": "sqlite-worker.js",
       "exec_mode": "fork",
       "wait_ready": true,
+      "kill_timeout": 65000,
       "instances": "1",
       "pmx": false,
       "env_production": {

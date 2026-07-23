@@ -41,13 +41,13 @@ const builder = new Builder({ bufferAsNative: true });
 const { formatResponse } = IMAPConnection.prototype;
 
 //
-// Byte-based flush threshold for batch mode (100 MB).
+// Byte-based flush threshold for batch mode (10 MB).
 // When accumulated compiled payloads exceed this threshold, they are
 // flushed via wss.broadcast() which provides backpressure through UUID ACK.
-// Set high (100 MB) to avoid frequent blocking round-trips while still
-// preventing unbounded memory growth for very large mailbox fetches.
+// Set to 10 MB to limit peak memory per FETCH while still batching enough
+// to amortize the round-trip overhead of each broadcast ACK.
 //
-const FLUSH_BYTES = 100 * 1024 * 1024; // 100 MB
+const FLUSH_BYTES = 10 * 1024 * 1024; // 10 MB
 
 async function onFetch(mailboxId, options, session, fn) {
   this.logger.debug('FETCH', { mailboxId, options, session });
@@ -210,10 +210,9 @@ async function onFetch(mailboxId, options, session, fn) {
 
     //
     // Batch mode: flush accumulated compiledPayloads via wss.broadcast()
-    // when they exceed FLUSH_BYTES (100 MB). This prevents unbounded memory
-    // growth when fetching very large mailboxes. The broadcast is fire-and-forget
-    // (errors are logged but do not block the iterate loop) to avoid the
-    // latency spikes caused by ACK-based backpressure on every flush.
+    // when they exceed FLUSH_BYTES (10 MB). This prevents unbounded memory
+    // growth when fetching very large mailboxes. The broadcast is awaited
+    // to provide backpressure and prevent unbounded in-flight buffers.
     //
     const isBatchMode = !isSingleMessage;
     let pendingBytes = 0;
@@ -277,10 +276,7 @@ async function onFetch(mailboxId, options, session, fn) {
 
         // flush compiled payloads when accumulated bytes exceed threshold
         if (isBatchMode && pendingBytes >= FLUSH_BYTES) {
-          // Fire-and-forget: do not await broadcast to avoid blocking iterate
-          this.wss
-            .broadcast(session, [...compiledPayloads])
-            .catch((err) => this.logger.fatal(err, { session }));
+          await this.wss.broadcast(session, compiledPayloads);
           compiledPayloads.length = 0;
           pendingBytes = 0;
         }
@@ -336,10 +332,7 @@ async function onFetch(mailboxId, options, session, fn) {
 
       // flush compiled payloads when accumulated bytes exceed threshold
       if (isBatchMode && pendingBytes >= FLUSH_BYTES) {
-        // Fire-and-forget: do not await broadcast to avoid blocking iterate
-        this.wss
-          .broadcast(session, [...compiledPayloads])
-          .catch((err) => this.logger.fatal(err, { session }));
+        await this.wss.broadcast(session, compiledPayloads);
         compiledPayloads.length = 0;
         pendingBytes = 0;
       }
