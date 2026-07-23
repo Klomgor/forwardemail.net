@@ -117,6 +117,7 @@
   * [Bir gri listeye (greylist) sahip misiniz](#do-you-have-a-greylist)
   * [Bir kara listeye (denylist) sahip misiniz](#do-you-have-a-denylist)
   * [Oran sınırlaması (rate limiting) var mı](#do-you-have-rate-limiting)
+  * [Bant genişliği limitleriniz nelerdir](#what-are-your-bandwidth-limits)
   * [Backscatter'a karşı nasıl koruma sağlıyorsunuz](#how-do-you-protect-against-backscatter)
   * [Bilinen MAIL FROM spam göndericilerinden gelen bounce'ları önleyin](#prevent-bounces-from-known-mail-from-spammers)
   * [Backscatter'a karşı koruma için gereksiz bounce'ları önleyin](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ IMAP ve SMTP sunucularımız, takma adlarınızın aynı anda `60`'tan fazla eş
 
 MX sunucularımız, [izin verilmeyen](#do-you-have-an-allowlist) gönderenlerin 10'dan fazla eşzamanlı bağlantı kurmasını engeller (sayaç için 3 dakikalık önbellek süresi vardır, bu da 3 dakikalık soket zaman aşımımızla aynıdır).
 
+
+### Bant genişliği limitleriniz nelerdir {#what-are-your-bandwidth-limits}
+
+Tüm hizmetlerde kullanıcı başına bant genişliği limitleri uygulayarak flooding saldırılarını önlerken meşru kullanım için yeterince cömert kalıyoruz.  Bu limitler kasıtlı olarak Gmail'in çok üzerindedir — büyük yedeklemeleri içe aktarabilir, tüm posta kutunuzu yeni bir cihaza senkronize edebilir veya birden fazla istemciyi aynı anda herhangi bir engelle karşılaşmadan kullanabilirsiniz.
+
+| Limit | Kapsam | Miktar |
+| :--- | :--- | :---: |
+| Günlük toplam | Tüm hizmetler birlikte (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Saat başı hizmet başına | Bireysel hizmet başına (örn. IMAP indirme, SMTP yükleme) | **10 GB** |
+
+Günlük limit, tüm protokollerde paylaşılan tek bir bütçedir — IMAP üzerinden indirseniz, SMTP üzerinden yükleseniz veya CalDAV üzerinden takvimleri senkronize etseniz, hepsi aynı 50 GB/gün'e sayılır.  Hizmet başına saatlik limit, tek bir protokolde kontrolden çıkan betikler veya ele geçirilmiş hesaplar için bir güvenlik ağıdır — meşru bir kullanıcının asla ulaşmaması gereken bir şey.
+
+Bu limitler alias başına uygulanır ve günlük olarak sıfırlanır.  Redis kullanılamıyorsa, hız sınırlaması tamamen atlanır (fail-open) böylece hizmetiniz asla kesintiye uğramaz.
+
+Belirli bir kullanım durumu için daha yüksek limitlere ihtiyacınız varsa (örn. çok büyük bir arşivin taşınması), lütfen [bizimle iletişime geçin](https://forwardemail.net/help).
 
 ### Backscatter'a karşı nasıl koruma sağlıyorsunuz {#how-do-you-protect-against-backscatter}
 

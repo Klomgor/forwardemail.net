@@ -117,6 +117,7 @@
   * [Do you have a greylist](#do-you-have-a-greylist)
   * [Do you have a denylist](#do-you-have-a-denylist)
   * [Do you have rate limiting](#do-you-have-rate-limiting)
+  * [What are your bandwidth limits](#what-are-your-bandwidth-limits)
   * [How do you protect against backscatter](#how-do-you-protect-against-backscatter)
   * [Prevent bounces from known MAIL FROM spammers](#prevent-bounces-from-known-mail-from-spammers)
   * [Prevent unnecessary bounces to protect against backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5318,6 +5319,21 @@ The MX servers also limit messages being forwarded to one or more recipients thr
 Our IMAP and SMTP servers limit your aliases from having more than `60` concurrent connections at once.
 
 Our MX servers limit [non-allowlisted](#do-you-have-an-allowlist) senders from establishing more than 10 concurrent connections (with 3 minute cache expiry for the counter, which mirrors our socket timeout of 3 minutes).
+
+### What are your bandwidth limits
+
+We enforce per-user bandwidth limits across all services to prevent flooding attacks while remaining generous enough for legitimate usage.  These limits are intentionally well above Gmail's — you can import large backups, sync your entire mailbox to a new device, or use multiple clients simultaneously without hitting any walls.
+
+| Limit              | Scope                                                     |   Amount  |
+| :----------------- | :-------------------------------------------------------- | :-------: |
+| Daily total        | All services combined (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Hourly per service | Per individual service (e.g. IMAP download, SMTP upload)  | **10 GB** |
+
+The daily limit is a single shared budget across all protocols — whether you download via IMAP, upload via SMTP, or sync calendars via CalDAV, it all counts toward the same 50 GB/day.  The per-service hourly limit is a safety net against runaway scripts or compromised accounts on a single protocol — not something a legitimate user should ever hit.
+
+These limits are per alias and reset daily.  If Redis is unavailable, rate limiting is skipped entirely (fail-open) so your service is never interrupted.
+
+If you need higher limits for a specific use case (e.g. migrating a very large archive), please [contact us](https://forwardemail.net/help).
 
 ### How do you protect against backscatter
 

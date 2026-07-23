@@ -2789,6 +2789,18 @@ async function parsePayload(data, ws) {
     ) {
       this.databaseMap.release(payload.session.user.alias_id);
     }
+
+    //
+    // Explicit GC hint: null out large objects so V8 can reclaim memory
+    // sooner rather than waiting for the closure scope to be collected.
+    //
+    if (payload) {
+      payload.raw = null;
+      payload.aliases = null;
+    }
+
+    response = null;
+    payload = null;
   }
 }
 

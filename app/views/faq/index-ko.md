@@ -117,6 +117,7 @@
   * [그레이리스트가 있나요](#do-you-have-a-greylist)
   * [거부 목록이 있나요](#do-you-have-a-denylist)
   * [속도 제한이 있나요](#do-you-have-rate-limiting)
+  * [대역폭 제한은 어떻게 되나요](#what-are-your-bandwidth-limits)
   * [백스캐터를 어떻게 방지하나요](#how-do-you-protect-against-backscatter)
   * [알려진 MAIL FROM 스패머로부터의 바운스 방지](#prevent-bounces-from-known-mail-from-spammers)
   * [불필요한 바운스를 방지하여 백스캐터 보호](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ MX 서버는 또한 속도 제한을 통해 하나 이상의 수신자에게 전
 
 우리 MX 서버는 [허용 목록에 없는](#do-you-have-an-allowlist) 발신자가 10개 이상의 동시 연결을 설정하지 못하도록 제한합니다(카운터는 3분 캐시 만료를 가지며, 이는 소켓 타임아웃 3분과 동일합니다).
 
+
+### 대역폭 제한은 어떻게 되나요 {#what-are-your-bandwidth-limits}
+
+모든 서비스에 걸쳐 사용자별 대역폭 제한을 적용하여 플러딩 공격을 방지하면서도 합법적인 사용에 충분히 관대하게 유지합니다. 이러한 제한은 의도적으로 Gmail보다 훨씬 높게 설정되어 있습니다 — 대용량 백업을 가져오거나, 전체 메일함을 새 기기에 동기화하거나, 여러 클라이언트를 동시에 사용해도 어떤 제한에도 도달하지 않습니다.
+
+| 제한 | 범위 | 양 |
+| :--- | :--- | :---: |
+| 일일 총량 | 모든 서비스 합산 (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| 서비스별 시간당 | 개별 서비스당 (예: IMAP 다운로드, SMTP 업로드) | **10 GB** |
+
+일일 제한은 모든 프로토콜에 걸친 단일 공유 예산입니다 — IMAP으로 다운로드하든, SMTP로 업로드하든, CalDAV로 캘린더를 동기화하든, 모두 같은 50 GB/일에 포함됩니다. 서비스별 시간당 제한은 단일 프로토콜에서의 제어 불능 스크립트나 손상된 계정에 대한 안전망이며, 합법적인 사용자가 도달해서는 안 되는 것입니다.
+
+이러한 제한은 별칭별로 적용되며 매일 초기화됩니다. Redis를 사용할 수 없는 경우 속도 제한이 완전히 건너뛰어져(fail-open) 서비스가 중단되지 않습니다.
+
+특정 사용 사례(예: 매우 큰 아카이브 마이그레이션)에 더 높은 제한이 필요한 경우 [문의해 주세요](https://forwardemail.net/help).
 
 ### 백스캐터를 어떻게 방지하나요 {#how-do-you-protect-against-backscatter}
 

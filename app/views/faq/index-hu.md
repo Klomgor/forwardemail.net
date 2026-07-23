@@ -117,6 +117,7 @@
   * [Van szürkelistátok](#do-you-have-a-greylist)
   * [Van tiltólistátok](#do-you-have-a-denylist)
   * [Van korlátozás a forgalomra](#do-you-have-rate-limiting)
+  * [Mik a sávszélesség-korlátaitok](#what-are-your-bandwidth-limits)
   * [Hogyan védekeztek a visszapattanás ellen](#how-do-you-protect-against-backscatter)
   * [Megakadályozzátok a visszapattanásokat ismert MAIL FROM spammerek esetén](#prevent-bounces-from-known-mail-from-spammers)
   * [Megakadályozzátok a felesleges visszapattanásokat a visszapattanás elleni védelem érdekében](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ IMAP és SMTP szervereink korlátozzák, hogy aliasaid egyszerre ne legyenek tö
 
 MX szervereink korlátozzák a [nem engedélyezett](#do-you-have-an-allowlist) küldőket, hogy ne létesíthessenek 10-nél több egyidejű kapcsolatot (a számláló 3 perces gyorsítótár lejárattal, amely tükrözi a 3 perces socket időtúllépést).
 
+
+### Mik a sávszélesség-korlátaitok {#what-are-your-bandwidth-limits}
+
+Felhasználónkénti sávszélesség-korlátokat alkalmazunk minden szolgáltatáson az elárasztásos támadások megelőzése érdekében, miközben elég nagylelkűek maradunk a jogszerű használathoz.  Ezek a korlátok szándékosan jóval a Gmail korlátai felett vannak — importálhat nagy biztonsági mentéseket, szinkronizálhatja teljes postaládáját egy új eszközre, vagy használhat több klienst egyszerre anélkül, hogy bármilyen akadályba ütközne.
+
+| Korlát | Hatókör | Mennyiség |
+| :--- | :--- | :---: |
+| Napi összesen | Minden szolgáltatás együtt (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Óránként szolgáltatásonként | Egyedi szolgáltatásonként (pl. IMAP letöltés, SMTP feltöltés) | **10 GB** |
+
+A napi korlát egyetlen megosztott keret az összes protokollon — akár IMAP-on tölt le, SMTP-n tölt fel, vagy CalDAV-on szinkronizál naptárakat, minden ugyanabba az 50 GB/nap keretbe számít.  Az óránkénti korlát szolgáltatásonként biztonsági háló az elszabadult szkriptek vagy feltört fiókok ellen egyetlen protokollon — nem olyasmi, amibe egy jogszerű felhasználónak valaha bele kellene futnia.
+
+Ezek a korlátok aliasonként érvényesek és naponta visszaállnak.  Ha a Redis nem elérhető, a sebességkorlátozás teljesen kimarad (fail-open), így a szolgáltatás soha nem szakad meg.
+
+Ha magasabb korlátokra van szüksége egy adott felhasználási esethez (pl. nagyon nagy archívum migrálása), kérjük [lépjen kapcsolatba velünk](https://forwardemail.net/help).
 
 ### Hogyan védekeztek a visszapattanó levelek ellen {#how-do-you-protect-against-backscatter}
 

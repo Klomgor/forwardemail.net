@@ -185,8 +185,6 @@ class SQLite {
       );
 
       this.uuidsReceived.delete(uuid);
-
-      // TODO: do interval cleanup
     };
 
     this.server = server;
@@ -330,6 +328,7 @@ class SQLite {
 
     this.wss.on('close', () => {
       clearInterval(this.wsInterval);
+      clearInterval(this.uuidCleanupInterval);
     });
 
     // bind listen/close to this
@@ -362,12 +361,25 @@ class SQLite {
       }
     }, ms('45s'));
 
+    //
+    // UUID cleanup interval: clear stale UUIDs that were never ACK'd
+    // (e.g. due to disconnected clients or timeouts). Runs every 60s
+    // and clears the entire set since any UUID older than 5m would have
+    // already timed out in pWaitFor. This prevents unbounded Set growth.
+    //
+    this.uuidCleanupInterval = setInterval(() => {
+      if (this.uuidsReceived.size > 0) {
+        this.uuidsReceived.clear();
+      }
+    }, ms('1m'));
+
     await promisify(this.server.listen).bind(this.server)(port, host, ...args);
   }
 
   async close() {
     this.subscriber.unsubscribe('sqlite_auth_response');
     clearInterval(this.wsInterval);
+    clearInterval(this.uuidCleanupInterval);
 
     // clear notifier timers
     if (this.server.notifier && this.server.notifier.publishTimers) {

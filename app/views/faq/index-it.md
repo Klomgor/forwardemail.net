@@ -117,6 +117,7 @@
   * [Avete una greylist](#do-you-have-a-greylist)
   * [Avete una denylist](#do-you-have-a-denylist)
   * [Avete limitazioni di velocità](#do-you-have-rate-limiting)
+  * [Quali sono i vostri limiti di larghezza di banda](#what-are-your-bandwidth-limits)
   * [Come proteggete contro il backscatter](#how-do-you-protect-against-backscatter)
   * [Prevenire rimbalzi da noti spammer MAIL FROM](#prevent-bounces-from-known-mail-from-spammers)
   * [Prevenire rimbalzi inutili per proteggere contro il backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5246,6 +5247,21 @@ I nostri server IMAP e SMTP limitano i tuoi alias a non avere più di `60` conne
 
 I nostri server MX limitano i mittenti [non allowlistati](#do-you-have-an-allowlist) a non stabilire più di 10 connessioni concorrenti (con scadenza della cache del contatore di 3 minuti, che rispecchia il timeout socket di 3 minuti).
 
+
+### Quali sono i vostri limiti di larghezza di banda {#what-are-your-bandwidth-limits}
+
+Applichiamo limiti di larghezza di banda per utente su tutti i servizi per prevenire attacchi di flooding pur rimanendo sufficientemente generosi per l'uso legittimo.  Questi limiti sono intenzionalmente ben al di sopra di quelli di Gmail — puoi importare backup di grandi dimensioni, sincronizzare l'intera casella di posta su un nuovo dispositivo o utilizzare più client contemporaneamente senza incontrare alcun ostacolo.
+
+| Limite | Ambito | Quantità |
+| :--- | :--- | :---: |
+| Totale giornaliero | Tutti i servizi combinati (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Orario per servizio | Per singolo servizio (es. download IMAP, upload SMTP) | **10 GB** |
+
+Il limite giornaliero è un unico budget condiviso tra tutti i protocolli — che tu scarichi via IMAP, carichi via SMTP o sincronizzi calendari via CalDAV, tutto conta verso gli stessi 50 GB/giorno.  Il limite orario per servizio è una rete di sicurezza contro script fuori controllo o account compromessi su un singolo protocollo — non qualcosa che un utente legittimo dovrebbe mai raggiungere.
+
+Questi limiti sono per alias e si resettano giornalmente.  Se Redis non è disponibile, la limitazione della velocità viene completamente saltata (fail-open) in modo che il servizio non venga mai interrotto.
+
+Se hai bisogno di limiti più alti per un caso d'uso specifico (ad es. migrazione di un archivio molto grande), per favore [contattaci](https://forwardemail.net/help).
 
 ### Come proteggete contro il backscatter {#how-do-you-protect-against-backscatter}
 

@@ -117,6 +117,7 @@
   * [Máte greylist](#do-you-have-a-greylist)
   * [Máte denylist](#do-you-have-a-denylist)
   * [Máte omezení rychlosti (rate limiting)](#do-you-have-rate-limiting)
+  * [Jaké jsou vaše limity šířky pásma](#what-are-your-bandwidth-limits)
   * [Jak chráníte proti backscatter](#how-do-you-protect-against-backscatter)
   * [Zabraňujete bounce od známých spammerů MAIL FROM](#prevent-bounces-from-known-mail-from-spammers)
   * [Zabraňujete zbytečným bounce pro ochranu proti backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ Naše IMAP a SMTP servery omezují vaše aliasy na maximálně `60` současných
 
 Naše MX servery omezují [nepovolené](#do-you-have-an-allowlist) odesílatele na maximálně 10 současných připojení (s vypršením cache čítače po 3 minutách, což odpovídá našemu timeoutu socketu 3 minuty).
 
+
+### Jaké jsou vaše limity šířky pásma {#what-are-your-bandwidth-limits}
+
+Vynucujeme limity šířky pásma na uživatele napříč všemi službami, abychom zabránili útokům zahlcením a zároveň zůstali dostatečně velkorysí pro legitimní použití.  Tyto limity jsou záměrně výrazně nad limity Gmailu — můžete importovat velké zálohy, synchronizovat celou schránku na nové zařízení nebo používat více klientů současně bez jakýchkoli omezení.
+
+| Limit | Rozsah | Množství |
+| :--- | :--- | :---: |
+| Denní celkem | Všechny služby dohromady (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Hodinový na službu | Na jednotlivou službu (např. IMAP stahování, SMTP nahrávání) | **10 GB** |
+
+Denní limit je jeden sdílený rozpočet napříč všemi protokoly — ať stahujete přes IMAP, nahráváte přes SMTP nebo synchronizujete kalendáře přes CalDAV, vše se počítá do stejných 50 GB/den.  Hodinový limit na službu je záchranná síť proti nekontrolovaným skriptům nebo kompromitovaným účtům na jednom protokolu — není to něco, na co by legitimní uživatel měl kdy narazit.
+
+Tyto limity jsou na alias a obnovují se denně.  Pokud je Redis nedostupný, omezování rychlosti se zcela přeskočí (fail-open), takže vaše služba nebude nikdy přerušena.
+
+Pokud potřebujete vyšší limity pro konkrétní případ použití (např. migrace velmi velkého archivu), prosím [kontaktujte nás](https://forwardemail.net/help).
 
 ### Jak chráníte proti backscatteru {#how-do-you-protect-against-backscatter}
 

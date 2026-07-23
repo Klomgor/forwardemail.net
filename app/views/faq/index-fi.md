@@ -117,6 +117,7 @@
   * [Onko teillä harmaaslista](#do-you-have-a-greylist)
   * [Onko teillä estolista](#do-you-have-a-denylist)
   * [Onko teillä nopeuden rajoitus](#do-you-have-rate-limiting)
+  * [Mitkä ovat kaistanleveysrajoituksenne](#what-are-your-bandwidth-limits)
   * [Kuinka suojaudutte backscatterilta](#how-do-you-protect-against-backscatter)
   * [Estä bounce-viestit tunnetuilta MAIL FROM -roskapostittajilta](#prevent-bounces-from-known-mail-from-spammers)
   * [Estä tarpeettomat bounce-viestit backscatterin estämiseksi](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5244,6 +5245,21 @@ IMAP- ja SMTP-palvelimemme rajoittavat aliaksiasi enintään `60` samanaikaiseen
 
 MX-palvelimemme rajoittavat [ei-sallittuja](#do-you-have-an-allowlist) lähettäjiä muodostamasta yli 10 samanaikaista yhteyttä (laskurin välimuistin vanhenemisaika on 3 minuuttia, mikä vastaa socket-yhteyden aikakatkaisua 3 minuuttia).
 
+
+### Mitkä ovat kaistanleveysrajoituksenne {#what-are-your-bandwidth-limits}
+
+Sovellamme käyttäjäkohtaisia kaistanleveysrajoituksia kaikissa palveluissa tulvahyökkäysten estämiseksi samalla kun pysymme riittävän anteliaina lailliselle käytölle.  Nämä rajat ovat tarkoituksella reilusti Gmailin yläpuolella — voit tuoda suuria varmuuskopioita, synkronoida koko postilaatikkosi uuteen laitteeseen tai käyttää useita asiakkaita samanaikaisesti törmäämättä mihinkään rajoituksiin.
+
+| Raja | Laajuus | Määrä |
+| :--- | :--- | :---: |
+| Päivittäinen kokonaisraja | Kaikki palvelut yhdessä (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Tuntikohtainen per palvelu | Per yksittäinen palvelu (esim. IMAP lataus, SMTP lähetys) | **10 GB** |
+
+Päiväraja on yksi jaettu budjetti kaikkien protokollien välillä — lataatpa IMAP:n kautta, lähetät SMTP:n kautta tai synkronoit kalentereita CalDAV:n kautta, kaikki lasketaan samaan 50 GB/päivä.  Tuntikohtainen raja per palvelu on turvaverkko hallitsemattomia skriptejä tai vaarantuneita tilejä vastaan yhdellä protokollalla — ei jotain, johon laillisen käyttäjän pitäisi koskaan törmätä.
+
+Nämä rajat ovat alias-kohtaisia ja nollautuvat päivittäin.  Jos Redis ei ole käytettävissä, nopeuden rajoitus ohitetaan kokonaan (fail-open), joten palvelusi ei koskaan keskeydy.
+
+Jos tarvitset korkeampia rajoja tiettyyn käyttötapaukseen (esim. erittäin suuren arkiston siirto), ota [yhteyttä meihin](https://forwardemail.net/help).
 
 ### Kuinka suojaudutte backscatterilta {#how-do-you-protect-against-backscatter}
 

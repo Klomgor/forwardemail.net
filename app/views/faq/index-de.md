@@ -117,6 +117,7 @@
   * [Haben Sie eine Greylist](#do-you-have-a-greylist)
   * [Haben Sie eine Denylist](#do-you-have-a-denylist)
   * [Haben Sie Rate Limiting](#do-you-have-rate-limiting)
+  * [Was sind Ihre Bandbreitenlimits](#what-are-your-bandwidth-limits)
   * [Wie schützen Sie vor Backscatter](#how-do-you-protect-against-backscatter)
   * [Verhindern Sie Bounces von bekannten MAIL FROM-Spammern](#prevent-bounces-from-known-mail-from-spammers)
   * [Verhindern Sie unnötige Bounces zum Schutz vor Backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ Unsere IMAP- und SMTP-Server begrenzen Ihre Aliase darauf, nicht mehr als `60` g
 
 Unsere MX-Server begrenzen [nicht erlaubnisgelistete](#do-you-have-an-allowlist) Sender darauf, nicht mehr als 10 gleichzeitige Verbindungen herzustellen (mit einem 3-minütigen Cache-Ablauf für den Zähler, der unserem Socket-Timeout von 3 Minuten entspricht).
 
+
+### Was sind Ihre Bandbreitenlimits {#what-are-your-bandwidth-limits}
+
+Wir erzwingen Bandbreitenlimits pro Benutzer über alle Dienste hinweg, um Flooding-Angriffe zu verhindern und gleichzeitig großzügig genug für die legitime Nutzung zu bleiben.  Diese Limits liegen absichtlich weit über denen von Gmail — Sie können große Backups importieren, Ihr gesamtes Postfach auf ein neues Gerät synchronisieren oder mehrere Clients gleichzeitig verwenden, ohne auf Grenzen zu stoßen.
+
+| Limit | Geltungsbereich | Menge |
+| :--- | :--- | :---: |
+| Tägliches Gesamtlimit | Alle Dienste zusammen (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Stündlich pro Dienst | Pro einzelnen Dienst (z.B. IMAP Download, SMTP Upload) | **10 GB** |
+
+Das Tageslimit ist ein einziges gemeinsames Budget über alle Protokolle — ob Sie über IMAP herunterladen, über SMTP hochladen oder Kalender über CalDAV synchronisieren, alles zählt zu den gleichen 50 GB/Tag.  Das stündliche Limit pro Dienst ist ein Sicherheitsnetz gegen unkontrollierte Skripte oder kompromittierte Konten auf einem einzelnen Protokoll — nicht etwas, das ein legitimer Benutzer jemals erreichen sollte.
+
+Diese Limits gelten pro Alias und werden täglich zurückgesetzt.  Wenn Redis nicht verfügbar ist, wird die Ratenbegrenzung vollständig übersprungen (Fail-Open), sodass Ihr Dienst niemals unterbrochen wird.
+
+Wenn Sie höhere Limits für einen bestimmten Anwendungsfall benötigen (z.B. Migration eines sehr großen Archivs), [kontaktieren Sie uns](https://forwardemail.net/help) bitte.
 
 ### Wie schützen Sie vor Backscatter {#how-do-you-protect-against-backscatter}
 

@@ -117,6 +117,7 @@
   * [Apakah Anda memiliki daftar abu-abu (greylist)](#do-you-have-a-greylist)
   * [Apakah Anda memiliki daftar tolak (denylist)](#do-you-have-a-denylist)
   * [Apakah Anda memiliki pembatasan laju (rate limiting)](#do-you-have-rate-limiting)
+  * [Apa saja batas bandwidth Anda](#what-are-your-bandwidth-limits)
   * [Bagaimana Anda melindungi dari backscatter](#how-do-you-protect-against-backscatter)
   * [Mencegah bounce dari pengirim MAIL FROM yang dikenal spammer](#prevent-bounces-from-known-mail-from-spammers)
   * [Mencegah bounce yang tidak perlu untuk melindungi dari backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ Server IMAP dan SMTP kami membatasi alias Anda agar tidak memiliki lebih dari `6
 
 Server MX kami membatasi pengirim [yang tidak ada dalam daftar izinkan](#do-you-have-an-allowlist) agar tidak membuat lebih dari 10 koneksi bersamaan (dengan masa kedaluwarsa cache 3 menit untuk penghitung, yang mencerminkan waktu habis socket kami selama 3 menit).
 
+
+### Apa saja batas bandwidth Anda {#what-are-your-bandwidth-limits}
+
+Kami menerapkan batas bandwidth per pengguna di semua layanan untuk mencegah serangan flooding sambil tetap cukup murah hati untuk penggunaan yang sah.  Batas-batas ini sengaja dibuat jauh di atas Gmail — Anda dapat mengimpor cadangan besar, menyinkronkan seluruh kotak surat Anda ke perangkat baru, atau menggunakan beberapa klien secara bersamaan tanpa menemui hambatan apa pun.
+
+| Batas | Cakupan | Jumlah |
+| :--- | :--- | :---: |
+| Total harian | Semua layanan digabung (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Per jam per layanan | Per layanan individual (mis. unduh IMAP, unggah SMTP) | **10 GB** |
+
+Batas harian adalah satu anggaran bersama di semua protokol — baik Anda mengunduh melalui IMAP, mengunggah melalui SMTP, atau menyinkronkan kalender melalui CalDAV, semuanya dihitung ke dalam 50 GB/hari yang sama.  Batas per jam per layanan adalah jaring pengaman terhadap skrip yang tidak terkendali atau akun yang disusupi pada satu protokol — bukan sesuatu yang seharusnya pernah dicapai oleh pengguna yang sah.
+
+Batas-batas ini per alias dan direset setiap hari.  Jika Redis tidak tersedia, pembatasan laju dilewati sepenuhnya (fail-open) sehingga layanan Anda tidak pernah terganggu.
+
+Jika Anda memerlukan batas yang lebih tinggi untuk kasus penggunaan tertentu (misalnya migrasi arsip yang sangat besar), silakan [hubungi kami](https://forwardemail.net/help).
 
 ### Bagaimana Anda melindungi dari backscatter {#how-do-you-protect-against-backscatter}
 

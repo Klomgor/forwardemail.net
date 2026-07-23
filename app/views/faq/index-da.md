@@ -117,6 +117,7 @@
   * [Har I en gråliste](#do-you-have-a-greylist)
   * [Har I en afvisningsliste](#do-you-have-a-denylist)
   * [Har I ratebegrænsning](#do-you-have-rate-limiting)
+  * [Hvad er jeres båndbreddebegrænsninger](#what-are-your-bandwidth-limits)
   * [Hvordan beskytter I mod backscatter](#how-do-you-protect-against-backscatter)
   * [Forhindre afvisninger fra kendte MAIL FROM spammere](#prevent-bounces-from-known-mail-from-spammers)
   * [Forhindre unødvendige afvisninger for at beskytte mod backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5246,6 +5247,21 @@ Vores IMAP- og SMTP-servere begrænser dine aliaser til ikke at have mere end `6
 
 Vores MX-servere begrænser [ikke-tilladte](#do-you-have-an-allowlist) afsendere fra at etablere mere end 10 samtidige forbindelser (med 3 minutters cache-udløb for tælleren, hvilket svarer til vores socket timeout på 3 minutter).
 
+
+### Hvad er jeres båndbreddebegrænsninger {#what-are-your-bandwidth-limits}
+
+Vi håndhæver båndbreddebegrænsninger per bruger på tværs af alle tjenester for at forhindre oversvømmelsesangreb, samtidig med at vi forbliver generøse nok til legitim brug.  Disse grænser er bevidst langt over Gmails — du kan importere store sikkerhedskopier, synkronisere hele din postkasse til en ny enhed eller bruge flere klienter samtidigt uden at ramme nogen begrænsninger.
+
+| Grænse | Omfang | Mængde |
+| :--- | :--- | :---: |
+| Daglig total | Alle tjenester samlet (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Pr. time pr. tjeneste | Pr. individuel tjeneste (f.eks. IMAP download, SMTP upload) | **10 GB** |
+
+Den daglige grænse er ét fælles budget på tværs af alle protokoller — uanset om du downloader via IMAP, uploader via SMTP eller synkroniserer kalendere via CalDAV, tæller det hele mod de samme 50 GB/dag.  Timegrænsen pr. tjeneste er et sikkerhedsnet mod løbske scripts eller kompromitterede konti på en enkelt protokol — ikke noget en legitim bruger nogensinde bør ramme.
+
+Disse grænser er per alias og nulstilles dagligt.  Hvis Redis er utilgængelig, springes hastighedsbegrænsning helt over (fail-open), så din tjeneste aldrig afbrydes.
+
+Hvis du har brug for højere grænser til et specifikt brugsscenarie (f.eks. migrering af et meget stort arkiv), bedes du [kontakte os](https://forwardemail.net/help).
 
 ### Hvordan beskytter I mod backscatter {#how-do-you-protect-against-backscatter}
 

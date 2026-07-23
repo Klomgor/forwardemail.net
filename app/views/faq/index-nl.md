@@ -117,6 +117,7 @@
   * [Heeft u een greylist](#do-you-have-a-greylist)
   * [Heeft u een denylist](#do-you-have-a-denylist)
   * [Heeft u rate limiting](#do-you-have-rate-limiting)
+  * [Wat zijn uw bandbreedtelimieten](#what-are-your-bandwidth-limits)
   * [Hoe beschermt u tegen backscatter](#how-do-you-protect-against-backscatter)
   * [Voorkom bounces van bekende MAIL FROM spammers](#prevent-bounces-from-known-mail-from-spammers)
   * [Voorkom onnodige bounces ter bescherming tegen backscatter](#prevent-unnecessary-bounces-to-protect-against-backscatter)
@@ -5245,6 +5246,21 @@ Onze IMAP- en SMTP-servers beperken uw aliassen tot niet meer dan `60` gelijktij
 
 Onze MX-servers beperken [niet-allowlisted](#do-you-have-an-allowlist) afzenders tot niet meer dan 10 gelijktijdige verbindingen (met een cache-verval van 3 minuten voor de teller, wat overeenkomt met onze socket timeout van 3 minuten).
 
+
+### Wat zijn uw bandbreedtelimieten {#what-are-your-bandwidth-limits}
+
+We handhaven bandbreedtelimieten per gebruiker over alle diensten om flooding-aanvallen te voorkomen terwijl we ruim genoeg blijven voor legitiem gebruik.  Deze limieten liggen opzettelijk ver boven die van Gmail — u kunt grote back-ups importeren, uw volledige mailbox synchroniseren naar een nieuw apparaat, of meerdere clients tegelijkertijd gebruiken zonder enige beperking tegen te komen.
+
+| Limiet | Bereik | Hoeveelheid |
+| :--- | :--- | :---: |
+| Dagelijks totaal | Alle diensten gecombineerd (IMAP, POP3, SMTP, CalDAV, CardDAV) | **50 GB** |
+| Per uur per dienst | Per individuele dienst (bijv. IMAP download, SMTP upload) | **10 GB** |
+
+De dagelijkse limiet is één gedeeld budget over alle protocollen — of u nu downloadt via IMAP, uploadt via SMTP, of agenda's synchroniseert via CalDAV, het telt allemaal mee voor dezelfde 50 GB/dag.  De uurlimiet per dienst is een vangnet tegen op hol geslagen scripts of gecompromitteerde accounts op één protocol — niet iets dat een legitieme gebruiker ooit zou moeten bereiken.
+
+Deze limieten gelden per alias en worden dagelijks gereset.  Als Redis niet beschikbaar is, wordt snelheidsbeperking volledig overgeslagen (fail-open) zodat uw dienst nooit wordt onderbroken.
+
+Als u hogere limieten nodig heeft voor een specifiek gebruik (bijv. migratie van een zeer groot archief), neem dan [contact met ons op](https://forwardemail.net/help).
 
 ### Hoe beschermt u tegen backscatter {#how-do-you-protect-against-backscatter}
 

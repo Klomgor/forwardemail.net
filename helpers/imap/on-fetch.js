@@ -23,6 +23,7 @@ const { imapHandler } = require('@zone-eu/wildduck/imap-core');
 const IMAPError = require('#helpers/imap-error');
 const Mailboxes = require('#models/mailboxes');
 const Messages = require('#models/messages');
+const { checkBandwidth } = require('#helpers/bandwidth-limiter');
 const getQueryResponse = require('#helpers/get-query-response');
 const i18n = require('#helpers/i18n');
 const refineAndLogError = require('#helpers/refine-and-log-error');
@@ -40,12 +41,13 @@ const builder = new Builder({ bufferAsNative: true });
 const { formatResponse } = IMAPConnection.prototype;
 
 //
-// Byte-based flush threshold for batch mode.
-// Batch mode enables intermediate flushing of compiledPayloads via
-// wss.broadcast() which provides backpressure through UUID ACK.
-// This prevents unbounded memory growth when fetching large messages.
+// Byte-based flush threshold for batch mode (100 MB).
+// When accumulated compiled payloads exceed this threshold, they are
+// flushed via wss.broadcast() which provides backpressure through UUID ACK.
+// Set high (100 MB) to avoid frequent blocking round-trips while still
+// preventing unbounded memory growth for very large mailbox fetches.
 //
-const FLUSH_BYTES = 1024 * 1024; // 1 MB
+const FLUSH_BYTES = 100 * 1024 * 1024; // 100 MB
 
 async function onFetch(mailboxId, options, session, fn) {
   this.logger.debug('FETCH', { mailboxId, options, session });
@@ -179,25 +181,6 @@ async function onFetch(mailboxId, options, session, fn) {
     // converts objectids -> strings and arrays/json appropriately
     const condition = prepareQuery(Messages.mapping, pageQuery);
 
-    // condition {
-    //   mailbox: '6673762a02663ea16204767b',
-    //   uid: {
-    //     '$in': [
-    //       4047, 4049, 4050, 4051, 4052, 4054, 4053, 4055, 4056, 4057,
-    //       4058, 4059, 4060, 4061, 4062, 4063, 4064, 4048, 4066, 4065,
-    //       4067, 4068, 4069, 4070, 4072, 4071, 4073, 4074, 4075, 4076,
-    //       4077, 4078, 4079, 4080, 4081, 4082, 4083, 4084, 4085, 4087,
-    //       4088, 4089, 4090, 4092, 4091, 4093, 4095, 4094, 4086, 4098,
-    //       4101, 4099, 4102, 4103, 4106, 4104, 4105, 4100, 4107, 4108,
-    //       4111, 4109, 4110, 4114, 4115, 4116, 4117, 4118, 4119, 4120,
-    //       4123, 4125, 4122, 4127, 4130, 4121, 4124, 4126, 4132, 4129,
-    //       4131, 4128, 4096, 4097, 4133, 4135, 4134, 4137, 4138, 4136,
-    //       4139, 4140, 4141, 4142, 4144, 4146, 4143, 4145, 4148, 4147,
-    //       ... 429 more items
-    //     ]
-    //   }
-    // }
-
     // TODO: `condition` may need further refined for accuracy (e.g. see `prepareQuery`)
     const fields = [];
     for (const key of Object.keys(projection)) {
@@ -226,15 +209,13 @@ async function onFetch(mailboxId, options, session, fn) {
     const isSingleMessage = Boolean(condition?.uid?.$eq);
 
     //
-    // Batch mode enables intermediate flushing via wss.broadcast() for
-    // large result sets. Currently disabled because wss.broadcast() uses
-    // ACK-based backpressure (pWaitFor with 10s inner timeout + 5m outer)
-    // which blocks the iterate loop waiting for the IMAP server to ACK
-    // each chunk — causing severe latency spikes on multi-message FETCH.
+    // Batch mode: flush accumulated compiledPayloads via wss.broadcast()
+    // when they exceed FLUSH_BYTES (100 MB). This prevents unbounded memory
+    // growth when fetching very large mailboxes. The broadcast is fire-and-forget
+    // (errors are logged but do not block the iterate loop) to avoid the
+    // latency spikes caused by ACK-based backpressure on every flush.
     //
-    // TODO: re-enable once broadcast uses a non-blocking write path
-    //
-    const isBatchMode = false;
+    const isBatchMode = !isSingleMessage;
     let pendingBytes = 0;
 
     // convert uidList to Set for O(1) lookups instead of O(n) Array.includes
@@ -296,7 +277,10 @@ async function onFetch(mailboxId, options, session, fn) {
 
         // flush compiled payloads when accumulated bytes exceed threshold
         if (isBatchMode && pendingBytes >= FLUSH_BYTES) {
-          await this.wss.broadcast(session, compiledPayloads);
+          // Fire-and-forget: do not await broadcast to avoid blocking iterate
+          this.wss
+            .broadcast(session, [...compiledPayloads])
+            .catch((err) => this.logger.fatal(err, { session }));
           compiledPayloads.length = 0;
           pendingBytes = 0;
         }
@@ -352,7 +336,10 @@ async function onFetch(mailboxId, options, session, fn) {
 
       // flush compiled payloads when accumulated bytes exceed threshold
       if (isBatchMode && pendingBytes >= FLUSH_BYTES) {
-        await this.wss.broadcast(session, compiledPayloads);
+        // Fire-and-forget: do not await broadcast to avoid blocking iterate
+        this.wss
+          .broadcast(session, [...compiledPayloads])
+          .catch((err) => this.logger.fatal(err, { session }));
         compiledPayloads.length = 0;
         pendingBytes = 0;
       }
@@ -404,6 +391,15 @@ async function onFetch(mailboxId, options, session, fn) {
       for (const result of stmt.iterate(sql.values)) {
         await processMessage(result);
       }
+    }
+
+    // Record bandwidth usage (fire-and-forget, non-blocking)
+    if (totalBytes > 0) {
+      checkBandwidth(this.client, {
+        aliasId: session.user.alias_id,
+        service: 'imap_download',
+        bytes: totalBytes
+      }).catch(() => {});
     }
 
     // perform db operations
