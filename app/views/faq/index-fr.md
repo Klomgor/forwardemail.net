@@ -5259,7 +5259,7 @@ Nous appliquons des limites de bande passante par utilisateur sur tous les servi
 
 La limite quotidienne est un budget unique partagé entre tous les protocoles — que vous téléchargiez via IMAP, envoyiez via SMTP ou synchronisiez des calendriers via CalDAV, tout compte dans les mêmes 50 Go/jour.  La limite horaire par service est un filet de sécurité contre les scripts incontrôlés ou les comptes compromis sur un seul protocole — pas quelque chose qu'un utilisateur légitime devrait jamais atteindre.
 
-Ces limites sont par alias et se réinitialisent quotidiennement.  Si Redis est indisponible, la limitation de débit est entièrement ignorée (fail-open) afin que votre service ne soit jamais interrompu.
+Ces limites sont par compte utilisateur (pas par alias ou domaine) et se réinitialisent quotidiennement.  Cela signifie que la création d'alias supplémentaires n'augmente pas votre allocation de bande passante.  Si Redis est indisponible, la limitation de débit est entièrement ignorée (fail-open) afin que votre service ne soit jamais interrompu.
 
 Si vous avez besoin de limites plus élevées pour un cas d'utilisation spécifique (par exemple, la migration d'une très grande archive), veuillez [nous contacter](https://forwardemail.net/help).
 

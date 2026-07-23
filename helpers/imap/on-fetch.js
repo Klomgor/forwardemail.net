@@ -396,7 +396,7 @@ async function onFetch(mailboxId, options, session, fn) {
     // Record bandwidth usage (fire-and-forget, non-blocking)
     if (totalBytes > 0) {
       checkBandwidth(this.client, {
-        aliasId: session.user.alias_id,
+        userId: session.user.alias_user_id,
         service: 'imap_download',
         bytes: totalBytes
       }).catch(() => {});

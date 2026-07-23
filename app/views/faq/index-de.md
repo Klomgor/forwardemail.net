@@ -5258,7 +5258,7 @@ Wir erzwingen Bandbreitenlimits pro Benutzer über alle Dienste hinweg, um Flood
 
 Das Tageslimit ist ein einziges gemeinsames Budget über alle Protokolle — ob Sie über IMAP herunterladen, über SMTP hochladen oder Kalender über CalDAV synchronisieren, alles zählt zu den gleichen 50 GB/Tag.  Das stündliche Limit pro Dienst ist ein Sicherheitsnetz gegen unkontrollierte Skripte oder kompromittierte Konten auf einem einzelnen Protokoll — nicht etwas, das ein legitimer Benutzer jemals erreichen sollte.
 
-Diese Limits gelten pro Alias und werden täglich zurückgesetzt.  Wenn Redis nicht verfügbar ist, wird die Ratenbegrenzung vollständig übersprungen (Fail-Open), sodass Ihr Dienst niemals unterbrochen wird.
+Diese Limits gelten pro Benutzerkonto (nicht pro Alias oder Domain) und werden täglich zurückgesetzt.  Das bedeutet, dass das Erstellen zusätzlicher Aliasse Ihr Bandbreitenlimit nicht erhöht.  Wenn Redis nicht verfügbar ist, wird die Ratenbegrenzung vollständig übersprungen (Fail-Open), sodass Ihr Dienst niemals unterbrochen wird.
 
 Wenn Sie höhere Limits für einen bestimmten Anwendungsfall benötigen (z.B. Migration eines sehr großen Archivs), [kontaktieren Sie uns](https://forwardemail.net/help) bitte.
 

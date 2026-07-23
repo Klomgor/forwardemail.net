@@ -5258,7 +5258,7 @@ Vynucujeme limity šířky pásma na uživatele napříč všemi službami, abyc
 
 Denní limit je jeden sdílený rozpočet napříč všemi protokoly — ať stahujete přes IMAP, nahráváte přes SMTP nebo synchronizujete kalendáře přes CalDAV, vše se počítá do stejných 50 GB/den.  Hodinový limit na službu je záchranná síť proti nekontrolovaným skriptům nebo kompromitovaným účtům na jednom protokolu — není to něco, na co by legitimní uživatel měl kdy narazit.
 
-Tyto limity jsou na alias a obnovují se denně.  Pokud je Redis nedostupný, omezování rychlosti se zcela přeskočí (fail-open), takže vaše služba nebude nikdy přerušena.
+Tyto limity jsou na uživatelský účet (nikoli na alias nebo doménu) a obnovují se denně.  To znamená, že vytváření dalších aliasů nezvyšuje váš limit šířky pásma.  Pokud je Redis nedostupný, omezování rychlosti se zcela přeskočí (fail-open), takže vaše služba nebude nikdy přerušena.
 
 Pokud potřebujete vyšší limity pro konkrétní případ použití (např. migrace velmi velkého archivu), prosím [kontaktujte nás](https://forwardemail.net/help).
 

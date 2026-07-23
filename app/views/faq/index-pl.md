@@ -5257,7 +5257,7 @@ Stosujemy limity przepustowości na użytkownika we wszystkich usługach, aby za
 
 Limit dzienny to jeden wspólny budżet dla wszystkich protokołów — czy pobierasz przez IMAP, wysyłasz przez SMTP, czy synchronizujesz kalendarze przez CalDAV, wszystko liczy się do tych samych 50 GB/dzień.  Limit godzinowy na usługę to siatka bezpieczeństwa przeciwko niekontrolowanym skryptom lub skompromitowanym kontom na jednym protokole — nie coś, co legalny użytkownik powinien kiedykolwiek osiągnąć.
 
-Te limity dotyczą każdego aliasu i resetują się codziennie.  Jeśli Redis jest niedostępny, ograniczanie szybkości jest całkowicie pomijane (fail-open), więc Twoja usługa nigdy nie zostanie przerwana.
+Te limity dotyczą każdego konta użytkownika (nie aliasu ani domeny) i resetują się codziennie.  Oznacza to, że tworzenie dodatkowych aliasów nie zwiększa Twojego limitu przepustowości.  Jeśli Redis jest niedostępny, ograniczanie szybkości jest całkowicie pomijane (fail-open), więc Twoja usługa nigdy nie zostanie przerwana.
 
 Jeśli potrzebujesz wyższych limitów dla konkretnego przypadku użycia (np. migracja bardzo dużego archiwum), proszę [skontaktuj się z nami](https://forwardemail.net/help).
 

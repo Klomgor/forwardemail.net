@@ -5257,7 +5257,7 @@ Chúng tôi áp dụng giới hạn băng thông cho mỗi người dùng trên 
 
 Giới hạn hàng ngày là một ngân sách chung duy nhất trên tất cả các giao thức — dù bạn tải xuống qua IMAP, tải lên qua SMTP, hay đồng bộ lịch qua CalDAV, tất cả đều tính vào cùng 50 GB/ngày.  Giới hạn hàng giờ mỗi dịch vụ là mạng lưới an toàn chống lại các script mất kiểm soát hoặc tài khoản bị xâm phạm trên một giao thức duy nhất — không phải thứ mà người dùng hợp pháp nên bao giờ đạt tới.
 
-Các giới hạn này áp dụng cho mỗi alias và được đặt lại hàng ngày.  Nếu Redis không khả dụng, giới hạn tốc độ sẽ được bỏ qua hoàn toàn (fail-open) để dịch vụ của bạn không bao giờ bị gián đoạn.
+Các giới hạn này áp dụng cho mỗi tài khoản người dùng (không phải mỗi alias hoặc tên miền) và được đặt lại hàng ngày.  Điều này có nghĩa là việc tạo thêm alias không tăng hạn mức băng thông của bạn.  Nếu Redis không khả dụng, giới hạn tốc độ sẽ được bỏ qua hoàn toàn (fail-open) để dịch vụ của bạn không bao giờ bị gián đoạn.
 
 Nếu bạn cần giới hạn cao hơn cho trường hợp sử dụng cụ thể (ví dụ: di chuyển kho lưu trữ rất lớn), vui lòng [liên hệ với chúng tôi](https://forwardemail.net/help).
 

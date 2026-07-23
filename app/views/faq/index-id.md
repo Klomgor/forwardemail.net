@@ -5258,7 +5258,7 @@ Kami menerapkan batas bandwidth per pengguna di semua layanan untuk mencegah ser
 
 Batas harian adalah satu anggaran bersama di semua protokol — baik Anda mengunduh melalui IMAP, mengunggah melalui SMTP, atau menyinkronkan kalender melalui CalDAV, semuanya dihitung ke dalam 50 GB/hari yang sama.  Batas per jam per layanan adalah jaring pengaman terhadap skrip yang tidak terkendali atau akun yang disusupi pada satu protokol — bukan sesuatu yang seharusnya pernah dicapai oleh pengguna yang sah.
 
-Batas-batas ini per alias dan direset setiap hari.  Jika Redis tidak tersedia, pembatasan laju dilewati sepenuhnya (fail-open) sehingga layanan Anda tidak pernah terganggu.
+Batas-batas ini per akun pengguna (bukan per alias atau domain) dan direset setiap hari.  Ini berarti membuat alias tambahan tidak meningkatkan kuota bandwidth Anda.  Jika Redis tidak tersedia, pembatasan laju dilewati sepenuhnya (fail-open) sehingga layanan Anda tidak pernah terganggu.
 
 Jika Anda memerlukan batas yang lebih tinggi untuk kasus penggunaan tertentu (misalnya migrasi arsip yang sangat besar), silakan [hubungi kami](https://forwardemail.net/help).
 

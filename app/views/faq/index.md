@@ -5331,7 +5331,7 @@ We enforce per-user bandwidth limits across all services to prevent flooding att
 
 The daily limit is a single shared budget across all protocols — whether you download via IMAP, upload via SMTP, or sync calendars via CalDAV, it all counts toward the same 50 GB/day.  The per-service hourly limit is a safety net against runaway scripts or compromised accounts on a single protocol — not something a legitimate user should ever hit.
 
-These limits are per alias and reset daily.  If Redis is unavailable, rate limiting is skipped entirely (fail-open) so your service is never interrupted.
+These limits are per user account (not per alias or domain) and reset daily.  This means creating additional aliases does not increase your bandwidth allowance.  If Redis is unavailable, rate limiting is skipped entirely (fail-open) so your service is never interrupted.
 
 If you need higher limits for a specific use case (e.g. migrating a very large archive), please [contact us](https://forwardemail.net/help).
 

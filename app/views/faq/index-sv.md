@@ -5258,7 +5258,7 @@ Vi tillämpar bandbreddsbegränsningar per användare över alla tjänster för 
 
 Den dagliga gränsen är en enda delad budget över alla protokoll — oavsett om du laddar ner via IMAP, laddar upp via SMTP eller synkroniserar kalendrar via CalDAV, räknas allt mot samma 50 GB/dag.  Timgränsen per tjänst är ett skyddsnät mot skenande skript eller komprometterade konton på ett enskilt protokoll — inte något en legitim användare någonsin bör nå.
 
-Dessa gränser gäller per alias och återställs dagligen.  Om Redis är otillgänglig hoppas hastighetsbegränsningen helt över (fail-open) så att din tjänst aldrig avbryts.
+Dessa gränser gäller per användarkonto (inte per alias eller domän) och återställs dagligen.  Det innebär att skapande av ytterligare alias inte ökar din bandbreddskvot.  Om Redis är otillgänglig hoppas hastighetsbegränsningen helt över (fail-open) så att din tjänst aldrig avbryts.
 
 Om du behöver högre gränser för ett specifikt användningsfall (t.ex. migrering av ett mycket stort arkiv), vänligen [kontakta oss](https://forwardemail.net/help).
 

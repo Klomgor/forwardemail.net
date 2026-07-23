@@ -5258,7 +5258,7 @@ Aplicamos limites de largura de banda por usuário em todos os serviços para pr
 
 O limite diário é um orçamento único compartilhado entre todos os protocolos — seja baixando via IMAP, enviando via SMTP ou sincronizando calendários via CalDAV, tudo conta para os mesmos 50 GB/dia.  O limite por hora por serviço é uma rede de segurança contra scripts descontrolados ou contas comprometidas em um único protocolo — não algo que um usuário legítimo deveria jamais atingir.
 
-Esses limites são por alias e são redefinidos diariamente.  Se o Redis estiver indisponível, a limitação de taxa é completamente ignorada (fail-open) para que seu serviço nunca seja interrompido.
+Esses limites são por conta de usuário (não por alias ou domínio) e são redefinidos diariamente.  Isso significa que criar aliases adicionais não aumenta sua cota de largura de banda.  Se o Redis estiver indisponível, a limitação de taxa é completamente ignorada (fail-open) para que seu serviço nunca seja interrompido.
 
 Se você precisar de limites mais altos para um caso de uso específico (por exemplo, migração de um arquivo muito grande), por favor [entre em contato conosco](https://forwardemail.net/help).
 

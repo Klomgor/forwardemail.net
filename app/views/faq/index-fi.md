@@ -5257,7 +5257,7 @@ Sovellamme käyttäjäkohtaisia kaistanleveysrajoituksia kaikissa palveluissa tu
 
 Päiväraja on yksi jaettu budjetti kaikkien protokollien välillä — lataatpa IMAP:n kautta, lähetät SMTP:n kautta tai synkronoit kalentereita CalDAV:n kautta, kaikki lasketaan samaan 50 GB/päivä.  Tuntikohtainen raja per palvelu on turvaverkko hallitsemattomia skriptejä tai vaarantuneita tilejä vastaan yhdellä protokollalla — ei jotain, johon laillisen käyttäjän pitäisi koskaan törmätä.
 
-Nämä rajat ovat alias-kohtaisia ja nollautuvat päivittäin.  Jos Redis ei ole käytettävissä, nopeuden rajoitus ohitetaan kokonaan (fail-open), joten palvelusi ei koskaan keskeydy.
+Nämä rajat ovat käyttäjätilikohtaisia (eivät alias- tai verkkotunnuskohtaisia) ja nollautuvat päivittäin.  Tämä tarkoittaa, että lisäaliaksien luominen ei kasvata kaistanleveysrajaasi.  Jos Redis ei ole käytettävissä, nopeuden rajoitus ohitetaan kokonaan (fail-open), joten palvelusi ei koskaan keskeydy.
 
 Jos tarvitset korkeampia rajoja tiettyyn käyttötapaukseen (esim. erittäin suuren arkiston siirto), ota [yhteyttä meihin](https://forwardemail.net/help).
 

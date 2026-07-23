@@ -5258,7 +5258,7 @@ Felhasználónkénti sávszélesség-korlátokat alkalmazunk minden szolgáltat�
 
 A napi korlát egyetlen megosztott keret az összes protokollon — akár IMAP-on tölt le, SMTP-n tölt fel, vagy CalDAV-on szinkronizál naptárakat, minden ugyanabba az 50 GB/nap keretbe számít.  Az óránkénti korlát szolgáltatásonként biztonsági háló az elszabadult szkriptek vagy feltört fiókok ellen egyetlen protokollon — nem olyasmi, amibe egy jogszerű felhasználónak valaha bele kellene futnia.
 
-Ezek a korlátok aliasonként érvényesek és naponta visszaállnak.  Ha a Redis nem elérhető, a sebességkorlátozás teljesen kimarad (fail-open), így a szolgáltatás soha nem szakad meg.
+Ezek a korlátok felhasználói fiókonként érvényesek (nem aliasonként vagy domainenként) és naponta visszaállnak.  Ez azt jelenti, hogy további aliasok létrehozása nem növeli a sávszélesség-keretét.  Ha a Redis nem elérhető, a sebességkorlátozás teljesen kimarad (fail-open), így a szolgáltatás soha nem szakad meg.
 
 Ha magasabb korlátokra van szüksége egy adott felhasználási esethez (pl. nagyon nagy archívum migrálása), kérjük [lépjen kapcsolatba velünk](https://forwardemail.net/help).
 

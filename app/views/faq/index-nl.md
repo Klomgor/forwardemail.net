@@ -5258,7 +5258,7 @@ We handhaven bandbreedtelimieten per gebruiker over alle diensten om flooding-aa
 
 De dagelijkse limiet is één gedeeld budget over alle protocollen — of u nu downloadt via IMAP, uploadt via SMTP, of agenda's synchroniseert via CalDAV, het telt allemaal mee voor dezelfde 50 GB/dag.  De uurlimiet per dienst is een vangnet tegen op hol geslagen scripts of gecompromitteerde accounts op één protocol — niet iets dat een legitieme gebruiker ooit zou moeten bereiken.
 
-Deze limieten gelden per alias en worden dagelijks gereset.  Als Redis niet beschikbaar is, wordt snelheidsbeperking volledig overgeslagen (fail-open) zodat uw dienst nooit wordt onderbroken.
+Deze limieten gelden per gebruikersaccount (niet per alias of domein) en worden dagelijks gereset.  Dit betekent dat het aanmaken van extra aliassen uw bandbreedtequotum niet verhoogt.  Als Redis niet beschikbaar is, wordt snelheidsbeperking volledig overgeslagen (fail-open) zodat uw dienst nooit wordt onderbroken.
 
 Als u hogere limieten nodig heeft voor een specifiek gebruik (bijv. migratie van een zeer groot archief), neem dan [contact met ons op](https://forwardemail.net/help).
 

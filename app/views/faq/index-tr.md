@@ -5258,7 +5258,7 @@ Tüm hizmetlerde kullanıcı başına bant genişliği limitleri uygulayarak flo
 
 Günlük limit, tüm protokollerde paylaşılan tek bir bütçedir — IMAP üzerinden indirseniz, SMTP üzerinden yükleseniz veya CalDAV üzerinden takvimleri senkronize etseniz, hepsi aynı 50 GB/gün'e sayılır.  Hizmet başına saatlik limit, tek bir protokolde kontrolden çıkan betikler veya ele geçirilmiş hesaplar için bir güvenlik ağıdır — meşru bir kullanıcının asla ulaşmaması gereken bir şey.
 
-Bu limitler alias başına uygulanır ve günlük olarak sıfırlanır.  Redis kullanılamıyorsa, hız sınırlaması tamamen atlanır (fail-open) böylece hizmetiniz asla kesintiye uğramaz.
+Bu limitler kullanıcı hesabı başına uygulanır (alias veya alan adı başına değil) ve günlük olarak sıfırlanır.  Bu, ek alias oluşturmanın bant genişliği kotanızı artırmadığı anlamına gelir.  Redis kullanılamıyorsa, hız sınırlaması tamamen atlanır (fail-open) böylece hizmetiniz asla kesintiye uğramaz.
 
 Belirli bir kullanım durumu için daha yüksek limitlere ihtiyacınız varsa (örn. çok büyük bir arşivin taşınması), lütfen [bizimle iletişime geçin](https://forwardemail.net/help).
 

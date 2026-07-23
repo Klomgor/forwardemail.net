@@ -7,10 +7,9 @@
  * Reusable bandwidth rate limiter for IMAP, POP3, SMTP, CalDAV, and CardDAV.
  *
  * Design:
- *   - Single unified daily limit (50 GB) shared across ALL services per alias.
- *     This is simpler to reason about and prevents confusion about per-service
- *     caps. A user importing 10 GB via IMAP and sending 3 GB via SMTP uses
- *     13 GB of their 50 GB daily budget.
+ *   - Single unified daily limit (50 GB) shared across ALL services per user.
+ *     Tracking is done at the user level (not alias or domain) so that
+ *     creating/deleting aliases cannot be used to bypass the limit.
  *
  *   - Per-service hourly sub-limit (10 GB/hour) as a safety net against
  *     runaway scripts or compromised accounts on a single protocol.
@@ -72,19 +71,19 @@ return current
  * Check and increment bandwidth usage for a service.
  *
  * Uses two counters:
- *   1. A shared daily counter across all services (50 GB/day)
- *   2. A per-service hourly counter (10 GB/hour)
+ *   1. A shared daily counter across all services (50 GB/day) keyed by user ID
+ *   2. A per-service hourly counter (10 GB/hour) keyed by user ID
  *
  * @param {object} client - Redis client (ioredis instance)
  * @param {object} options
- * @param {string} options.aliasId - Alias ID (user identifier)
+ * @param {string} options.userId - User ID (the account owner, not alias)
  * @param {string} options.service - Service name (one of SERVICES)
  * @param {number} options.bytes - Number of bytes to record
  * @returns {Promise<object>} { allowed, dailyUsed, hourlyUsed, dailyLimit, hourlyLimit }
  */
-async function checkBandwidth(client, { aliasId, service, bytes: numBytes }) {
-  // Fail-open: if no Redis client or no bytes, allow the request
-  if (!client || !numBytes || numBytes <= 0) {
+async function checkBandwidth(client, { userId, service, bytes: numBytes }) {
+  // Fail-open: if no Redis client, no userId, or no bytes, allow the request
+  if (!client || !userId || !numBytes || numBytes <= 0) {
     return { allowed: true, dailyUsed: 0, hourlyUsed: 0 };
   }
 
@@ -96,10 +95,10 @@ async function checkBandwidth(client, { aliasId, service, bytes: numBytes }) {
   const day = now.toISOString().split('T')[0]; // YYYY-MM-DD
   const hour = `${day}T${String(now.getUTCHours()).padStart(2, '0')}`; // YYYY-MM-DDTHH
 
-  // Shared daily key (all services combined)
-  const dailyKey = `bw_${config.env}:all:d:${day}:${aliasId}`;
-  // Per-service hourly key
-  const hourlyKey = `bw_${config.env}:${service}:h:${hour}:${aliasId}`;
+  // Shared daily key (all services combined, keyed by user)
+  const dailyKey = `bw_${config.env}:all:d:${day}:${userId}`;
+  // Per-service hourly key (keyed by user)
+  const hourlyKey = `bw_${config.env}:${service}:h:${hour}:${userId}`;
 
   try {
     // Atomic increment both counters via pipeline with Lua
@@ -149,12 +148,12 @@ async function checkBandwidth(client, { aliasId, service, bytes: numBytes }) {
  *
  * @param {object} client - Redis client
  * @param {object} options
- * @param {string} options.aliasId - Alias ID
+ * @param {string} options.userId - User ID
  * @param {string} options.service - Service name (for hourly lookup)
  * @returns {Promise<object>} { dailyUsed, hourlyUsed, dailyLimit, hourlyLimit }
  */
-async function getBandwidthUsage(client, { aliasId, service }) {
-  if (!client) {
+async function getBandwidthUsage(client, { userId, service }) {
+  if (!client || !userId) {
     return { dailyUsed: 0, hourlyUsed: 0 };
   }
 
@@ -166,8 +165,8 @@ async function getBandwidthUsage(client, { aliasId, service }) {
   const day = now.toISOString().split('T')[0];
   const hour = `${day}T${String(now.getUTCHours()).padStart(2, '0')}`;
 
-  const dailyKey = `bw_${config.env}:all:d:${day}:${aliasId}`;
-  const hourlyKey = `bw_${config.env}:${service}:h:${hour}:${aliasId}`;
+  const dailyKey = `bw_${config.env}:all:d:${day}:${userId}`;
+  const hourlyKey = `bw_${config.env}:${service}:h:${hour}:${userId}`;
 
   try {
     const [dailyRaw, hourlyRaw] = await client
