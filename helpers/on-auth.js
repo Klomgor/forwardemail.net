@@ -36,6 +36,7 @@ const isValidPassword = require('#helpers/is-valid-password');
 const onConnect = require('#helpers/on-connect');
 const { encrypt } = require('#helpers/encrypt-decrypt');
 const logger = require('#helpers/logger');
+const { checkAndSendAlerts } = require('#helpers/imap/send-imap-alert');
 
 const onConnectPromise = pify(onConnect);
 
@@ -276,6 +277,36 @@ async function onAuth(auth, session, fn) {
           // the cache key includes the password hash) so the session has
           // the encrypted password available without storing it in Redis.
           user.password = encrypt(auth.password);
+
+          //
+          // IMAP ALERT: Send diagnostic alerts on cache hit path too.
+          // Uses the cached user data to check domain/alias state.
+          //
+          if (isIMAPServer && auth.connection) {
+            checkAndSendAlerts({
+              connection: auth.connection,
+              client: this.client,
+              session,
+              // Reconstruct minimal domain/alias objects from cached user.
+              // NOTE: domain.members is not cached (too large / contains user docs),
+              // so payment grace period alerts will only fire on fresh auth, not cache hit.
+              domain: {
+                id: user.domain_id,
+                _id: user.domain_id,
+                name: user.domain_name,
+                has_smtp: user.domain_has_smtp
+              },
+              alias: user.alias_id
+                ? {
+                    id: user.alias_id,
+                    _id: user.alias_id,
+                    domain: user.domain_id,
+                    has_imap: user.alias_has_imap
+                  }
+                : null
+            }).catch((err) => this.logger.debug('IMAP ALERT error', { err }));
+          }
+
           fn(null, { user });
 
           //
@@ -1018,6 +1049,8 @@ async function onAuth(auth, session, fn) {
           : i18n.config.defaultLocale,
       domain_id: domain.id,
       domain_name: domain.name,
+      // IMAP ALERT: cache domain SMTP status for alert checks on cache hit
+      domain_has_smtp: Boolean(domain.has_smtp),
       // safeguard to encrypt in-memory
       password: encrypt(auth.password),
       //
@@ -1076,6 +1109,23 @@ async function onAuth(auth, session, fn) {
 
     // this response object sets `session.user` to have `domain` and `alias`
     // <https://github.com/nodemailer/smtp-server/blob/a570d0164e4b4ef463eeedd80cadb37d5280e9da/lib/sasl.js#L235>
+
+    //
+    // IMAP ALERT: Send diagnostic alerts to the client BEFORE the tagged OK
+    // response. Per RFC 3501 Section 7.1, untagged `* OK [ALERT]` responses
+    // trigger popup dialogs in clients (Thunderbird, Apple Mail, Outlook).
+    // This runs asynchronously in the background so it does not block auth.
+    //
+    if (isIMAPServer && auth.connection) {
+      checkAndSendAlerts({
+        connection: auth.connection,
+        client: this.client,
+        session,
+        domain,
+        alias
+      }).catch((err) => this.logger.debug('IMAP ALERT error', { err }));
+    }
+
     fn(null, { user });
 
     // Track successful authentication for analytics (with deduplication)

@@ -583,6 +583,16 @@ module.exports = {
   IMAP_MAILBOX_OVER_QUOTA: 'Mailbox is over quota',
   IMAP_MAILBOX_RESERVED: 'Mailbox is reserved and cannot be removed',
   IMAP_INVALID_SEARCH: 'Invalid search query',
+  // IMAP ALERT response code messages (RFC 3501 Section 7.1)
+  // These are displayed as popup dialogs in mail clients (Thunderbird, Apple Mail, Outlook)
+  IMAP_ALERT_QUOTA_WARNING:
+    'Your mailbox is %d%% full (%s of %s used). Please delete messages or upgrade your plan to avoid delivery failures.',
+  IMAP_ALERT_QUOTA_CRITICAL:
+    'URGENT: Your mailbox is %d%% full (%s of %s used). Incoming messages may be rejected. Please free up space immediately.',
+  IMAP_ALERT_PAYMENT_GRACE_PERIOD:
+    'Your account payment is past due. You have %d day(s) remaining before service is suspended. Please update your billing at %s',
+  IMAP_ALERT_SMTP_NOT_ENABLED:
+    'Outbound SMTP is not enabled for %s. You will not be able to send emails from this domain. Configure it at %s',
   IMAP_MAILBOX_MESSAGE_EXCEEDS_QUOTA:
     'Mailbox quota for <span class="notranslate">%s</span> would be exceeded by message size',
   NO_DOMAINS_EXIST: 'Enter your custom domain name to continue.',
